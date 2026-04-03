@@ -9,9 +9,12 @@ import {
   WalletCards,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth/user";
+import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
+import { ensureInvoicePublicAccessCode } from "@/lib/billing/public-access";
 import { getInvoiceForView } from "@/lib/data/billing";
 import { formatCurrency, formatDate, toNumber } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
+import { InvoiceQrCard } from "@/components/billing/invoice-qr-card";
 import { Button } from "@/components/ui/button";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
@@ -35,6 +38,7 @@ const ITEM_TYPE_LABELS = {
   RENT: "Rent",
   RECURRING_CHARGE: "Recurring charge",
   UTILITY_READING: "Utility reading",
+  COSA: "COSA",
   ADJUSTMENT: "Adjustment",
   ARREARS: "Arrears",
 } as const;
@@ -62,6 +66,11 @@ export default async function InvoiceDetailPage({
     notFound();
   }
 
+  const publicAccessCode = await ensureInvoicePublicAccessCode(
+    invoice.id,
+    invoice.publicAccessCode
+  );
+
   const itemsWithBalances = invoice.items.map((item) => {
     const allocatedAmount = item.allocations.reduce(
       (sum, allocation) => sum + toNumber(allocation.amountAllocated),
@@ -82,15 +91,17 @@ export default async function InvoiceDetailPage({
   const canRecordPayment =
     invoice.status !== "VOID" && toNumber(invoice.balanceDue) > 0;
   const itemLookup = new Map(itemsWithBalances.map((item) => [item.id, item]));
+  const cycleLabel = formatBillingCycleMonthLabel(invoice.billingPeriodStart);
 
   return (
     <div className="space-y-6">
       <DashboardPageHero
         eyebrow="Operations / Billing"
-        title={invoice.invoiceNumber}
-        description={`Review the issued invoice for ${formatTenantName(invoice.tenant)} at ${invoice.contract.property.name}. This is the current rent, recurring-charge, and utility billing record for the selected cycle.`}
+        title={`Invoice for ${cycleLabel}`}
+        description={`Review the issued invoice for ${formatTenantName(invoice.tenant)} at ${invoice.contract.property.name}. This is the current rent, recurring-charge, COSA, and utility billing record for the selected cycle.`}
         icon={ReceiptText}
         badges={[
+          invoice.invoiceNumber,
           invoice.status.replaceAll("_", " "),
           invoice.contract.property.propertyCode,
           formatDate(invoice.dueDate),
@@ -138,13 +149,13 @@ export default async function InvoiceDetailPage({
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+        <Card className="rounded-xl border-border/60 bg-card shadow-sm">
           <CardHeader>
-            <CardTitle>Invoice items</CardTitle>
-            <CardDescription>
-              Rent, recurring charges, and utility items captured in this billing run.
-            </CardDescription>
-          </CardHeader>
+              <CardTitle>Invoice items</CardTitle>
+              <CardDescription>
+              Rent, recurring charges, COSA shares, and utility items captured in this billing run.
+              </CardDescription>
+            </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
@@ -190,7 +201,21 @@ export default async function InvoiceDetailPage({
         </Card>
 
         <div className="space-y-4">
-          <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+          <InvoiceQrCard
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoiceNumber}
+            publicAccessCode={publicAccessCode}
+            tenantName={formatTenantName(invoice.tenant)}
+            propertyName={invoice.contract.property.name}
+            billingPeriodStart={invoice.billingPeriodStart}
+            billingPeriodEnd={invoice.billingPeriodEnd}
+            issueDate={invoice.issueDate}
+            dueDate={invoice.dueDate}
+            totalAmount={toNumber(invoice.totalAmount)}
+            balanceDue={toNumber(invoice.balanceDue)}
+          />
+
+          <Card className="rounded-xl border-border/60 bg-card shadow-sm">
             <CardHeader>
               <CardTitle>Invoice summary</CardTitle>
               <CardDescription>
@@ -258,7 +283,7 @@ export default async function InvoiceDetailPage({
             </CardContent>
           </Card>
 
-          <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+          <Card className="rounded-xl border-border/60 bg-card shadow-sm">
             <CardHeader>
               <CardTitle>Payments</CardTitle>
               <CardDescription>
@@ -284,7 +309,7 @@ export default async function InvoiceDetailPage({
                   {invoice.payments.map((payment) => (
                     <div
                       key={payment.id}
-                      className="rounded-[1.2rem] border border-border/70 bg-background/60 px-4 py-3 text-sm"
+                      className="rounded-[1.2rem] border border-border/60 bg-background/60 px-4 py-3 text-sm"
                     >
                       <div className="flex items-center justify-between gap-4">
                         <span className="font-medium">

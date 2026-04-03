@@ -1,9 +1,17 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FileText, PencilLine, ReceiptText, ShieldCheck, Users2 } from "lucide-react";
+import {
+  Eye,
+  FileText,
+  ReceiptText,
+  ShieldCheck,
+  Users2,
+} from "lucide-react";
 import { updateTenantAction } from "@/app/(dashboard)/tenants/actions";
 import { TenantForm } from "@/components/tenants/tenant-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
+import { Button } from "@/components/ui/button";
 import { getTenantForEdit } from "@/lib/data/admin";
 import { requireRole } from "@/lib/auth/user";
 
@@ -25,6 +33,25 @@ function getTenantLabel(tenant: {
   );
 }
 
+function getPeopleCount(tenant: {
+  firstName: string | null;
+  lastName: string | null;
+  _count: {
+    tenantPeople: number;
+    representatives: number;
+  };
+}) {
+  if (tenant._count.tenantPeople > 0) {
+    return tenant._count.tenantPeople;
+  }
+
+  if (tenant._count.representatives > 0) {
+    return tenant._count.representatives;
+  }
+
+  return tenant.firstName || tenant.lastName ? 1 : 0;
+}
+
 export default async function EditTenantPage({ params }: EditTenantPageProps) {
   await requireRole("ADMIN");
   const { tenantId } = await params;
@@ -35,6 +62,7 @@ export default async function EditTenantPage({ params }: EditTenantPageProps) {
   }
 
   const action = updateTenantAction.bind(null, tenant.id);
+  const peopleCount = getPeopleCount(tenant);
 
   return (
     <div className="space-y-6">
@@ -44,7 +72,16 @@ export default async function EditTenantPage({ params }: EditTenantPageProps) {
         description="Update tenant identity, contacts, and ID information while preserving all linked contracts and invoice records."
         icon={Users2}
         badges={[tenant.type, `${tenant._count.contracts} contracts`, `${tenant._count.invoices} invoices`]}
-        action={<PencilLine className="size-5 text-primary" />}
+        action={
+          <Button
+            render={<Link href={`/tenants/${tenant.id}`} />}
+            variant="outline"
+            className="button-blank rounded-full"
+          >
+            <Eye />
+            View profile
+          </Button>
+        }
       />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -61,8 +98,8 @@ export default async function EditTenantPage({ params }: EditTenantPageProps) {
           icon={ReceiptText}
         />
         <DashboardMetricCard
-          label="Representatives"
-          value={String(tenant._count.representatives)}
+          label="People"
+          value={String(peopleCount)}
           detail="Named people currently attached to this tenant record."
           icon={ShieldCheck}
         />
@@ -79,21 +116,25 @@ export default async function EditTenantPage({ params }: EditTenantPageProps) {
         formAction={action}
         initialValues={{
           type: tenant.type,
-          firstName: tenant.firstName ?? "",
-          lastName: tenant.lastName ?? "",
           businessName: tenant.businessName ?? "",
           contactNumber: tenant.contactNumber ?? "",
           email: tenant.email ?? "",
           address: tenant.address ?? "",
           validIdType: tenant.validIdType ?? "",
           validIdNumber: tenant.validIdNumber ?? "",
-          representatives: tenant.representatives.map((representative) => ({
-            firstName: representative.firstName,
-            lastName: representative.lastName,
-            positionTitle: representative.positionTitle ?? "",
-            contactNumber: representative.contactNumber ?? "",
-            email: representative.email ?? "",
-            isPrimary: representative.isPrimary,
+          people: tenant.people.map((person) => ({
+            personId: person.personId,
+            firstName: person.firstName,
+            lastName: person.lastName,
+            middleName: person.middleName ?? "",
+            positionTitle: person.positionTitle ?? "",
+            contactNumber: person.contactNumber ?? "",
+            email: person.email ?? "",
+            address: person.address ?? "",
+            validIdType: person.validIdType ?? "",
+            validIdNumber: person.validIdNumber ?? "",
+            notes: person.notes ?? "",
+            isPrimary: person.isPrimary,
           })),
         }}
       />

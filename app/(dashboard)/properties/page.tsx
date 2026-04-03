@@ -3,6 +3,7 @@ import {
   Activity,
   Blocks,
   Building2,
+  Eye,
   MapPin,
   Network,
   PencilLine,
@@ -46,7 +47,6 @@ export default async function PropertiesPage() {
         title="Property registry"
         description="The schema already supports owned and leased properties, parent-child structures, and direct links to contracts and utility meters. This page is now shaped as the operational control layer for that hierarchy."
         icon={Building2}
-        badges={["Hierarchy-ready", "Meter-linked", "Contract-aware"]}
         action={
           <Button
             render={<Link href="/properties/new" />}
@@ -85,7 +85,7 @@ export default async function PropertiesPage() {
         />
       </section>
 
-      <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+      <Card className="rounded-xl border-border/60 bg-card shadow-sm">
         <CardHeader>
           <CardTitle>Registry table</CardTitle>
           <CardDescription>
@@ -152,15 +152,26 @@ export default async function PropertiesPage() {
                     <TableCell className="text-right">{property._count.contracts}</TableCell>
                     <TableCell className="text-right">{property._count.utilityMeters}</TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        render={<Link href={`/properties/${property.id}/edit`} />}
-                        variant="outline"
-                        size="sm"
-                        className="button-blank rounded-full"
-                      >
-                        <PencilLine />
-                        Edit
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          render={<Link href={`/properties/${property.id}/tenants`} />}
+                          variant="outline"
+                          size="sm"
+                          className="button-blank rounded-full"
+                        >
+                          <Eye />
+                          Tenants
+                        </Button>
+                        <Button
+                          render={<Link href={`/properties/${property.id}/edit`} />}
+                          variant="outline"
+                          size="sm"
+                          className="button-blank rounded-full"
+                        >
+                          <PencilLine />
+                          Edit
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

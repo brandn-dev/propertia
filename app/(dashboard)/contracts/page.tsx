@@ -7,6 +7,7 @@ import {
   PencilLine,
   Plus,
   Repeat2,
+  RotateCcw,
   TimerReset,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth/user";
@@ -93,7 +94,7 @@ export default async function ContractsPage() {
         />
       </section>
 
-      <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+      <Card className="rounded-xl border-border/60 bg-card shadow-sm">
         <CardHeader>
           <div className="flex flex-row items-start justify-between gap-4">
             <div>
@@ -135,6 +136,7 @@ export default async function ContractsPage() {
                   <TableHead>End</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Charges</TableHead>
+                  <TableHead className="text-right">Adjustments</TableHead>
                   <TableHead className="text-right">Monthly rent</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
@@ -158,18 +160,32 @@ export default async function ContractsPage() {
                       {contract._count.recurringCharges}
                     </TableCell>
                     <TableCell className="text-right">
+                      {contract._count.rentAdjustments}
+                    </TableCell>
+                    <TableCell className="text-right">
                       {formatCurrency(toNumber(contract.monthlyRent))}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        render={<Link href={`/contracts/${contract.id}/edit`} />}
-                        variant="outline"
-                        size="sm"
-                        className="button-blank rounded-full"
-                      >
-                        <PencilLine />
-                        Edit
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          render={<Link href={`/contracts/${contract.id}/adjustments`} />}
+                          variant="outline"
+                          size="sm"
+                          className="button-blank rounded-full"
+                        >
+                          <RotateCcw />
+                          Rates
+                        </Button>
+                        <Button
+                          render={<Link href={`/contracts/${contract.id}/edit`} />}
+                          variant="outline"
+                          size="sm"
+                          className="button-blank rounded-full"
+                        >
+                          <PencilLine />
+                          Edit
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

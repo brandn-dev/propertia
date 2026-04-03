@@ -38,6 +38,20 @@ function formatTenantLabel(tenant: {
   );
 }
 
+function deriveMonthsFromAmount(amount: string, monthlyRent: string) {
+  const amountValue = Number(amount);
+  const monthlyRentValue = Number(monthlyRent);
+
+  if (!amountValue || !monthlyRentValue) {
+    return "0";
+  }
+
+  const ratio = amountValue / monthlyRentValue;
+  const rounded = Math.round(ratio);
+
+  return Math.abs(ratio - rounded) < 0.01 ? String(rounded) : "0";
+}
+
 export default async function EditContractPage({
   params,
 }: EditContractPageProps) {
@@ -69,13 +83,23 @@ export default async function EditContractPage({
           formatTenantLabel(contract.tenant),
         ]}
         action={
-          <Button
-            render={<Link href={`/billing/charges/new?contractId=${contract.id}`} />}
-            className="rounded-full"
-          >
-            <Repeat2 />
-            Add recurring charge
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              render={<Link href={`/contracts/${contract.id}/adjustments`} />}
+              variant="outline"
+              className="button-blank rounded-full"
+            >
+              <RotateCcw />
+              Rent adjustments
+            </Button>
+            <Button
+              render={<Link href={`/billing/charges/new?contractId=${contract.id}`} />}
+              className="rounded-full"
+            >
+              <Repeat2 />
+              Add recurring charge
+            </Button>
+          </div>
         }
       />
 
@@ -118,8 +142,22 @@ export default async function EditContractPage({
           endDate: toDateInputValue(contract.endDate),
           paymentStartDate: toDateInputValue(contract.paymentStartDate),
           monthlyRent: contract.monthlyRent.toString(),
-          advanceRent: contract.advanceRent.toString(),
-          securityDeposit: contract.securityDeposit.toString(),
+          advanceRentMonths:
+            contract.advanceRentMonths > 0
+              ? String(contract.advanceRentMonths)
+              : deriveMonthsFromAmount(
+                  contract.advanceRent.toString(),
+                  contract.monthlyRent.toString()
+                ),
+          securityDepositMonths:
+            contract.securityDepositMonths > 0
+              ? String(contract.securityDepositMonths)
+              : deriveMonthsFromAmount(
+                  contract.securityDeposit.toString(),
+                  contract.monthlyRent.toString()
+                ),
+          freeRentCycles: String(contract.freeRentCycles),
+          advanceRentApplication: contract.advanceRentApplication,
           status: contract.status,
           notes: contract.notes ?? "",
         }}

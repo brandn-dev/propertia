@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { Gauge, Plus, ReceiptText, ScanLine } from "lucide-react";
+import { Gauge, PencilLine, Plus, ReceiptText, ScanLine } from "lucide-react";
 import { requireRole } from "@/lib/auth/user";
 import { getMeterReadingsOverview } from "@/lib/data/dashboard";
 import { formatCompactNumber, formatCurrency, formatDate, toNumber } from "@/lib/format";
 import { ROLE_LABELS } from "@/lib/auth/roles";
+import { formatUtilityQuantity } from "@/lib/utility-units";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
@@ -66,9 +68,9 @@ export default async function UtilityReadingsPage() {
           icon={ScanLine}
         />
         <DashboardMetricCard
-          label="Total units"
+          label="Total usage"
           value={formatCompactNumber(totalConsumption)}
-          detail="Consumption represented by the visible entries."
+          detail="Usage represented by the visible entries."
           icon={Gauge}
         />
         <DashboardMetricCard
@@ -79,11 +81,11 @@ export default async function UtilityReadingsPage() {
         />
       </section>
 
-      <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+      <Card className="rounded-xl border-border/60 bg-card shadow-sm">
         <CardHeader>
           <CardTitle>All readings</CardTitle>
           <CardDescription>
-            Latest chronological captures with meter, property, units, and recorder.
+            Latest chronological captures with meter, property, usage, and recorder.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -109,8 +111,9 @@ export default async function UtilityReadingsPage() {
                   <TableHead>Recorder</TableHead>
                   <TableHead className="text-right">Previous</TableHead>
                   <TableHead className="text-right">Current</TableHead>
-                  <TableHead className="text-right">Units</TableHead>
+                  <TableHead className="text-right">Usage</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -134,16 +137,40 @@ export default async function UtilityReadingsPage() {
                     <TableCell>{formatDate(reading.readingDate)}</TableCell>
                     <TableCell>{reading.recordedBy?.displayName ?? "System"}</TableCell>
                     <TableCell className="text-right">
-                      {formatCompactNumber(toNumber(reading.previousReading))}
+                      {formatUtilityQuantity(
+                        reading.meter.utilityType,
+                        formatCompactNumber(toNumber(reading.previousReading))
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCompactNumber(toNumber(reading.currentReading))}
+                      {formatUtilityQuantity(
+                        reading.meter.utilityType,
+                        formatCompactNumber(toNumber(reading.currentReading))
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCompactNumber(toNumber(reading.consumption))}
+                      {formatUtilityQuantity(
+                        reading.meter.utilityType,
+                        formatCompactNumber(toNumber(reading.consumption))
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(toNumber(reading.totalAmount))}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {reading.invoiceItem ? (
+                        <Badge variant="outline">Billed</Badge>
+                      ) : (
+                        <Button
+                          render={<Link href={`/utilities/readings/${reading.id}/edit`} />}
+                          variant="outline"
+                          size="sm"
+                          className="button-blank rounded-full"
+                        >
+                          <PencilLine />
+                          Edit
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -87,6 +87,51 @@ export function getBillingCycleKey(start: Date, end: Date) {
   return `${toDateInputValue(start)}:${toDateInputValue(end)}`;
 }
 
+export function getInvoiceGenerationSelectionKey(
+  contractId: string,
+  start: Date,
+  end: Date
+) {
+  return `${contractId}::${getBillingCycleKey(start, end)}`;
+}
+
+export function getBillingMonthKey(date: Date | string) {
+  const value = typeof date === "string" ? new Date(date) : date;
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+
+  return `${year}-${month}`;
+}
+
+export function filterCyclesWithoutInvoicedMonths(
+  cycles: BillingCycle[],
+  existingMonthKeys: Set<string>
+) {
+  const seenMonthKeys = new Set<string>();
+
+  return cycles.filter((cycle) => {
+    const monthKey = getBillingMonthKey(cycle.start);
+
+    if (existingMonthKeys.has(monthKey) || seenMonthKeys.has(monthKey)) {
+      return false;
+    }
+
+    seenMonthKeys.add(monthKey);
+    return true;
+  });
+}
+
+export function formatBillingCycleMonthLabel(date: Date | string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+  }).format(typeof date === "string" ? new Date(date) : date);
+}
+
+export function formatBillingCycleLabel(cycle: BillingCycle) {
+  return formatBillingCycleMonthLabel(cycle.start);
+}
+
 export function cycleOverlapsRange(
   cycle: BillingCycle,
   rangeStart: Date,

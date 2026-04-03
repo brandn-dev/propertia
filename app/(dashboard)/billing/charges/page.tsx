@@ -8,7 +8,10 @@ import {
   TimerReset,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth/user";
-import { getRecurringChargesOverview } from "@/lib/data/billing";
+import {
+  type RecurringChargeOverviewItem,
+  getRecurringChargesOverview,
+} from "@/lib/data/billing";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
@@ -37,14 +40,20 @@ function formatTenantName(tenant: {
 export default async function BillingChargesPage() {
   await requireRole("ADMIN");
   const charges = await getRecurringChargesOverview();
-  const activeCharges = charges.filter((charge) => charge.isActive);
+  const activeCharges = charges.filter(
+    (charge: RecurringChargeOverviewItem) => charge.isActive
+  );
   const monthlyScheduledValue = activeCharges.reduce(
-    (sum, charge) => sum + toNumber(charge.amount),
+    (sum: number, charge: RecurringChargeOverviewItem) =>
+      sum + toNumber(charge.amount),
     0
   );
-  const linkedContracts = new Set(charges.map((charge) => charge.contract.id)).size;
+  const linkedContracts = new Set(
+    charges.map((charge: RecurringChargeOverviewItem) => charge.contract.id)
+  ).size;
   const invoicedInstances = charges.reduce(
-    (sum, charge) => sum + charge._count.invoiceItems,
+    (sum: number, charge: RecurringChargeOverviewItem) =>
+      sum + charge._count.invoiceItems,
     0
   );
 
@@ -91,7 +100,7 @@ export default async function BillingChargesPage() {
         />
       </section>
 
-      <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+      <Card className="rounded-xl border-border/60 bg-card shadow-sm">
         <CardHeader>
           <div className="flex flex-row items-start justify-between gap-4">
             <div>
@@ -138,7 +147,7 @@ export default async function BillingChargesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {charges.map((charge) => (
+                {charges.map((charge: RecurringChargeOverviewItem) => (
                   <TableRow key={charge.id}>
                     <TableCell className="font-medium">
                       {charge.label}
@@ -153,7 +162,11 @@ export default async function BillingChargesPage() {
                       </p>
                     </TableCell>
                     <TableCell>
-                      {RECURRING_CHARGE_TYPE_LABELS[charge.chargeType]}
+                      {
+                        RECURRING_CHARGE_TYPE_LABELS[
+                          charge.chargeType as keyof typeof RECURRING_CHARGE_TYPE_LABELS
+                        ]
+                      }
                     </TableCell>
                     <TableCell>
                       {formatDate(charge.effectiveStartDate)}

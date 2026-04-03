@@ -19,7 +19,7 @@ export function LoginForm() {
           name="username"
           autoComplete="username"
           placeholder="admin"
-          className="h-11 border-border/70 bg-background/80"
+          className="h-11 border-border/60 bg-background/80"
         />
         {state?.errors?.username ? (
           <p className="text-sm text-destructive">{state.errors.username[0]}</p>
@@ -34,7 +34,7 @@ export function LoginForm() {
           type="password"
           autoComplete="current-password"
           placeholder="Enter your password"
-          className="h-11 border-border/70 bg-background/80"
+          className="h-11 border-border/60 bg-background/80"
         />
         {state?.errors?.password ? (
           <p className="text-sm text-destructive">{state.errors.password[0]}</p>
@@ -42,7 +42,7 @@ export function LoginForm() {
       </div>
 
       {state?.message ? (
-        <div className="rounded-2xl border border-border/70 bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+        <div className="rounded-2xl border border-border/60 bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
           {state.message}
         </div>
       ) : null}

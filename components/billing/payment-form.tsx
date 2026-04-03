@@ -28,7 +28,13 @@ type PaymentFormProps = {
   };
   items: {
     id: string;
-    itemType: "RENT" | "RECURRING_CHARGE" | "UTILITY_READING" | "ADJUSTMENT" | "ARREARS";
+    itemType:
+      | "RENT"
+      | "RECURRING_CHARGE"
+      | "UTILITY_READING"
+      | "COSA"
+      | "ADJUSTMENT"
+      | "ARREARS";
     description: string;
     amount: number;
     allocatedAmount: number;
@@ -40,6 +46,7 @@ const ITEM_TYPE_LABELS: Record<PaymentFormProps["items"][number]["itemType"], st
   RENT: "Rent",
   RECURRING_CHARGE: "Recurring charge",
   UTILITY_READING: "Utility reading",
+  COSA: "COSA",
   ADJUSTMENT: "Adjustment",
   ARREARS: "Arrears",
 };
@@ -110,7 +117,7 @@ export function PaymentForm({
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
-          <div className="border-blank space-y-6 rounded-[1.85rem] p-6">
+          <div className="border-blank space-y-6 rounded-xl p-6">
             <div className="grid gap-5 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="paymentDate">Payment date</Label>
@@ -150,13 +157,13 @@ export function PaymentForm({
             </div>
 
             {state.message ? (
-              <div className="rounded-[1.2rem] border border-border/70 bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
+              <div className="rounded-[1.2rem] border border-border/60 bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
                 {state.message}
               </div>
             ) : null}
           </div>
 
-          <div className="border-blank rounded-[1.85rem] p-6">
+          <div className="border-blank rounded-xl p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold tracking-[-0.04em]">
@@ -164,7 +171,7 @@ export function PaymentForm({
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   Apply the payment to specific invoice items so rent, recurring
-                  fees, and utility balances stay separate.
+                  fees, COSA, and utility balances stay separate.
                 </p>
               </div>
 
@@ -197,7 +204,7 @@ export function PaymentForm({
               {items.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-[1.4rem] border border-border/70 bg-background/60 p-4"
+                  className="rounded-[1.4rem] border border-border/60 bg-background/60 p-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0 space-y-2">
@@ -247,7 +254,7 @@ export function PaymentForm({
         </div>
 
         <aside className="space-y-4">
-          <div className="border-blank rounded-[1.85rem] p-5">
+          <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               Payment run
             </p>
@@ -259,7 +266,7 @@ export function PaymentForm({
               status updates automatically from the resulting balance.
             </p>
 
-            <div className="mt-5 space-y-3 rounded-[1.2rem] border border-border/70 bg-background/60 p-4 text-sm">
+            <div className="mt-5 space-y-3 rounded-[1.2rem] border border-border/60 bg-background/60 p-4 text-sm">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-muted-foreground">Current balance</span>
                 <span className="font-medium">{formatCurrency(invoiceBalance)}</span>

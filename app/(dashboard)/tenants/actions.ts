@@ -1,5 +1,6 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
@@ -19,12 +20,12 @@ function revalidateTenantViews() {
   );
 }
 
-function parseRepresentatives(value: FormDataEntryValue | null) {
+function parsePeople(value: FormDataEntryValue | null) {
   const rawValue = String(value ?? "").trim();
 
   if (!rawValue) {
     return {
-      representatives: [],
+      people: [],
       error: null,
     };
   }
@@ -34,54 +35,96 @@ function parseRepresentatives(value: FormDataEntryValue | null) {
 
     if (!Array.isArray(parsed)) {
       return {
-        representatives: [],
-        error: "Representative data is invalid.",
+        people: [],
+        error: "People data is invalid.",
       };
     }
 
     return {
-      representatives: parsed,
+      people: parsed,
       error: null,
     };
   } catch {
     return {
-      representatives: [],
-      error: "Representative data is invalid.",
+      people: [],
+      error: "People data is invalid.",
     };
   }
 }
 
 function getTenantPayload(formData: FormData) {
-  const representativeResult = parseRepresentatives(formData.get("representatives"));
+  const peopleResult = parsePeople(formData.get("people"));
 
   return {
     type: String(formData.get("type") ?? ""),
-    firstName: String(formData.get("firstName") ?? ""),
-    lastName: String(formData.get("lastName") ?? ""),
     businessName: String(formData.get("businessName") ?? ""),
     contactNumber: String(formData.get("contactNumber") ?? ""),
     email: String(formData.get("email") ?? ""),
     address: String(formData.get("address") ?? ""),
     validIdType: String(formData.get("validIdType") ?? ""),
     validIdNumber: String(formData.get("validIdNumber") ?? ""),
-    representatives: representativeResult.representatives,
-    representativesParseError: representativeResult.error,
+    people: peopleResult.people,
+    peopleParseError: peopleResult.error,
   };
 }
 
-function getRepresentativeFieldError(
-  payload: ParsedTenantPayload
-): TenantFormState | null {
-  if (!payload.representativesParseError) {
+function getPeopleFieldError(payload: ParsedTenantPayload): TenantFormState | null {
+  if (!payload.peopleParseError) {
     return null;
   }
 
   return {
     errors: {
-      representatives: [payload.representativesParseError],
+      people: [payload.peopleParseError],
     },
-    message: "Representative entries could not be read. Try again.",
+    message: "People entries could not be read. Try again.",
   };
+}
+
+async function upsertTenantPeople(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  people: ParsedTenantPayload["people"]
+) {
+  const linkedPeople = [];
+
+  for (const person of people) {
+    const personData = {
+      firstName: person.firstName,
+      lastName: person.lastName,
+      middleName: person.middleName,
+      contactNumber: person.contactNumber,
+      email: person.email,
+      address: person.address,
+      validIdType: person.validIdType,
+      validIdNumber: person.validIdNumber,
+      notes: person.notes,
+    };
+
+    const savedPerson = person.personId
+      ? await tx.person.update({
+          where: { id: person.personId },
+          data: personData,
+        })
+      : await tx.person.create({
+          data: personData,
+        });
+
+    linkedPeople.push({
+      tenantId,
+      personId: savedPerson.id,
+      positionTitle: person.positionTitle,
+      isPrimary: person.isPrimary,
+    });
+  }
+
+  if (linkedPeople.length === 0) {
+    return;
+  }
+
+  await tx.tenantPerson.createMany({
+    data: linkedPeople,
+  });
 }
 
 export async function createTenantAction(
@@ -91,10 +134,10 @@ export async function createTenantAction(
   await requireRole("ADMIN");
 
   const payload = getTenantPayload(formData);
-  const representativeParseError = getRepresentativeFieldError(payload);
+  const peopleParseError = getPeopleFieldError(payload);
 
-  if (representativeParseError) {
-    return representativeParseError;
+  if (peopleParseError) {
+    return peopleParseError;
   }
 
   const validatedFields = tenantSchema.safeParse(payload);
@@ -106,19 +149,19 @@ export async function createTenantAction(
     };
   }
 
-  const { representatives, ...tenantData } = validatedFields.data;
+  const { people, ...tenantData } = validatedFields.data;
 
   try {
-    await prisma.tenant.create({
-      data: {
-        ...tenantData,
-        representatives:
-          representatives.length > 0
-            ? {
-                create: representatives,
-              }
-            : undefined,
-      },
+    await prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({
+        data: {
+          ...tenantData,
+          firstName: null,
+          lastName: null,
+        },
+      });
+
+      await upsertTenantPeople(tx, tenant.id, people);
     });
   } catch {
     return {
@@ -149,10 +192,10 @@ export async function updateTenantAction(
   }
 
   const payload = getTenantPayload(formData);
-  const representativeParseError = getRepresentativeFieldError(payload);
+  const peopleParseError = getPeopleFieldError(payload);
 
-  if (representativeParseError) {
-    return representativeParseError;
+  if (peopleParseError) {
+    return peopleParseError;
   }
 
   const validatedFields = tenantSchema.safeParse(payload);
@@ -164,22 +207,26 @@ export async function updateTenantAction(
     };
   }
 
-  const { representatives, ...tenantData } = validatedFields.data;
+  const { people, ...tenantData } = validatedFields.data;
 
   try {
-    await prisma.tenant.update({
-      where: { id: tenantId },
-      data: {
-        ...tenantData,
-        representatives: {
-          deleteMany: {},
-          ...(representatives.length > 0
-            ? {
-                create: representatives,
-              }
-            : {}),
+    await prisma.$transaction(async (tx) => {
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: {
+          ...tenantData,
+          firstName: null,
+          lastName: null,
+          representatives: {
+            deleteMany: {},
+          },
+          tenantPeople: {
+            deleteMany: {},
+          },
         },
-      },
+      });
+
+      await upsertTenantPeople(tx, tenantId, people);
     });
   } catch {
     return {

@@ -14,6 +14,7 @@ import { requireRole } from "@/lib/auth/user";
 import { getUtilitiesOverview } from "@/lib/data/dashboard";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { formatCompactNumber, formatCurrency, formatDate, toNumber } from "@/lib/format";
+import { formatUtilityQuantity } from "@/lib/utility-units";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
@@ -92,9 +93,9 @@ export default async function UtilitiesPage() {
           icon={Split}
         />
         <DashboardMetricCard
-          label="Recent units"
+          label="Recent usage"
           value={formatCompactNumber(totalConsumption)}
-          detail="Total captured consumption in the visible reading queue."
+          detail="Total captured utility usage in the visible reading queue."
           icon={Ruler}
         />
         <DashboardMetricCard
@@ -106,7 +107,7 @@ export default async function UtilitiesPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-        <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+        <Card className="rounded-xl border-border/60 bg-card shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <CardTitle>Meter registry</CardTitle>
@@ -214,7 +215,7 @@ export default async function UtilitiesPage() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+        <Card className="rounded-xl border-border/60 bg-card shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <CardTitle>Recent readings</CardTitle>
@@ -252,7 +253,7 @@ export default async function UtilitiesPage() {
                     <TableHead>Tenant / Scope</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Recorder</TableHead>
-                    <TableHead className="text-right">Units</TableHead>
+                    <TableHead className="text-right">Usage</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -277,7 +278,10 @@ export default async function UtilitiesPage() {
                       <TableCell>{formatDate(reading.readingDate)}</TableCell>
                       <TableCell>{reading.recordedBy?.displayName ?? "System"}</TableCell>
                       <TableCell className="text-right">
-                        {formatCompactNumber(toNumber(reading.consumption))}
+                        {formatUtilityQuantity(
+                          reading.meter.utilityType,
+                          formatCompactNumber(toNumber(reading.consumption))
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {formatCurrency(toNumber(reading.totalAmount))}

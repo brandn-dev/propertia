@@ -10,6 +10,7 @@ import { PaymentForm } from "@/components/billing/payment-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { requireRole } from "@/lib/auth/user";
+import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
 import { getInvoiceForView } from "@/lib/data/billing";
 import { formatCurrency, formatDate, toDateInputValue, toNumber } from "@/lib/format";
 
@@ -58,15 +59,17 @@ export default async function InvoicePaymentPage({
     .filter((item) => item.remainingAmount > 0);
 
   const action = recordPaymentAction.bind(null, invoice.id);
+  const cycleLabel = formatBillingCycleMonthLabel(invoice.billingPeriodStart);
 
   return (
     <div className="space-y-6">
       <DashboardPageHero
         eyebrow="Operations / Billing"
-        title={`Record payment · ${invoice.invoiceNumber}`}
-        description={`Apply a payment for ${formatTenantName(invoice.tenant)} at ${invoice.contract.property.name}. Allocate it by item so rent, recurring fees, and utility balances stay distinct.`}
+        title={`Record payment · ${cycleLabel}`}
+        description={`Apply a payment for ${formatTenantName(invoice.tenant)} at ${invoice.contract.property.name}. Allocate it by item so rent, recurring fees, COSA, and utility balances stay distinct.`}
         icon={WalletCards}
         badges={[
+          invoice.invoiceNumber,
           invoice.status.replaceAll("_", " "),
           invoice.contract.property.propertyCode,
           formatDate(invoice.dueDate),

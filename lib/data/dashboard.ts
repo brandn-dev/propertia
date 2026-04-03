@@ -290,6 +290,11 @@ export async function getMeterReadingsOverview() {
           displayName: true,
         },
       },
+      invoiceItem: {
+        select: {
+          id: true,
+        },
+      },
     },
   });
 }
@@ -322,6 +327,141 @@ export async function getPropertiesOverview() {
   });
 }
 
+function getContractPriority(status: string) {
+  switch (status) {
+    case "ACTIVE":
+      return 0;
+    case "DRAFT":
+      return 1;
+    case "EXPIRED":
+      return 2;
+    case "ENDED":
+      return 3;
+    case "TERMINATED":
+      return 4;
+    default:
+      return 5;
+  }
+}
+
+export async function getPropertyTenantBoard(propertyId: string) {
+  const property = await prisma.property.findUnique({
+    where: { id: propertyId },
+    select: {
+      id: true,
+      name: true,
+      propertyCode: true,
+      status: true,
+      category: true,
+      isLeasable: true,
+      location: true,
+      parent: {
+        select: {
+          id: true,
+          name: true,
+          propertyCode: true,
+        },
+      },
+      children: {
+        orderBy: [{ createdAt: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          propertyCode: true,
+          status: true,
+          isLeasable: true,
+          contracts: {
+            orderBy: [{ startDate: "desc" }],
+            select: {
+              id: true,
+              startDate: true,
+              endDate: true,
+              monthlyRent: true,
+              status: true,
+              tenant: {
+                select: {
+                  id: true,
+                  type: true,
+                  firstName: true,
+                  lastName: true,
+                  businessName: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      contracts: {
+        orderBy: [{ startDate: "desc" }],
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+          monthlyRent: true,
+          status: true,
+          tenant: {
+            select: {
+              id: true,
+              type: true,
+              firstName: true,
+              lastName: true,
+              businessName: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!property) {
+    return null;
+  }
+
+  const rawSpaces =
+    property.children.length > 0
+      ? property.children.filter(
+          (child) => child.isLeasable || child.contracts.length > 0
+        )
+      : [
+          {
+            id: property.id,
+            name: property.name,
+            propertyCode: property.propertyCode,
+            status: property.status,
+            isLeasable: property.isLeasable,
+            contracts: property.contracts,
+          },
+        ];
+
+  const rows = rawSpaces
+    .map((space) => {
+      const preferredContract =
+        [...space.contracts].sort(
+          (left, right) =>
+            getContractPriority(left.status) - getContractPriority(right.status)
+        )[0] ?? null;
+
+      return {
+        id: space.id,
+        name: space.name,
+        propertyCode: space.propertyCode,
+        status: space.status,
+        contract: preferredContract,
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true }));
+
+  const activeRows = rows.filter((row) => row.contract?.status === "ACTIVE").length;
+
+  return {
+    property,
+    rows,
+    totalSpaces: rows.length,
+    activeRows,
+    vacantRows: rows.length - activeRows,
+  };
+}
+
 export async function getTenantsOverview() {
   return prisma.tenant.findMany({
     take: 12,
@@ -338,6 +478,7 @@ export async function getTenantsOverview() {
         select: {
           contracts: true,
           invoices: true,
+          tenantPeople: true,
           representatives: true,
         },
       },
@@ -371,6 +512,7 @@ export async function getContractsOverview() {
       _count: {
         select: {
           recurringCharges: true,
+          rentAdjustments: true,
         },
       },
     },

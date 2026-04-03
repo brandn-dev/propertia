@@ -51,6 +51,32 @@ function toFixedDecimal(value: number) {
   return value.toFixed(2);
 }
 
+type TimelineReading = {
+  id: string;
+  readingDate: Date;
+  currentReading: { toString(): string };
+  ratePerUnit: { toString(): string };
+  invoiceItem: { id: string } | null;
+};
+
+function findPreviousReading(readings: TimelineReading[], readingDate: Date) {
+  const timestamp = readingDate.getTime();
+
+  return (
+    [...readings]
+      .reverse()
+      .find((reading) => reading.readingDate.getTime() < timestamp) ?? null
+  );
+}
+
+function findNextReading(readings: TimelineReading[], readingDate: Date) {
+  const timestamp = readingDate.getTime();
+
+  return (
+    readings.find((reading) => reading.readingDate.getTime() > timestamp) ?? null
+  );
+}
+
 async function validateUtilityProperty(propertyId: string, currentPropertyId?: string) {
   const property = await prisma.property.findUnique({
     where: { id: propertyId },
@@ -395,6 +421,211 @@ export async function createMeterReadingAction(
     return {
       message:
         "Reading could not be saved. Check for duplicate dates on the same meter and try again.",
+    };
+  }
+
+  revalidateUtilityViews();
+  redirect("/utilities/readings");
+}
+
+export async function updateMeterReadingAction(
+  readingId: string,
+  _previousState: MeterReadingFormState,
+  formData: FormData
+): Promise<MeterReadingFormState> {
+  const user = await requireRole(["ADMIN", "METER_READER"]);
+
+  const validatedFields = meterReadingSchema.safeParse(
+    getMeterReadingPayload(formData)
+  );
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Fix the highlighted reading fields and try again.",
+    };
+  }
+
+  const existingReading = await prisma.meterReading.findUnique({
+    where: { id: readingId },
+    select: {
+      id: true,
+      meterId: true,
+      invoiceItem: {
+        select: {
+          id: true,
+        },
+      },
+      meter: {
+        select: {
+          tenantId: true,
+        },
+      },
+    },
+  });
+
+  if (!existingReading) {
+    return {
+      message: "Reading no longer exists.",
+    };
+  }
+
+  if (validatedFields.data.meterId !== existingReading.meterId) {
+    return {
+      errors: {
+        meterId: ["This reading must stay on its original meter."],
+      },
+      message: "Meter selection is invalid for this edit.",
+    };
+  }
+
+  if (existingReading.invoiceItem) {
+    return {
+      message: "Billed readings cannot be edited.",
+    };
+  }
+
+  const readingDate = new Date(validatedFields.data.readingDate);
+  const currentReading = Number(validatedFields.data.currentReading);
+  const ratePerUnit = Number(validatedFields.data.ratePerUnit);
+
+  const siblingReadings = await prisma.meterReading.findMany({
+    where: {
+      meterId: existingReading.meterId,
+      id: {
+        not: readingId,
+      },
+    },
+    orderBy: [{ readingDate: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      readingDate: true,
+      currentReading: true,
+      ratePerUnit: true,
+      invoiceItem: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  const conflictingReading = siblingReadings.find(
+    (reading) => reading.readingDate.getTime() === readingDate.getTime()
+  );
+
+  if (conflictingReading) {
+    return {
+      errors: {
+        readingDate: ["Another reading already exists on this meter for that date."],
+      },
+      message: "Reading date must stay unique per meter.",
+    };
+  }
+
+  const laterBilledReading = siblingReadings.find(
+    (reading) =>
+      reading.readingDate.getTime() > readingDate.getTime() &&
+      Boolean(reading.invoiceItem)
+  );
+
+  if (laterBilledReading) {
+    return {
+      message:
+        "This reading cannot be edited because a later reading on the same meter has already been billed.",
+    };
+  }
+
+  const previousReading = findPreviousReading(siblingReadings, readingDate);
+  const nextReading = findNextReading(siblingReadings, readingDate);
+  const previousReadingValue = previousReading
+    ? Number(previousReading.currentReading.toString())
+    : 0;
+
+  if (currentReading < previousReadingValue) {
+    return {
+      errors: {
+        currentReading: [
+          `Current reading must be at least ${previousReadingValue.toFixed(2)}.`,
+        ],
+      },
+      message: "Current reading cannot be lower than the previous reading.",
+    };
+  }
+
+  if (
+    nextReading &&
+    currentReading > Number(nextReading.currentReading.toString())
+  ) {
+    return {
+      errors: {
+        currentReading: [
+          `Current reading cannot exceed ${Number(nextReading.currentReading.toString()).toFixed(2)}, which is already recorded on ${nextReading.readingDate.toISOString().slice(0, 10)}.`,
+        ],
+      },
+      message:
+        "Current reading cannot be higher than the next recorded reading on the same meter.",
+    };
+  }
+
+  const currentConsumption = currentReading - previousReadingValue;
+  const currentTotalAmount = currentConsumption * ratePerUnit;
+
+  const subsequentReadings = siblingReadings.filter(
+    (reading) => reading.readingDate.getTime() > readingDate.getTime()
+  );
+
+  let runningPreviousValue = currentReading;
+  const subsequentUpdates = [];
+
+  for (const reading of subsequentReadings) {
+    const nextCurrentValue = Number(reading.currentReading.toString());
+
+    if (nextCurrentValue < runningPreviousValue) {
+      return {
+        message:
+          "This edit would make a later reading invalid. Adjust the later reading first, then try again.",
+      };
+    }
+
+    const nextConsumption = nextCurrentValue - runningPreviousValue;
+    const nextRatePerUnit = Number(reading.ratePerUnit.toString());
+
+    subsequentUpdates.push(
+      prisma.meterReading.update({
+        where: { id: reading.id },
+        data: {
+          previousReading: toFixedDecimal(runningPreviousValue),
+          consumption: toFixedDecimal(nextConsumption),
+          totalAmount: toFixedDecimal(nextConsumption * nextRatePerUnit),
+        },
+      })
+    );
+
+    runningPreviousValue = nextCurrentValue;
+  }
+
+  try {
+    await prisma.$transaction([
+      prisma.meterReading.update({
+        where: { id: readingId },
+        data: {
+          readingDate,
+          previousReading: toFixedDecimal(previousReadingValue),
+          currentReading: toFixedDecimal(currentReading),
+          consumption: toFixedDecimal(currentConsumption),
+          ratePerUnit: toFixedDecimal(ratePerUnit),
+          totalAmount: toFixedDecimal(currentTotalAmount),
+          tenantId: existingReading.meter.tenantId ?? null,
+          recordedById: user.id,
+        },
+      }),
+      ...subsequentUpdates,
+    ]);
+  } catch {
+    return {
+      message:
+        "Reading could not be updated. Check the meter chronology and try again.",
     };
   }
 

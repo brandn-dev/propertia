@@ -11,16 +11,22 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 const selectClassName =
-  "field-blank flex h-11 w-full rounded-lg border px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50";
+  "select-blank";
 
 const initialState: TenantFormState = {};
 
-type RepresentativeDraft = {
+type PersonDraft = {
+  personId?: string;
   firstName: string;
   lastName: string;
+  middleName: string;
   positionTitle: string;
   contactNumber: string;
   email: string;
+  address: string;
+  validIdType: string;
+  validIdNumber: string;
+  notes: string;
   isPrimary: boolean;
 };
 
@@ -32,24 +38,28 @@ type TenantFormProps = {
   ) => Promise<TenantFormState>;
   initialValues?: {
     type: (typeof TENANT_TYPES)[number];
-    firstName: string;
-    lastName: string;
     businessName: string;
     contactNumber: string;
     email: string;
     address: string;
     validIdType: string;
     validIdNumber: string;
-    representatives: RepresentativeDraft[];
+    people: PersonDraft[];
   };
 };
 
-const emptyRepresentative = (): RepresentativeDraft => ({
+const emptyPerson = (): PersonDraft => ({
+  personId: undefined,
   firstName: "",
   lastName: "",
+  middleName: "",
   positionTitle: "",
   contactNumber: "",
   email: "",
+  address: "",
+  validIdType: "",
+  validIdNumber: "",
+  notes: "",
   isPrimary: false,
 });
 
@@ -66,98 +76,87 @@ export function TenantForm({
   formAction,
   initialValues = {
     type: "INDIVIDUAL",
-    firstName: "",
-    lastName: "",
     businessName: "",
     contactNumber: "",
     email: "",
     address: "",
     validIdType: "",
     validIdNumber: "",
-    representatives: [],
+    people: [],
   },
 }: TenantFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
   const [tenantType, setTenantType] = useState<(typeof TENANT_TYPES)[number]>(
     initialValues.type
   );
-  const [representatives, setRepresentatives] = useState<RepresentativeDraft[]>(
-    initialValues.representatives
-  );
+  const [people, setPeople] = useState<PersonDraft[]>(initialValues.people);
 
-  function addRepresentative() {
-    setRepresentatives((current) => {
-      const nextRepresentative = emptyRepresentative();
+  function addPerson() {
+    setPeople((current) => {
+      const nextPerson = emptyPerson();
 
       if (current.length === 0) {
-        nextRepresentative.isPrimary = true;
+        nextPerson.isPrimary = true;
       }
 
-      return [...current, nextRepresentative];
+      return [...current, nextPerson];
     });
   }
 
-  function updateRepresentative(
+  function updatePerson(
     index: number,
-    field: keyof RepresentativeDraft,
-    value: string | boolean
+    field: keyof PersonDraft,
+    value: string | boolean | undefined
   ) {
-    setRepresentatives((current) =>
-      current.map((representative, representativeIndex) =>
-        representativeIndex === index
+    setPeople((current) =>
+      current.map((person, personIndex) =>
+        personIndex === index
           ? {
-              ...representative,
+              ...person,
               [field]: value,
             }
-          : representative
+          : person
       )
     );
   }
 
-  function removeRepresentative(index: number) {
-    setRepresentatives((current) => {
-      const nextRepresentatives = current.filter(
-        (_representative, representativeIndex) => representativeIndex !== index
+  function removePerson(index: number) {
+    setPeople((current) => {
+      const nextPeople = current.filter(
+        (_person, personIndex) => personIndex !== index
       );
 
       if (
-        nextRepresentatives.length > 0 &&
-        !nextRepresentatives.some((representative) => representative.isPrimary)
+        nextPeople.length > 0 &&
+        !nextPeople.some((person) => person.isPrimary)
       ) {
-        nextRepresentatives[0] = {
-          ...nextRepresentatives[0],
+        nextPeople[0] = {
+          ...nextPeople[0],
           isPrimary: true,
         };
       }
 
-      return nextRepresentatives;
+      return nextPeople;
     });
   }
 
-  function setPrimaryRepresentative(index: number) {
-    setRepresentatives((current) =>
-      current.map((representative, representativeIndex) => ({
-        ...representative,
-        isPrimary: representativeIndex === index,
+  function setPrimaryPerson(index: number) {
+    setPeople((current) =>
+      current.map((person, personIndex) => ({
+        ...person,
+        isPrimary: personIndex === index,
       }))
     );
   }
 
-  const serializedRepresentatives = JSON.stringify(
-    tenantType === "BUSINESS" ? representatives : []
-  );
+  const serializedPeople = JSON.stringify(people);
 
   return (
     <form action={action} className="space-y-6">
-      <input
-        type="hidden"
-        name="representatives"
-        value={serializedRepresentatives}
-        readOnly
-      />
+      <input type="hidden" name="people" value={serializedPeople} readOnly />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="border-blank space-y-6 rounded-[1.85rem] p-6">
+        <div className="border-blank space-y-6 rounded-xl p-6">
           <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="type">Tenant type</Label>
@@ -194,40 +193,13 @@ export function TenantForm({
               />
               <FieldError message={state.errors?.businessName?.[0]} />
               <p className="text-sm text-muted-foreground">
-                Required for every tenant record, including individual accounts.
+                This remains the reusable tenant account label shown across contracts,
+                invoices, and operational pages.
               </p>
             </div>
 
-            {tenantType === "INDIVIDUAL" ? (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First name</Label>
-                  <Input
-                    id="firstName"
-                    name="firstName"
-                    defaultValue={initialValues.firstName}
-                    placeholder="Juan"
-                    className="field-blank h-11"
-                  />
-                  <FieldError message={state.errors?.firstName?.[0]} />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last name</Label>
-                  <Input
-                    id="lastName"
-                    name="lastName"
-                    defaultValue={initialValues.lastName}
-                    placeholder="Dela Cruz"
-                    className="field-blank h-11"
-                  />
-                  <FieldError message={state.errors?.lastName?.[0]} />
-                </div>
-              </>
-            ) : null}
-
             <div className="space-y-2">
-              <Label htmlFor="contactNumber">Contact number</Label>
+              <Label htmlFor="contactNumber">Entity contact number</Label>
               <Input
                 id="contactNumber"
                 name="contactNumber"
@@ -239,7 +211,7 @@ export function TenantForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Entity email</Label>
               <Input
                 id="email"
                 name="email"
@@ -252,7 +224,7 @@ export function TenantForm({
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="address">Address</Label>
+              <Label htmlFor="address">Entity address</Label>
               <Textarea
                 id="address"
                 name="address"
@@ -264,7 +236,7 @@ export function TenantForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="validIdType">Valid ID type</Label>
+              <Label htmlFor="validIdType">Entity valid ID type</Label>
               <Input
                 id="validIdType"
                 name="validIdType"
@@ -276,7 +248,7 @@ export function TenantForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="validIdNumber">Valid ID number</Label>
+              <Label htmlFor="validIdNumber">Entity valid ID number</Label>
               <Input
                 id="validIdNumber"
                 name="validIdNumber"
@@ -288,202 +260,261 @@ export function TenantForm({
             </div>
           </div>
 
-          {tenantType === "BUSINESS" ? (
-            <section className="space-y-4 rounded-[1.45rem] border border-border/70 bg-background/55 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-base font-semibold tracking-[-0.03em]">
-                    Business representatives
-                  </h3>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    Attach the people who act for this business tenant, such as
-                    officers, partners, or authorized signatories.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="button-blank rounded-full"
-                  onClick={addRepresentative}
-                >
-                  <Plus />
-                  Add person
-                </Button>
+          <section className="space-y-4 rounded-[1.45rem] border border-border/60 bg-background/55 p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold tracking-[-0.03em]">
+                  People
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  Add the people attached to this tenant account. Each saved entry
+                  becomes a reusable person record that can be linked again later.
+                </p>
               </div>
-
-              <FieldError message={state.errors?.representatives?.[0]} />
-
-              {representatives.length === 0 ? (
-                <div className="rounded-[1.2rem] border border-dashed border-border/80 bg-muted/40 px-4 py-4 text-sm leading-6 text-muted-foreground">
-                  No representatives added yet. Add the people who can sign,
-                  coordinate, or receive notices for this business tenant.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {representatives.map((representative, index) => (
-                    <div
-                      key={`${index}-${representative.email}-${representative.lastName}`}
-                      className="rounded-[1.35rem] border border-border/70 bg-background/75 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium">
-                            Representative {index + 1}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            Add the contact details and role for this person.
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="button-blank rounded-full"
-                          onClick={() => removeRepresentative(index)}
-                        >
-                          <Trash2 />
-                          Remove
-                        </Button>
-                      </div>
-
-                      <div className="mt-4 grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label>First name</Label>
-                          <Input
-                            value={representative.firstName}
-                            onChange={(event) =>
-                              updateRepresentative(index, "firstName", event.target.value)
-                            }
-                            placeholder="Juan"
-                            className="field-blank h-11"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Last name</Label>
-                          <Input
-                            value={representative.lastName}
-                            onChange={(event) =>
-                              updateRepresentative(index, "lastName", event.target.value)
-                            }
-                            placeholder="Dela Cruz"
-                            className="field-blank h-11"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Position title</Label>
-                          <Input
-                            value={representative.positionTitle}
-                            onChange={(event) =>
-                              updateRepresentative(
-                                index,
-                                "positionTitle",
-                                event.target.value
-                              )
-                            }
-                            placeholder="President"
-                            className="field-blank h-11"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Contact number</Label>
-                          <Input
-                            value={representative.contactNumber}
-                            onChange={(event) =>
-                              updateRepresentative(
-                                index,
-                                "contactNumber",
-                                event.target.value
-                              )
-                            }
-                            placeholder="+63 917 000 0000"
-                            className="field-blank h-11"
-                          />
-                        </div>
-
-                        <div className="space-y-2 md:col-span-2">
-                          <Label>Email</Label>
-                          <Input
-                            type="email"
-                            value={representative.email}
-                            onChange={(event) =>
-                              updateRepresentative(index, "email", event.target.value)
-                            }
-                            placeholder="representative@example.com"
-                            className="field-blank h-11"
-                          />
-                        </div>
-                      </div>
-
-                      <label className="mt-4 flex items-start gap-3 rounded-[1rem] border border-border/70 bg-muted/40 px-3 py-3">
-                        <input
-                          type="checkbox"
-                          checked={representative.isPrimary}
-                          onChange={() => setPrimaryRepresentative(index)}
-                          className="mt-1 size-4 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-ring"
-                        />
-                        <div className="space-y-1">
-                          <span className="text-sm font-medium">
-                            Primary representative
-                          </span>
-                          <p className="text-sm leading-6 text-muted-foreground">
-                            Use this for the main point of contact for notices and
-                            contract coordination.
-                          </p>
-                        </div>
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          ) : null}
-
-          {state.message ? (
-            <div className="rounded-[1.2rem] border border-border/70 bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
-              {state.message}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="button-blank rounded-full"
+                onClick={addPerson}
+              >
+                <Plus />
+                Add person
+              </Button>
             </div>
-          ) : null}
+
+            <FieldError message={state.errors?.people?.[0]} />
+
+            {people.length === 0 ? (
+              <div className="rounded-[1.2rem] border border-dashed border-border/80 bg-muted/40 px-4 py-4 text-sm leading-6 text-muted-foreground">
+                {tenantType === "INDIVIDUAL"
+                  ? "Add at least one person for this individual tenant. That person becomes the reusable identity record for the account."
+                  : "No people added yet. Add the officers, partners, signatories, or coordinators attached to this business tenant."}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {people.map((person, index) => (
+                  <div
+                    key={person.personId ?? `person-${index}`}
+                    className="rounded-[1.35rem] border border-border/60 bg-background/75 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">Person {index + 1}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Basic information for the linked reusable person record.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="button-blank rounded-full"
+                        onClick={() => removePerson(index)}
+                      >
+                        <Trash2 />
+                        Remove
+                      </Button>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>First name</Label>
+                        <Input
+                          value={person.firstName}
+                          onChange={(event) =>
+                            updatePerson(index, "firstName", event.target.value)
+                          }
+                          placeholder="Juan"
+                          className="field-blank h-11"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Last name</Label>
+                        <Input
+                          value={person.lastName}
+                          onChange={(event) =>
+                            updatePerson(index, "lastName", event.target.value)
+                          }
+                          placeholder="Dela Cruz"
+                          className="field-blank h-11"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Middle name</Label>
+                        <Input
+                          value={person.middleName}
+                          onChange={(event) =>
+                            updatePerson(index, "middleName", event.target.value)
+                          }
+                          placeholder="Santos"
+                          className="field-blank h-11"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Position or relation</Label>
+                        <Input
+                          value={person.positionTitle}
+                          onChange={(event) =>
+                            updatePerson(index, "positionTitle", event.target.value)
+                          }
+                          placeholder={
+                            tenantType === "BUSINESS"
+                              ? "President"
+                              : "Primary tenant"
+                          }
+                          className="field-blank h-11"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Contact number</Label>
+                        <Input
+                          value={person.contactNumber}
+                          onChange={(event) =>
+                            updatePerson(index, "contactNumber", event.target.value)
+                          }
+                          placeholder="+63 917 000 0000"
+                          className="field-blank h-11"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Email</Label>
+                        <Input
+                          type="email"
+                          value={person.email}
+                          onChange={(event) =>
+                            updatePerson(index, "email", event.target.value)
+                          }
+                          placeholder="person@example.com"
+                          className="field-blank h-11"
+                        />
+                      </div>
+
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>Address</Label>
+                        <Textarea
+                          value={person.address}
+                          onChange={(event) =>
+                            updatePerson(index, "address", event.target.value)
+                          }
+                          placeholder="Residential or mailing address for this person."
+                          className="field-blank min-h-20"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Valid ID type</Label>
+                        <Input
+                          value={person.validIdType}
+                          onChange={(event) =>
+                            updatePerson(index, "validIdType", event.target.value)
+                          }
+                          placeholder="Passport"
+                          className="field-blank h-11"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Valid ID number</Label>
+                        <Input
+                          value={person.validIdNumber}
+                          onChange={(event) =>
+                            updatePerson(index, "validIdNumber", event.target.value)
+                          }
+                          placeholder="P1234567A"
+                          className="field-blank h-11"
+                        />
+                      </div>
+
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>Notes</Label>
+                        <Textarea
+                          value={person.notes}
+                          onChange={(event) =>
+                            updatePerson(index, "notes", event.target.value)
+                          }
+                          placeholder="Optional context for this person record."
+                          className="field-blank min-h-20"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between rounded-[1.1rem] border border-border/60 bg-muted/30 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium">Primary contact</p>
+                        <p className="text-sm text-muted-foreground">
+                          Use one primary person for notices and main coordination.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant={person.isPrimary ? "default" : "outline"}
+                        size="sm"
+                        className={person.isPrimary ? "rounded-full" : "button-blank rounded-full"}
+                        onClick={() => setPrimaryPerson(index)}
+                      >
+                        {person.isPrimary ? "Primary" : "Set primary"}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
 
-        <aside className="space-y-4">
-          <div className="border-blank rounded-[1.85rem] p-5">
-            <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
-              {mode === "create" ? "New record" : "Update record"}
-            </p>
-            <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em]">
-              {mode === "create" ? "Create tenant" : "Save tenant changes"}
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+        <aside className="border-blank rounded-xl p-6">
+          <h2 className="text-lg font-semibold tracking-[-0.03em]">
+            {mode === "create" ? "Before you save" : "What this updates"}
+          </h2>
+          <div className="mt-4 space-y-4 text-sm leading-6 text-muted-foreground">
+            <p>
               {mode === "create"
-                ? "Create an individual or business tenant profile with a required business name. Business tenants can also carry multiple named representatives."
-                : "Update tenant identity, business name, contacts, and business representatives while preserving linked contracts and billing records."}
+                ? "Create a reusable tenant account, then attach one or more people to it. Individual tenants should always have at least one person."
+                : "Update the tenant account and its linked people without breaking contracts, invoices, or meter assignments already attached to the tenant."}
             </p>
-
-            <div className="mt-5 flex flex-col gap-2">
-              <Button
-                type="submit"
-                size="lg"
-                className="h-11 rounded-xl shadow-sm"
-                disabled={pending}
-              >
-                {pending ? <LoaderCircle className="animate-spin" /> : <Save />}
-                {mode === "create" ? "Create tenant" : "Save changes"}
-              </Button>
-              <Button
-                render={<Link href="/tenants" />}
-                variant="outline"
-                size="lg"
-                className="button-blank h-11 rounded-xl"
-              >
-                <ArrowLeft />
-                Back to tenants
-              </Button>
+            <p>
+              Every saved person becomes a standalone reusable record. Editing a
+              linked person here updates that person record directly.
+            </p>
+            <div className="rounded-[1.2rem] border border-dashed border-border/70 bg-muted/35 px-4 py-4">
+              Keep the tenant account label in <span className="font-medium text-foreground">Business name</span>,
+              then store actual people in the <span className="font-medium text-foreground">People</span> section.
             </div>
           </div>
+
+          <div className="mt-6 flex flex-col gap-3">
+            <Button type="submit" className="rounded-full" disabled={pending}>
+              {pending ? (
+                <>
+                  <LoaderCircle className="animate-spin" />
+                  Saving tenant
+                </>
+              ) : (
+                <>
+                  <Save />
+                  {mode === "create" ? "Create tenant" : "Save changes"}
+                </>
+              )}
+            </Button>
+            <Button
+              render={<Link href="/tenants" />}
+              variant="outline"
+              className="button-blank rounded-full"
+            >
+              <ArrowLeft />
+              Back to tenants
+            </Button>
+          </div>
+
+          {state.message ? (
+            <p className="mt-4 text-sm text-destructive">{state.message}</p>
+          ) : null}
         </aside>
       </div>
     </form>

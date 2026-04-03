@@ -6,10 +6,21 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
 import { prisma } from "@/lib/prisma";
 import {
+  filterCyclesWithoutInvoicedMonths,
   cycleOverlapsRange,
   findNextCompletedBillingCycles,
+  formatBillingCycleLabel,
+  getBillingCycleAtIndex,
   getBillingCycleKey,
+  getInvoiceGenerationSelectionKey,
+  getBillingMonthKey,
 } from "@/lib/billing/cycles";
+import { calculateAdjustedMonthlyRent } from "@/lib/billing/rent-adjustments";
+import { generateInvoiceAccessCode } from "@/lib/billing/public-access";
+import { calculateCosaAllocations } from "@/lib/billing/cosa";
+import { getDescendantPropertyIds } from "@/lib/property-tree";
+import { cosaSchema } from "@/lib/validations/cosa";
+import { cosaTemplateSchema } from "@/lib/validations/cosa-template";
 import { invoiceGenerationSchema } from "@/lib/validations/invoice-generation";
 import { paymentRecordingSchema } from "@/lib/validations/payment-recording";
 import { recurringChargeSchema } from "@/lib/validations/recurring-charge";
@@ -25,16 +36,32 @@ export type RecurringChargeFormState = {
   errors?: Record<string, string[] | undefined>;
 };
 
+export type CosaFormState = {
+  message?: string;
+  errors?: Record<string, string[] | undefined>;
+};
+
+export type CosaTemplateFormState = {
+  message?: string;
+  errors?: Record<string, string[] | undefined>;
+};
+
 export type RecordPaymentFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
 };
 
 type ParsedPaymentPayload = ReturnType<typeof getPaymentPayload>;
+type ParsedCosaPayload = ReturnType<typeof getCosaPayload>;
+type ParsedCosaTemplatePayload = ReturnType<typeof getCosaTemplatePayload>;
 
 function getInvoiceGenerationPayload(formData: FormData) {
   return {
-    contractId: String(formData.get("contractId") ?? ""),
+    tenantId: String(formData.get("tenantId") ?? ""),
+    cycleSelections: formData
+      .getAll("cycleSelections")
+      .map((value) => String(value))
+      .filter(Boolean),
     issueDate: String(formData.get("issueDate") ?? ""),
     dueDate: String(formData.get("dueDate") ?? ""),
   };
@@ -49,6 +76,37 @@ function getRecurringChargePayload(formData: FormData) {
     effectiveStartDate: String(formData.get("effectiveStartDate") ?? ""),
     effectiveEndDate: String(formData.get("effectiveEndDate") ?? ""),
     isActive: formData.get("isActive") === "on",
+  };
+}
+
+function getCosaPayload(formData: FormData) {
+  const allocationsResult = parseAllocations(formData.get("allocations"));
+
+  return {
+    propertyId: String(formData.get("propertyId") ?? ""),
+    meterId: String(formData.get("meterId") ?? ""),
+    meterReadingId: String(formData.get("meterReadingId") ?? ""),
+    description: String(formData.get("description") ?? ""),
+    totalAmount: String(formData.get("totalAmount") ?? ""),
+    billingDate: String(formData.get("billingDate") ?? ""),
+    allocationType: String(formData.get("allocationType") ?? ""),
+    allocations: allocationsResult.allocations,
+    allocationsParseError: allocationsResult.error,
+  };
+}
+
+function getCosaTemplatePayload(formData: FormData) {
+  const allocationsResult = parseAllocations(formData.get("allocations"));
+
+  return {
+    propertyId: String(formData.get("propertyId") ?? ""),
+    meterId: String(formData.get("meterId") ?? ""),
+    name: String(formData.get("name") ?? ""),
+    allocationType: String(formData.get("allocationType") ?? ""),
+    defaultAmount: String(formData.get("defaultAmount") ?? ""),
+    isActive: formData.get("isActive") === "on",
+    allocations: allocationsResult.allocations,
+    allocationsParseError: allocationsResult.error,
   };
 }
 
@@ -111,10 +169,40 @@ function getPaymentParseError(
   };
 }
 
+function getCosaParseError(payload: ParsedCosaPayload): CosaFormState | null {
+  if (!payload.allocationsParseError) {
+    return null;
+  }
+
+  return {
+    errors: {
+      allocations: [payload.allocationsParseError],
+    },
+    message: "COSA allocations could not be read. Try again.",
+  };
+}
+
+function getCosaTemplateParseError(
+  payload: ParsedCosaTemplatePayload
+): CosaTemplateFormState | null {
+  if (!payload.allocationsParseError) {
+    return null;
+  }
+
+  return {
+    errors: {
+      allocations: [payload.allocationsParseError],
+    },
+    message: "Template allocations could not be read. Try again.",
+  };
+}
+
 function revalidateBillingViews() {
   [
     "/dashboard",
     "/billing",
+    "/billing/cosa",
+    "/billing/cosa/templates",
     "/billing/charges",
     "/contracts",
     "/tenants",
@@ -148,6 +236,69 @@ function buildInvoiceNumber(issueDate: Date, propertyCode: string) {
   return `INV-${year}${month}${day}-${cleanPropertyCode || "PROP"}-${suffix}`;
 }
 
+function deriveWholeMonths(amount: number, baseRent: number) {
+  if (amount <= 0 || baseRent <= 0) {
+    return 0;
+  }
+
+  const ratio = amount / baseRent;
+  const rounded = Math.round(ratio);
+
+  return Math.abs(ratio - rounded) < 0.01 ? rounded : 0;
+}
+
+function getBillingCycleIndex(anchorDate: Date, cycleStart: Date) {
+  for (let cycleIndex = 0; cycleIndex < 240; cycleIndex += 1) {
+    const cycle = getBillingCycleAtIndex(anchorDate, cycleIndex);
+
+    if (cycle.start.getTime() === cycleStart.getTime()) {
+      return cycleIndex;
+    }
+
+    if (cycle.start > cycleStart) {
+      break;
+    }
+  }
+
+  return -1;
+}
+
+function getContractCycleCount(anchorDate: Date, contractEndDate: Date) {
+  let count = 0;
+
+  while (count < 240) {
+    const cycle = getBillingCycleAtIndex(anchorDate, count);
+
+    if (cycle.start > contractEndDate) {
+      break;
+    }
+
+    count += 1;
+  }
+
+  return count;
+}
+
+function buildAdvanceApplicationCycleIndexes(params: {
+  totalCycles: number;
+  freeRentCycles: number;
+  advanceRentMonths: number;
+  application: "FIRST_BILLABLE_CYCLES" | "LAST_BILLABLE_CYCLES";
+}) {
+  const { totalCycles, freeRentCycles, advanceRentMonths, application } = params;
+  // Free-rent cycles are always consumed first. Advance-rent credits can only
+  // be assigned to the remaining billable cycles after that concession window.
+  const billableCycleIndexes = Array.from({ length: totalCycles }, (_, index) => index)
+    .filter((index) => index >= freeRentCycles);
+
+  const selectedIndexes =
+    application === "LAST_BILLABLE_CYCLES"
+      ? billableCycleIndexes.slice(-advanceRentMonths)
+      : billableCycleIndexes.slice(0, advanceRentMonths);
+
+  return new Set(selectedIndexes);
+}
+
 async function validateRecurringChargeContract(
   contractId: string,
   currentContractId?: string
@@ -176,6 +327,173 @@ async function validateRecurringChargeContract(
   }
 
   return null;
+}
+
+async function validateCosaSelections(params: {
+  propertyId: string;
+  meterId?: string;
+  meterReadingId?: string;
+  contractIds: string[];
+  editableContractIds?: string[];
+  editableCosaId?: string;
+}) {
+  const {
+    propertyId,
+    meterId,
+    meterReadingId,
+    contractIds,
+    editableContractIds = [],
+    editableCosaId,
+  } = params;
+  const [properties, meter, meterReading, contracts] = await Promise.all([
+    prisma.property.findMany({
+      select: {
+        id: true,
+        parentPropertyId: true,
+        status: true,
+      },
+    }),
+    meterId
+      ? prisma.utilityMeter.findUnique({
+          where: { id: meterId },
+          select: {
+            id: true,
+            propertyId: true,
+            isShared: true,
+          },
+        })
+      : Promise.resolve(null),
+    meterReadingId
+      ? prisma.meterReading.findUnique({
+          where: { id: meterReadingId },
+          select: {
+            id: true,
+            meterId: true,
+            totalAmount: true,
+            readingDate: true,
+            previousReading: true,
+            currentReading: true,
+            consumption: true,
+            ratePerUnit: true,
+            cosa: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        })
+      : Promise.resolve(null),
+    prisma.contract.findMany({
+      where: {
+        id: {
+          in: contractIds,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        propertyId: true,
+        property: {
+          select: {
+            size: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const property = properties.find((entry) => entry.id === propertyId);
+
+  if (!property || property.status === "ARCHIVED") {
+    return {
+      errors: {
+        propertyId: ["Select a valid active property."],
+      },
+      contracts: [],
+      propertyScopeIds: new Set<string>(),
+      meterReading: null,
+    };
+  }
+
+  if (meterId) {
+    if (!meter || !meter.isShared || meter.propertyId !== propertyId) {
+      return {
+        errors: {
+          meterId: ["Select a shared meter linked to the chosen property."],
+        },
+        contracts: [],
+        propertyScopeIds: new Set<string>(),
+        meterReading: null,
+      };
+    }
+  }
+
+  if (meterReadingId) {
+    if (!meterId || !meterReading || meterReading.meterId !== meterId) {
+      return {
+        errors: {
+          meterReadingId: [
+            "Select a valid recorded reading from the chosen shared meter.",
+          ],
+        },
+        contracts: [],
+        propertyScopeIds: new Set<string>(),
+        meterReading: null,
+      };
+    }
+
+    if (meterReading.cosa && meterReading.cosa.id !== editableCosaId) {
+      return {
+        errors: {
+          meterReadingId: [
+            "That shared-meter reading is already linked to another COSA record.",
+          ],
+        },
+        contracts: [],
+        propertyScopeIds: new Set<string>(),
+        meterReading: null,
+      };
+    }
+  }
+
+  const propertyScopeIds = getDescendantPropertyIds(propertyId, properties);
+
+  if (contracts.length !== contractIds.length) {
+    return {
+      errors: {
+        allocations: ["One or more selected contracts are invalid."],
+      },
+      contracts: [],
+      propertyScopeIds,
+      meterReading,
+    };
+  }
+
+  const invalidContracts = contracts.filter(
+    (contract) =>
+      !propertyScopeIds.has(contract.propertyId) ||
+      (contract.status !== "ACTIVE" && !editableContractIds.includes(contract.id))
+  );
+
+  if (invalidContracts.length > 0) {
+    return {
+      errors: {
+        allocations: [
+          "Selected contracts must belong to the chosen property scope and remain active.",
+        ],
+      },
+      contracts: [],
+      propertyScopeIds,
+      meterReading,
+    };
+  }
+
+  return {
+    errors: null,
+    contracts,
+    propertyScopeIds,
+    meterReading,
+  };
 }
 
 function getInvoiceStatusFromBalance(balance: number, hasPayments: boolean) {
@@ -209,11 +527,7 @@ export async function generateInvoicesAction(
   const contracts = await prisma.contract.findMany({
     where: {
       status: "ACTIVE",
-      ...(validatedFields.data.contractId
-        ? {
-            id: validatedFields.data.contractId,
-          }
-        : {}),
+      tenantId: validatedFields.data.tenantId,
       paymentStartDate: {
         lte: issueDate,
       },
@@ -225,8 +539,24 @@ export async function generateInvoicesAction(
       id: true,
       tenantId: true,
       monthlyRent: true,
+      securityDepositMonths: true,
+      advanceRentMonths: true,
+      freeRentCycles: true,
+      advanceRentApplication: true,
+      advanceRent: true,
+      securityDeposit: true,
       paymentStartDate: true,
       endDate: true,
+      rentAdjustments: {
+        orderBy: [{ effectiveDate: "asc" }],
+        select: {
+          effectiveDate: true,
+          increaseType: true,
+          increaseValue: true,
+          calculationType: true,
+          basedOn: true,
+        },
+      },
       property: {
         select: {
           id: true,
@@ -237,22 +567,19 @@ export async function generateInvoicesAction(
     },
   });
 
-  if (validatedFields.data.contractId && contracts.length === 0) {
-    return {
-      errors: {
-        contractId: ["Select an active contract that has started billing."],
-      },
-      message: "Contract selection is invalid for invoice generation.",
-    };
-  }
-
   if (contracts.length === 0) {
     return {
-      message: "No active contracts are eligible for invoice generation on that issue date.",
+      errors: {
+        tenantId: ["Select a business with active billing-ready contracts."],
+      },
+      message: "Business selection is invalid for invoice generation.",
     };
   }
 
-  const [existingInvoices, recurringCharges, readings] = await Promise.all([
+  const selectedCycleKeys = new Set(validatedFields.data.cycleSelections);
+
+  const [existingInvoices, recurringCharges, readings, cosaAllocations] =
+    await Promise.all([
     prisma.invoice.findMany({
       where: {
         contractId: {
@@ -315,28 +642,89 @@ export async function generateInvoicesAction(
         },
       },
     }),
+    prisma.cOSAAllocation.findMany({
+      where: {
+        contractId: {
+          in: contracts.map((contract) => contract.id),
+        },
+        invoiceItem: null,
+        cosa: {
+          billingDate: {
+            lte: issueDate,
+          },
+        },
+      },
+      orderBy: [{ createdAt: "asc" }],
+      select: {
+        id: true,
+        contractId: true,
+        percentage: true,
+        computedAmount: true,
+        cosa: {
+          select: {
+            id: true,
+            description: true,
+            billingDate: true,
+            meter: {
+              select: {
+                meterCode: true,
+                utilityType: true,
+              },
+            },
+          },
+        },
+      },
+    }),
   ]);
 
   const existingPeriodsByContract = new Map<string, Set<string>>();
+  const existingMonthsByContract = new Map<string, Set<string>>();
 
   for (const invoice of existingInvoices) {
     const key = getBillingCycleKey(
       invoice.billingPeriodStart,
       invoice.billingPeriodEnd
     );
+    const monthKey = getBillingMonthKey(invoice.billingPeriodStart);
     const periods = existingPeriodsByContract.get(invoice.contractId) ?? new Set<string>();
+    const months = existingMonthsByContract.get(invoice.contractId) ?? new Set<string>();
     periods.add(key);
+    months.add(monthKey);
     existingPeriodsByContract.set(invoice.contractId, periods);
+    existingMonthsByContract.set(invoice.contractId, months);
   }
 
   const operations = [];
+  const matchedSelectedCycleKeys = new Set<string>();
 
   for (const contract of contracts) {
-    const missingCycles = findNextCompletedBillingCycles({
-      anchorDate: contract.paymentStartDate,
-      contractEndDate: contract.endDate,
-      issueDate,
-      existingPeriods: existingPeriodsByContract.get(contract.id) ?? new Set<string>(),
+    const missingCycles = filterCyclesWithoutInvoicedMonths(
+      findNextCompletedBillingCycles({
+        anchorDate: contract.paymentStartDate,
+        contractEndDate: contract.endDate,
+        issueDate,
+        existingPeriods: existingPeriodsByContract.get(contract.id) ?? new Set<string>(),
+      }),
+      existingMonthsByContract.get(contract.id) ?? new Set<string>()
+    );
+    const baseRent = Number(contract.monthlyRent.toString());
+    const advanceRentMonths =
+      contract.advanceRentMonths > 0
+        ? contract.advanceRentMonths
+        : deriveWholeMonths(Number(contract.advanceRent.toString()), baseRent);
+    const securityDepositMonths =
+      contract.securityDepositMonths > 0
+        ? contract.securityDepositMonths
+        : deriveWholeMonths(Number(contract.securityDeposit.toString()), baseRent);
+    const totalCycleCount = getContractCycleCount(
+      contract.paymentStartDate,
+      contract.endDate
+    );
+    const advanceApplicationCycleIndexes = buildAdvanceApplicationCycleIndexes({
+      totalCycles: totalCycleCount,
+      freeRentCycles: contract.freeRentCycles,
+      advanceRentMonths,
+      application: contract.advanceRentApplication,
     });
 
     const contractCharges = recurringCharges.filter(
@@ -348,8 +736,23 @@ export async function generateInvoicesAction(
         reading.tenantId === contract.tenantId &&
         reading.meter.propertyId === contract.property.id
     );
+    const contractCosaAllocations = cosaAllocations.filter(
+      (allocation) => allocation.contractId === contract.id
+    );
 
     for (const cycle of missingCycles) {
+      const selectionKey = getInvoiceGenerationSelectionKey(
+        contract.id,
+        cycle.start,
+        cycle.end
+      );
+
+      if (!selectedCycleKeys.has(selectionKey)) {
+        continue;
+      }
+
+      matchedSelectedCycleKeys.add(selectionKey);
+
       const cycleCharges = contractCharges.filter((charge) =>
         cycleOverlapsRange(cycle, charge.effectiveStartDate, charge.effectiveEndDate)
       );
@@ -358,8 +761,18 @@ export async function generateInvoicesAction(
         (reading) =>
           reading.readingDate >= cycle.start && reading.readingDate <= cycle.end
       );
+      const cycleCosaAllocations = contractCosaAllocations.filter(
+        (allocation) =>
+          allocation.cosa.billingDate >= cycle.start &&
+          allocation.cosa.billingDate <= cycle.end
+      );
 
-      const rentAmount = Number(contract.monthlyRent.toString());
+      const rentAmount = calculateAdjustedMonthlyRent({
+        baseMonthlyRent: contract.monthlyRent,
+        cycleStart: cycle.start,
+        adjustments: contract.rentAdjustments,
+      });
+      const cycleLabel = formatBillingCycleLabel(cycle);
       const recurringChargeAmount = cycleCharges.reduce(
         (sum, charge) => sum + Number(charge.amount.toString()),
         0
@@ -368,8 +781,36 @@ export async function generateInvoicesAction(
         (sum, reading) => sum + Number(reading.totalAmount.toString()),
         0
       );
-      const additionalCharges = recurringChargeAmount + utilityAmount;
+      const cosaAmount = cycleCosaAllocations.reduce(
+        (sum, allocation) => sum + Number(allocation.computedAmount.toString()),
+        0
+      );
+      const cycleIndex = getBillingCycleIndex(contract.paymentStartDate, cycle.start);
+      const oneTimeSecurityDepositCharge =
+        cycleIndex === 0 ? Number(contract.securityDeposit.toString()) : 0;
+      const oneTimeAdvanceRentCharge =
+        cycleIndex === 0 ? Number(contract.advanceRent.toString()) : 0;
+      const isFreeRentCycle =
+        cycleIndex > -1 && cycleIndex < contract.freeRentCycles;
+      const freeRentConcessionAmount = isFreeRentCycle ? rentAmount : 0;
+      const isAdvanceRentApplicationCycle =
+        cycleIndex > -1 &&
+        !isFreeRentCycle &&
+        advanceApplicationCycleIndexes.has(cycleIndex);
+      const advanceRentCreditAmount = isAdvanceRentApplicationCycle
+        ? Math.min(baseRent, rentAmount)
+        : 0;
+      const additionalCharges =
+        recurringChargeAmount +
+        utilityAmount +
+        cosaAmount +
+        oneTimeSecurityDepositCharge +
+        oneTimeAdvanceRentCharge -
+        freeRentConcessionAmount -
+        advanceRentCreditAmount;
       const totalAmount = rentAmount + additionalCharges;
+      const balanceDue = Math.max(0, totalAmount);
+      const status = getInvoiceStatusFromBalance(balanceDue, false);
 
       operations.push(
         prisma.invoice.create({
@@ -377,6 +818,7 @@ export async function generateInvoicesAction(
             invoiceNumber: buildInvoiceNumber(issueDate, contract.property.propertyCode),
             contractId: contract.id,
             tenantId: contract.tenantId,
+            publicAccessCode: generateInvoiceAccessCode(),
             issueDate,
             dueDate,
             billingPeriodStart: cycle.start,
@@ -385,17 +827,39 @@ export async function generateInvoicesAction(
             additionalCharges: toMoney(additionalCharges),
             discount: toMoney(0),
             totalAmount: toMoney(totalAmount),
-            balanceDue: toMoney(totalAmount),
-            status: "ISSUED",
+            balanceDue: toMoney(balanceDue),
+            status,
             items: {
               create: [
                 {
                   itemType: "RENT",
-                  description: `Monthly rent · ${contract.property.name} · ${toDateInputValue(cycle.start)} to ${toDateInputValue(cycle.end)}`,
+                  description: `Rent for ${cycleLabel} · ${contract.property.name} · ${toDateInputValue(cycle.start)} to ${toDateInputValue(cycle.end)}`,
                   quantity: toMoney(1),
                   unitPrice: toMoney(rentAmount),
                   amount: toMoney(rentAmount),
                 },
+                ...(oneTimeSecurityDepositCharge > 0
+                  ? [
+                      {
+                        itemType: "ADJUSTMENT" as const,
+                        description: `Security deposit · ${securityDepositMonths} month(s)`,
+                        quantity: toMoney(1),
+                        unitPrice: toMoney(oneTimeSecurityDepositCharge),
+                        amount: toMoney(oneTimeSecurityDepositCharge),
+                      },
+                    ]
+                  : []),
+                ...(oneTimeAdvanceRentCharge > 0
+                  ? [
+                      {
+                        itemType: "ADJUSTMENT" as const,
+                        description: `Advance rent charge · ${advanceRentMonths} month(s)`,
+                        quantity: toMoney(1),
+                        unitPrice: toMoney(oneTimeAdvanceRentCharge),
+                        amount: toMoney(oneTimeAdvanceRentCharge),
+                      },
+                    ]
+                  : []),
                 ...cycleCharges.map((charge) => ({
                   itemType: "RECURRING_CHARGE" as const,
                   description: `${charge.label} · ${toDateInputValue(cycle.start)} to ${toDateInputValue(cycle.end)}`,
@@ -412,6 +876,40 @@ export async function generateInvoicesAction(
                   amount: toMoney(Number(reading.totalAmount.toString())),
                   meterReadingId: reading.id,
                 })),
+                ...cycleCosaAllocations.map((allocation) => ({
+                  itemType: "COSA" as const,
+                  description: `${allocation.cosa.description} · ${allocation.cosa.billingDate.toISOString().slice(0, 10)}${
+                    allocation.cosa.meter
+                      ? ` · ${allocation.cosa.meter.utilityType.replaceAll("_", " ")} ${allocation.cosa.meter.meterCode}`
+                      : ""
+                  }`,
+                  quantity: toMoney(1),
+                  unitPrice: toMoney(Number(allocation.computedAmount.toString())),
+                  amount: toMoney(Number(allocation.computedAmount.toString())),
+                  cosaAllocationId: allocation.id,
+                })),
+                ...(freeRentConcessionAmount > 0
+                  ? [
+                      {
+                        itemType: "ADJUSTMENT" as const,
+                        description: `Free rent concession · ${cycleLabel}`,
+                        quantity: toMoney(1),
+                        unitPrice: toMoney(-freeRentConcessionAmount),
+                        amount: toMoney(-freeRentConcessionAmount),
+                      },
+                    ]
+                  : []),
+                ...(advanceRentCreditAmount > 0
+                  ? [
+                      {
+                        itemType: "ADJUSTMENT" as const,
+                        description: `Advance rent applied · ${cycleLabel}`,
+                        quantity: toMoney(1),
+                        unitPrice: toMoney(-advanceRentCreditAmount),
+                        amount: toMoney(-advanceRentCreditAmount),
+                      },
+                    ]
+                  : []),
               ],
             },
           },
@@ -420,10 +918,21 @@ export async function generateInvoicesAction(
     }
   }
 
+  if (matchedSelectedCycleKeys.size !== selectedCycleKeys.size) {
+    return {
+      errors: {
+        cycleSelections: [
+          "One or more selected invoices are no longer eligible. Refresh and try again.",
+        ],
+      },
+      message: "Invoice selection is out of date.",
+    };
+  }
+
   if (operations.length === 0) {
     return {
       message:
-        "No completed uninvoiced billing cycles were found for the selected contract scope.",
+        "No selected billing months were eligible for invoice generation.",
     };
   }
 
@@ -432,12 +941,546 @@ export async function generateInvoicesAction(
   } catch {
     return {
       message:
-        "Invoices could not be generated. Check for duplicate billing cycles and try again.",
+        "Invoices could not be generated. Check for duplicate billing months and try again.",
     };
   }
 
   revalidateBillingViews();
   redirect("/billing");
+}
+
+export async function createCosaAction(
+  _previousState: CosaFormState,
+  formData: FormData
+): Promise<CosaFormState> {
+  await requireRole("ADMIN");
+
+  const payload = getCosaPayload(formData);
+  const parseError = getCosaParseError(payload);
+
+  if (parseError) {
+    return parseError;
+  }
+
+  const validatedFields = cosaSchema.safeParse(payload);
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Fix the highlighted COSA fields and try again.",
+    };
+  }
+
+  const contractIds = validatedFields.data.allocations.map(
+    (allocation) => allocation.contractId
+  );
+  const selectionValidation = await validateCosaSelections({
+    propertyId: validatedFields.data.propertyId,
+    meterId: validatedFields.data.meterId,
+    meterReadingId: validatedFields.data.meterReadingId,
+    contractIds,
+  });
+
+  if (selectionValidation.errors) {
+    return {
+      errors: selectionValidation.errors,
+      message: "COSA selections are invalid.",
+    };
+  }
+
+  if (
+    validatedFields.data.allocationType === "BY_AREA" &&
+    selectionValidation.contracts.some(
+      (contract) =>
+        !contract.property.size || Number(contract.property.size.toString()) <= 0
+    )
+  ) {
+    return {
+      errors: {
+        allocations: [
+          "Every selected contract must have a property size before using area-based allocation.",
+        ],
+      },
+      message: "COSA area allocation needs property sizes.",
+    };
+  }
+
+  let calculatedAllocations;
+  const resolvedTotalAmount = selectionValidation.meterReading
+    ? Number(selectionValidation.meterReading.totalAmount.toString())
+    : Number(validatedFields.data.totalAmount);
+
+  try {
+    const contractMap = new Map(
+      selectionValidation.contracts.map((contract) => [contract.id, contract])
+    );
+
+    calculatedAllocations = calculateCosaAllocations({
+      allocationType: validatedFields.data.allocationType,
+      totalAmount: resolvedTotalAmount,
+      entries: validatedFields.data.allocations.map((allocation) => {
+        const contract = contractMap.get(allocation.contractId);
+
+        return {
+          contractId: allocation.contractId,
+          percentage:
+            allocation.percentage && allocation.percentage !== ""
+              ? Number(allocation.percentage)
+              : null,
+          unitCount:
+            allocation.unitCount && allocation.unitCount !== ""
+              ? Number(allocation.unitCount)
+              : null,
+          amount:
+            allocation.amount && allocation.amount !== ""
+              ? Number(allocation.amount)
+              : null,
+          basisValue: contract?.property.size
+            ? Number(contract.property.size.toString())
+            : null,
+        };
+      }),
+    });
+  } catch (error) {
+    return {
+      errors: {
+        allocations: [
+          error instanceof Error
+            ? error.message
+            : "COSA allocations could not be calculated.",
+        ],
+      },
+      message: "COSA allocations are invalid.",
+    };
+  }
+
+  try {
+    await prisma.cOSA.create({
+      data: {
+        propertyId: validatedFields.data.propertyId,
+        meterId: validatedFields.data.meterId ?? null,
+        meterReadingId: validatedFields.data.meterReadingId ?? null,
+        description: validatedFields.data.description,
+        totalAmount: toMoney(resolvedTotalAmount),
+        billingDate: endOfDay(new Date(validatedFields.data.billingDate)),
+        allocationType: validatedFields.data.allocationType,
+        allocations: {
+          create: calculatedAllocations.map((allocation) => ({
+            contractId: allocation.contractId,
+            percentage: toMoney(allocation.percentage),
+            unitCount:
+              validatedFields.data.allocations.find(
+                (entry) => entry.contractId === allocation.contractId
+              )?.unitCount
+                ? Number(
+                    validatedFields.data.allocations.find(
+                      (entry) => entry.contractId === allocation.contractId
+                    )?.unitCount
+                  )
+                : null,
+            computedAmount: toMoney(allocation.computedAmount),
+          })),
+        },
+      },
+    });
+  } catch {
+    return {
+      message: "COSA record could not be saved. Try again.",
+    };
+  }
+
+  revalidateBillingViews();
+  redirect("/billing/cosa");
+}
+
+export async function updateCosaAction(
+  cosaId: string,
+  _previousState: CosaFormState,
+  formData: FormData
+): Promise<CosaFormState> {
+  await requireRole("ADMIN");
+
+  const existingCosa = await prisma.cOSA.findUnique({
+    where: { id: cosaId },
+    select: {
+      id: true,
+      allocations: {
+        select: {
+          contractId: true,
+          invoiceItem: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!existingCosa) {
+    return {
+      message: "COSA record no longer exists.",
+    };
+  }
+
+  if (existingCosa.allocations.some((allocation) => allocation.invoiceItem)) {
+    return {
+      message: "Billed COSA records can no longer be edited.",
+    };
+  }
+
+  const payload = getCosaPayload(formData);
+  const parseError = getCosaParseError(payload);
+
+  if (parseError) {
+    return parseError;
+  }
+
+  const validatedFields = cosaSchema.safeParse(payload);
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Fix the highlighted COSA fields and try again.",
+    };
+  }
+
+  const contractIds = validatedFields.data.allocations.map(
+    (allocation) => allocation.contractId
+  );
+  const selectionValidation = await validateCosaSelections({
+    propertyId: validatedFields.data.propertyId,
+    meterId: validatedFields.data.meterId,
+    meterReadingId: validatedFields.data.meterReadingId,
+    contractIds,
+    editableContractIds: existingCosa.allocations.map(
+      (allocation) => allocation.contractId
+    ),
+    editableCosaId: existingCosa.id,
+  });
+
+  if (selectionValidation.errors) {
+    return {
+      errors: selectionValidation.errors,
+      message: "COSA selections are invalid.",
+    };
+  }
+
+  if (
+    validatedFields.data.allocationType === "BY_AREA" &&
+    selectionValidation.contracts.some(
+      (contract) =>
+        !contract.property.size || Number(contract.property.size.toString()) <= 0
+    )
+  ) {
+    return {
+      errors: {
+        allocations: [
+          "Every selected contract must have a property size before using area-based allocation.",
+        ],
+      },
+      message: "COSA area allocation needs property sizes.",
+    };
+  }
+
+  let calculatedAllocations;
+  const resolvedTotalAmount = selectionValidation.meterReading
+    ? Number(selectionValidation.meterReading.totalAmount.toString())
+    : Number(validatedFields.data.totalAmount);
+
+  try {
+    const contractMap = new Map(
+      selectionValidation.contracts.map((contract) => [contract.id, contract])
+    );
+
+    calculatedAllocations = calculateCosaAllocations({
+      allocationType: validatedFields.data.allocationType,
+      totalAmount: resolvedTotalAmount,
+      entries: validatedFields.data.allocations.map((allocation) => {
+        const contract = contractMap.get(allocation.contractId);
+
+        return {
+          contractId: allocation.contractId,
+          percentage:
+            allocation.percentage && allocation.percentage !== ""
+              ? Number(allocation.percentage)
+              : null,
+          unitCount:
+            allocation.unitCount && allocation.unitCount !== ""
+              ? Number(allocation.unitCount)
+              : null,
+          amount:
+            allocation.amount && allocation.amount !== ""
+              ? Number(allocation.amount)
+              : null,
+          basisValue: contract?.property.size
+            ? Number(contract.property.size.toString())
+            : null,
+        };
+      }),
+    });
+  } catch (error) {
+    return {
+      errors: {
+        allocations: [
+          error instanceof Error
+            ? error.message
+            : "COSA allocations could not be calculated.",
+        ],
+      },
+      message: "COSA allocations are invalid.",
+    };
+  }
+
+  try {
+    await prisma.cOSA.update({
+      where: { id: cosaId },
+      data: {
+        propertyId: validatedFields.data.propertyId,
+        meterId: validatedFields.data.meterId ?? null,
+        meterReadingId: validatedFields.data.meterReadingId ?? null,
+        description: validatedFields.data.description,
+        totalAmount: toMoney(resolvedTotalAmount),
+        billingDate: endOfDay(new Date(validatedFields.data.billingDate)),
+        allocationType: validatedFields.data.allocationType,
+        allocations: {
+          deleteMany: {},
+          create: calculatedAllocations.map((allocation) => ({
+            contractId: allocation.contractId,
+            percentage: toMoney(allocation.percentage),
+            unitCount:
+              validatedFields.data.allocations.find(
+                (entry) => entry.contractId === allocation.contractId
+              )?.unitCount
+                ? Number(
+                    validatedFields.data.allocations.find(
+                      (entry) => entry.contractId === allocation.contractId
+                    )?.unitCount
+                  )
+                : null,
+            computedAmount: toMoney(allocation.computedAmount),
+          })),
+        },
+      },
+    });
+  } catch {
+    return {
+      message: "COSA record could not be updated. Try again.",
+    };
+  }
+
+  revalidateBillingViews();
+  redirect("/billing/cosa");
+}
+
+export async function createCosaTemplateAction(
+  _previousState: CosaTemplateFormState,
+  formData: FormData
+): Promise<CosaTemplateFormState> {
+  await requireRole("ADMIN");
+
+  const payload = getCosaTemplatePayload(formData);
+  const parseError = getCosaTemplateParseError(payload);
+
+  if (parseError) {
+    return parseError;
+  }
+
+  const validatedFields = cosaTemplateSchema.safeParse(payload);
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Fix the highlighted COSA template fields and try again.",
+    };
+  }
+
+  const contractIds = validatedFields.data.allocations.map(
+    (allocation) => allocation.contractId
+  );
+  const selectionValidation = await validateCosaSelections({
+    propertyId: validatedFields.data.propertyId,
+    meterId: validatedFields.data.meterId,
+    contractIds,
+  });
+
+  if (selectionValidation.errors) {
+    return {
+      errors: selectionValidation.errors,
+      message: "Template selections are invalid.",
+    };
+  }
+
+  if (
+    validatedFields.data.allocationType === "BY_AREA" &&
+    selectionValidation.contracts.some(
+      (contract) =>
+        !contract.property.size || Number(contract.property.size.toString()) <= 0
+    )
+  ) {
+    return {
+      errors: {
+        allocations: [
+          "Every selected contract must have a property size before using area-based allocation.",
+        ],
+      },
+      message: "Template area allocation needs property sizes.",
+    };
+  }
+
+  try {
+    await prisma.cosaTemplate.create({
+      data: {
+        propertyId: validatedFields.data.propertyId,
+        meterId: validatedFields.data.meterId ?? null,
+        name: validatedFields.data.name,
+        allocationType: validatedFields.data.allocationType,
+        defaultAmount: validatedFields.data.defaultAmount ?? null,
+        isActive: validatedFields.data.isActive,
+        allocations: {
+          create: validatedFields.data.allocations.map((allocation) => ({
+            contractId: allocation.contractId,
+            percentage:
+              allocation.percentage && allocation.percentage !== ""
+                ? toMoney(Number(allocation.percentage))
+                : null,
+            unitCount:
+              allocation.unitCount && allocation.unitCount !== ""
+                ? Number(allocation.unitCount)
+                : null,
+            amount:
+              allocation.amount && allocation.amount !== ""
+                ? toMoney(Number(allocation.amount))
+                : null,
+          })),
+        },
+      },
+    });
+  } catch {
+    return {
+      message: "COSA template could not be saved. Try again.",
+    };
+  }
+
+  revalidateBillingViews();
+  redirect("/billing/cosa/templates");
+}
+
+export async function updateCosaTemplateAction(
+  templateId: string,
+  _previousState: CosaTemplateFormState,
+  formData: FormData
+): Promise<CosaTemplateFormState> {
+  await requireRole("ADMIN");
+
+  const existingTemplate = await prisma.cosaTemplate.findUnique({
+    where: { id: templateId },
+    select: {
+      id: true,
+      allocations: {
+        select: {
+          contractId: true,
+        },
+      },
+    },
+  });
+
+  if (!existingTemplate) {
+    return {
+      message: "COSA template no longer exists.",
+    };
+  }
+
+  const payload = getCosaTemplatePayload(formData);
+  const parseError = getCosaTemplateParseError(payload);
+
+  if (parseError) {
+    return parseError;
+  }
+
+  const validatedFields = cosaTemplateSchema.safeParse(payload);
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Fix the highlighted COSA template fields and try again.",
+    };
+  }
+
+  const contractIds = validatedFields.data.allocations.map(
+    (allocation) => allocation.contractId
+  );
+  const selectionValidation = await validateCosaSelections({
+    propertyId: validatedFields.data.propertyId,
+    meterId: validatedFields.data.meterId,
+    contractIds,
+    editableContractIds: existingTemplate.allocations.map(
+      (allocation) => allocation.contractId
+    ),
+  });
+
+  if (selectionValidation.errors) {
+    return {
+      errors: selectionValidation.errors,
+      message: "Template selections are invalid.",
+    };
+  }
+
+  if (
+    validatedFields.data.allocationType === "BY_AREA" &&
+    selectionValidation.contracts.some(
+      (contract) =>
+        !contract.property.size || Number(contract.property.size.toString()) <= 0
+    )
+  ) {
+    return {
+      errors: {
+        allocations: [
+          "Every selected contract must have a property size before using area-based allocation.",
+        ],
+      },
+      message: "Template area allocation needs property sizes.",
+    };
+  }
+
+  try {
+    await prisma.cosaTemplate.update({
+      where: { id: templateId },
+      data: {
+        propertyId: validatedFields.data.propertyId,
+        meterId: validatedFields.data.meterId ?? null,
+        name: validatedFields.data.name,
+        allocationType: validatedFields.data.allocationType,
+        defaultAmount: validatedFields.data.defaultAmount ?? null,
+        isActive: validatedFields.data.isActive,
+        allocations: {
+          deleteMany: {},
+          create: validatedFields.data.allocations.map((allocation) => ({
+            contractId: allocation.contractId,
+            percentage:
+              allocation.percentage && allocation.percentage !== ""
+                ? toMoney(Number(allocation.percentage))
+                : null,
+            unitCount:
+              allocation.unitCount && allocation.unitCount !== ""
+                ? Number(allocation.unitCount)
+                : null,
+            amount:
+              allocation.amount && allocation.amount !== ""
+                ? toMoney(Number(allocation.amount))
+                : null,
+          })),
+        },
+      },
+    });
+  } catch {
+    return {
+      message: "COSA template could not be updated. Try again.",
+    };
+  }
+
+  revalidateBillingViews();
+  redirect("/billing/cosa/templates");
 }
 
 export async function createRecurringChargeAction(

@@ -10,6 +10,7 @@ import {
 import { requireUser } from "@/lib/auth/user";
 import { getDashboardDataForRole } from "@/lib/data/dashboard";
 import { formatCompactNumber, formatCurrency, formatDate, toNumber } from "@/lib/format";
+import { formatUtilityQuantity } from "@/lib/utility-units";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { PropertiaLogo } from "@/components/propertia-logo";
 import { Badge } from "@/components/ui/badge";
@@ -73,33 +74,32 @@ export default async function DashboardPage() {
     return (
       <div className="space-y-6">
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
-          <Card className="overflow-hidden rounded-[2.15rem] border-border/70 bg-card/88 shadow-[0_30px_80px_-55px_rgba(15,23,42,0.35)]">
-            <CardContent className="relative p-6 md:p-8">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(67,113,191,0.16),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(56,184,199,0.12),_transparent_34%)]" />
-              <div className="relative">
+          <Card className="overflow-hidden rounded-2xl border-border/60 bg-card shadow-sm">
+            <CardContent className="p-5 md:p-6">
+              <div>
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <PropertiaLogo size="lg" subtitle="Property operations suite" />
+                  <PropertiaLogo size="md" subtitle="Property operations suite" />
                   <Badge variant="secondary" className="rounded-full px-3">
                     {ROLE_LABELS[user.role]}
                   </Badge>
                 </div>
 
-                <h2 className="mt-8 max-w-4xl text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">
+                <h2 className="mt-6 max-w-4xl text-3xl font-semibold tracking-[-0.055em] sm:text-4xl">
                   Run leases, invoices, and utilities from one calm control room.
                 </h2>
-                <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground md:text-lg">
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground md:text-base">
                   Propertia is now set up as a focused operations dashboard.
                   The admin workspace is ready to grow into full property,
                   tenant, contract, billing, and utility management without
                   rebuilding the shell.
                 </p>
 
-                <div className="mt-7 flex flex-wrap gap-2.5">
+                <div className="mt-5 flex flex-wrap gap-2">
                   {adminHighlights.map((item) => (
                     <Badge
                       key={item}
                       variant="outline"
-                      className="rounded-full border-border/70 bg-background/70 px-3 py-1 text-xs dark:bg-white/5"
+                      className="rounded-full border-border/60 bg-background px-2.5 py-0.5 text-[0.7rem]"
                     >
                       {item}
                     </Badge>
@@ -110,7 +110,7 @@ export default async function DashboardPage() {
           </Card>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <Card className="rounded-[1.8rem] border-border/70 bg-card/88 shadow-sm">
+            <Card className="rounded-xl border-border/60 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardDescription className="flex items-center gap-2">
                   <ShieldCheck className="size-4 text-primary" />
@@ -124,7 +124,7 @@ export default async function DashboardPage() {
               </CardContent>
             </Card>
 
-            <Card className="rounded-[1.8rem] border-border/70 bg-card/88 shadow-sm">
+            <Card className="rounded-xl border-border/60 bg-card shadow-sm">
               <CardHeader className="pb-3">
                 <CardDescription className="flex items-center gap-2">
                   <Layers3 className="size-4 text-primary" />
@@ -153,15 +153,15 @@ export default async function DashboardPage() {
             return (
               <Card
                 key={card.title}
-                className="rounded-[1.8rem] border-border/70 bg-card/90 shadow-sm"
+                className="rounded-xl border-border/60 bg-card shadow-sm"
               >
                 <CardHeader className="flex flex-row items-start justify-between space-y-0">
                   <div>
                     <CardDescription>{card.title}</CardDescription>
                     <CardTitle className="mt-2 text-3xl">{card.value}</CardTitle>
                   </div>
-                  <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <Icon className="size-5" />
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Icon className="size-4.5" />
                   </div>
                 </CardHeader>
                 <CardContent className="pt-0 text-sm text-muted-foreground">
@@ -173,14 +173,14 @@ export default async function DashboardPage() {
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-          <Card className="rounded-[1.8rem] border-border/70 bg-card/90 shadow-sm">
+          <Card className="rounded-xl border-border/60 bg-card shadow-sm">
             <CardHeader>
               <CardTitle>Upcoming collections</CardTitle>
               <CardDescription>Nearest due invoices pulled from the live database.</CardDescription>
             </CardHeader>
             <CardContent>
               {data.admin.recentInvoices.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border/80 bg-muted/40 p-6 text-sm text-muted-foreground">
+                <div className="rounded-xl border border-dashed border-border/70 bg-muted/25 p-5 text-sm text-muted-foreground">
                   No invoices yet. Once billing records exist, this panel becomes the daily collections queue.
                 </div>
               ) : (
@@ -214,7 +214,7 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="rounded-[1.8rem] border-border/70 bg-card/90 shadow-sm">
+          <Card className="rounded-xl border-border/60 bg-card shadow-sm">
             <CardHeader>
               <CardTitle>Latest utility charges</CardTitle>
               <CardDescription>Recent meter readings feeding the billing flow.</CardDescription>
@@ -228,7 +228,7 @@ export default async function DashboardPage() {
                 data.admin.recentReadings.map((reading) => (
                   <div
                     key={reading.id}
-                    className="flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3"
+                    className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 px-4 py-3"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">
@@ -243,7 +243,10 @@ export default async function DashboardPage() {
                         {formatCurrency(toNumber(reading.totalAmount))}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {formatCompactNumber(toNumber(reading.consumption))} units
+                        {formatUtilityQuantity(
+                          reading.meter.utilityType,
+                          formatCompactNumber(toNumber(reading.consumption))
+                        )}
                       </p>
                     </div>
                   </div>
@@ -277,21 +280,20 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
-        <Card className="overflow-hidden rounded-[2.15rem] border-border/70 bg-card/88 shadow-[0_30px_80px_-55px_rgba(15,23,42,0.35)]">
-          <CardContent className="relative p-6 md:p-8">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(80,171,197,0.16),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(67,113,191,0.12),_transparent_34%)]" />
-            <div className="relative">
+        <Card className="overflow-hidden rounded-2xl border-border/60 bg-card shadow-sm">
+          <CardContent className="p-5 md:p-6">
+            <div>
               <div className="flex flex-wrap items-start justify-between gap-4">
-                <PropertiaLogo size="lg" subtitle="Utility reading workspace" />
+                <PropertiaLogo size="md" subtitle="Utility reading workspace" />
                 <Badge variant="secondary" className="rounded-full px-3">
                   {ROLE_LABELS[user.role]}
                 </Badge>
               </div>
 
-              <h2 className="mt-8 max-w-4xl text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">
+              <h2 className="mt-6 max-w-4xl text-3xl font-semibold tracking-[-0.055em] sm:text-4xl">
                 Capture readings fast and keep billing controls separate.
               </h2>
-              <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground md:text-lg">
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground md:text-base">
                 This view is intentionally lean. Meter readings feed the billing
                 pipeline while contracts, invoices, and financial controls stay
                 inside the admin workspace.
@@ -301,7 +303,7 @@ export default async function DashboardPage() {
         </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-          <Card className="rounded-[1.8rem] border-border/70 bg-card/88 shadow-sm">
+          <Card className="rounded-xl border-border/60 bg-card shadow-sm">
             <CardHeader className="pb-3">
               <CardDescription>Workflow focus</CardDescription>
               <CardTitle className="text-2xl">Meters only</CardTitle>
@@ -312,7 +314,7 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="rounded-[1.8rem] border-border/70 bg-card/88 shadow-sm">
+          <Card className="rounded-xl border-border/60 bg-card shadow-sm">
             <CardHeader className="pb-3">
               <CardDescription>Next layer</CardDescription>
               <CardTitle className="text-2xl">Reading form</CardTitle>
@@ -329,7 +331,7 @@ export default async function DashboardPage() {
         {cards.map((card) => (
           <Card
             key={card.title}
-            className="rounded-[1.8rem] border-border/70 bg-card/90 shadow-sm"
+            className="rounded-xl border-border/60 bg-card shadow-sm"
           >
             <CardHeader>
               <CardDescription>{card.title}</CardDescription>
@@ -342,14 +344,14 @@ export default async function DashboardPage() {
         ))}
       </section>
 
-      <Card className="rounded-[1.8rem] border-border/70 bg-card/90 shadow-sm">
+      <Card className="rounded-xl border-border/60 bg-card shadow-sm">
         <CardHeader>
           <CardTitle>Recent meter activity</CardTitle>
           <CardDescription>Latest recorded readings for the assigned workflow.</CardDescription>
         </CardHeader>
         <CardContent>
           {data.utility.recentReadings.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border/80 bg-muted/40 p-6 text-sm text-muted-foreground">
+            <div className="rounded-xl border border-dashed border-border/70 bg-muted/25 p-5 text-sm text-muted-foreground">
               No readings recorded yet. Once meters are in place, the capture queue will appear here.
             </div>
           ) : (
@@ -359,7 +361,7 @@ export default async function DashboardPage() {
                   <TableHead>Meter</TableHead>
                   <TableHead>Property</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Units</TableHead>
+                  <TableHead className="text-right">Usage</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                 </TableRow>
               </TableHeader>
@@ -372,7 +374,10 @@ export default async function DashboardPage() {
                     <TableCell>{reading.meter.property.name}</TableCell>
                     <TableCell>{formatDate(reading.readingDate)}</TableCell>
                     <TableCell className="text-right">
-                      {formatCompactNumber(toNumber(reading.consumption))}
+                      {formatUtilityQuantity(
+                        reading.meter.utilityType,
+                        formatCompactNumber(toNumber(reading.consumption))
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(toNumber(reading.totalAmount))}

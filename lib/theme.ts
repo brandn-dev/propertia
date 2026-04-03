@@ -28,6 +28,7 @@ export function getThemeInitScript() {
 
         root.classList.remove("light", "dark");
         root.classList.add(resolvedTheme);
+        root.dataset.theme = resolvedTheme;
         root.style.colorScheme = resolvedTheme;
       } catch (_error) {}
     })();

@@ -76,7 +76,7 @@ export default async function UtilityMetersPage() {
         />
       </section>
 
-      <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+      <Card className="rounded-xl border-border/60 bg-card shadow-sm">
         <CardHeader>
           <CardTitle>All meters</CardTitle>
           <CardDescription>

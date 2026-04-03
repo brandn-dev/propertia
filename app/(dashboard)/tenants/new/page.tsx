@@ -12,7 +12,7 @@ export default async function NewTenantPage() {
       <DashboardPageHero
         eyebrow="Workspace / Tenants"
         title="Create tenant"
-        description="Add a reusable tenant profile for an individual or business. Business tenants can include multiple named representatives for incorporated or partnership-style accounts."
+        description="Add a reusable tenant account for an individual or business, then attach one or more linked people that become reusable person records."
         icon={Users2}
         badges={["Reusable identity", "Contract-ready", "Admin only"]}
         action={<Plus className="size-5 text-primary" />}

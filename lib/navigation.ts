@@ -1,5 +1,7 @@
 import {
   Building2,
+  Bell,
+  CopyPlus,
   FileSpreadsheet,
   Gauge,
   LayoutDashboard,
@@ -7,6 +9,7 @@ import {
   Rows4,
   ReceiptText,
   ScanLine,
+  Share2,
   Users2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -72,6 +75,22 @@ export const APP_ROUTES: AppRoute[] = [
     icon: Repeat2,
   },
   {
+    title: "COSA",
+    href: "/billing/cosa",
+    description: "Shared common charges allocated across selected tenant contracts.",
+    group: "Operations",
+    roles: ["ADMIN"],
+    icon: Share2,
+  },
+  {
+    title: "COSA Templates",
+    href: "/billing/cosa/templates",
+    description: "Reusable COSA presets for security, maintenance, water, and electricity.",
+    group: "Operations",
+    roles: ["ADMIN"],
+    icon: CopyPlus,
+  },
+  {
     title: "Utilities",
     href: "/utilities",
     description: "Meter registry and the utility reading workflow.",
@@ -102,6 +121,17 @@ export function getRoutesForRole(role: AppRole) {
 }
 
 export function getRouteMeta(pathname: string) {
+  if (pathname === "/notifications" || pathname.startsWith("/notifications/")) {
+    return {
+      title: "Notifications",
+      href: "/notifications",
+      description: "Persistent system alerts and inbox items.",
+      group: "Workspace" as const,
+      roles: ["ADMIN", "METER_READER"] as AppRole[],
+      icon: Bell,
+    };
+  }
+
   const exactMatch = APP_ROUTES.find((route) => route.href === pathname);
 
   if (exactMatch) {

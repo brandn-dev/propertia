@@ -64,6 +64,7 @@ enum InvoiceItemType {
   RENT
   RECURRING_CHARGE
   UTILITY_READING
+  COSA
   ADJUSTMENT
   ARREARS
 }
@@ -86,6 +87,7 @@ enum UtilityType {
 
 enum AllocationType {
   PERCENTAGE
+  PER_UNIT
   EQUAL_SPLIT
   BY_AREA
   CUSTOM
@@ -106,6 +108,25 @@ enum RentBasedOn {
   PREVIOUS_RENT
 }
 
+enum AdvanceRentApplication {
+  FIRST_BILLABLE_CYCLES
+  LAST_BILLABLE_CYCLES
+}
+
+enum NotificationKind {
+  INVOICE_DUE_SOON
+  INVOICE_OVERDUE
+  CONTRACT_EXPIRING
+  SHARED_READING_READY
+  METER_READING_MISSING
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
 model User {
   id            String         @id @default(cuid())
   username      String         @unique
@@ -118,6 +139,29 @@ model User {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   meterReadings MeterReading[]
+  notifications Notification[]
+}
+
+model Notification {
+  id          String               @id @default(cuid())
+  userId      String
+  kind        NotificationKind
+  severity    NotificationSeverity @default(INFO)
+  dedupeKey   String
+  title       String
+  message     String
+  href        String?
+  sourceType  String?
+  sourceId    String?
+  readAt      DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt, createdAt])
+  @@index([kind, sourceId])
 }
 
 model Property {
@@ -140,7 +184,7 @@ model Property {
   contracts            Contract[]
   utilityMeters        UtilityMeter[]
   cosas                COSA[]
-  cosaAllocations      COSAAllocation[]
+  cosaTemplates        CosaTemplate[]
   deductions           Deduction[]
   deductionAllocations DeductionAllocation[]
 
@@ -181,6 +225,7 @@ model Tenant {
   utilityMeters   UtilityMeter[]
   meterReadings   MeterReading[]
   representatives TenantRepresentative[]
+  tenantPeople    TenantPerson[]
 }
 
 model TenantRepresentative {
@@ -199,6 +244,38 @@ model TenantRepresentative {
   @@index([tenantId])
 }
 
+model Person {
+  id             String         @id @default(cuid())
+  firstName      String
+  lastName       String
+  middleName     String?
+  contactNumber  String?
+  email          String?
+  address        String?
+  validIdType    String?
+  validIdNumber  String?
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  tenantLinks    TenantPerson[]
+}
+
+model TenantPerson {
+  id            String   @id @default(cuid())
+  tenantId      String
+  personId      String
+  positionTitle String?
+  isPrimary     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person        Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, personId])
+  @@index([tenantId])
+  @@index([personId])
+}
+
 model Contract {
   id               String           @id @default(cuid())
   propertyId       String
@@ -206,6 +283,10 @@ model Contract {
   startDate        DateTime
   endDate          DateTime
   monthlyRent      Decimal          @db.Decimal(12, 2)
+  securityDepositMonths Int         @default(0)
+  advanceRentMonths   Int           @default(0)
+  freeRentCycles      Int           @default(0)
+  advanceRentApplication AdvanceRentApplication @default(FIRST_BILLABLE_CYCLES)
   advanceRent      Decimal          @default(0) @db.Decimal(12, 2)
   securityDeposit  Decimal          @default(0) @db.Decimal(12, 2)
   paymentStartDate DateTime
@@ -217,6 +298,8 @@ model Contract {
   tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   rentAdjustments  RentAdjustment[]
   recurringCharges ContractRecurringCharge[]
+  cosaAllocations  COSAAllocation[]
+  cosaTemplateAllocations CosaTemplateAllocation[]
   invoices         Invoice[]
   payments         Payment[]
 
@@ -264,6 +347,7 @@ model Invoice {
   invoiceNumber      String        @unique
   contractId         String
   tenantId           String
+  publicAccessCode   String?
   issueDate          DateTime
   dueDate            DateTime
   billingPeriodStart DateTime
@@ -297,15 +381,18 @@ model InvoiceItem {
   amount                  Decimal                 @default(0) @db.Decimal(12, 2)
   contractRecurringChargeId String?
   meterReadingId          String?                 @unique
+  cosaAllocationId        String?                 @unique
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
   invoice                 Invoice                 @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   contractRecurringCharge ContractRecurringCharge? @relation(fields: [contractRecurringChargeId], references: [id], onDelete: SetNull)
   meterReading            MeterReading?           @relation(fields: [meterReadingId], references: [id], onDelete: SetNull)
+  cosaAllocation          COSAAllocation?         @relation(fields: [cosaAllocationId], references: [id], onDelete: SetNull)
   allocations             PaymentAllocation[]
 
   @@index([invoiceId])
   @@index([contractRecurringChargeId])
+  @@index([cosaAllocationId])
 }
 
 model Payment {
@@ -356,6 +443,7 @@ model UtilityMeter {
   tenant      Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   readings    MeterReading[]
   cosas       COSA[]
+  cosaTemplates CosaTemplate[]
 
   @@index([propertyId])
   @@index([tenantId])
@@ -378,6 +466,7 @@ model MeterReading {
   tenant          Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   recordedBy      User?        @relation(fields: [recordedById], references: [id], onDelete: SetNull)
   invoiceItem     InvoiceItem?
+  cosa            COSA?
 
   @@unique([meterId, readingDate])
   @@index([readingDate])
@@ -388,6 +477,8 @@ model COSA {
   id             String           @id @default(cuid())
   propertyId     String
   meterId        String?
+  meterReadingId String?          @unique
+  description    String
   allocationType AllocationType
   totalAmount    Decimal          @db.Decimal(12, 2)
   billingDate    DateTime
@@ -395,24 +486,60 @@ model COSA {
   updatedAt      DateTime         @updatedAt
   property       Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   meter          UtilityMeter?    @relation(fields: [meterId], references: [id], onDelete: SetNull)
+  meterReading   MeterReading?    @relation(fields: [meterReadingId], references: [id], onDelete: SetNull)
   allocations    COSAAllocation[]
 
   @@index([propertyId, billingDate])
 }
 
+model CosaTemplate {
+  id             String                  @id @default(cuid())
+  propertyId     String
+  meterId        String?
+  name           String
+  allocationType AllocationType
+  defaultAmount  Decimal?                @db.Decimal(12, 2)
+  isActive       Boolean                 @default(true)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  property       Property                @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  meter          UtilityMeter?           @relation(fields: [meterId], references: [id], onDelete: SetNull)
+  allocations    CosaTemplateAllocation[]
+
+  @@index([propertyId, isActive])
+}
+
+model CosaTemplateAllocation {
+  id             String       @id @default(cuid())
+  cosaTemplateId String
+  contractId     String
+  percentage     Decimal?     @db.Decimal(5, 2)
+  unitCount      Int?
+  amount         Decimal?     @db.Decimal(12, 2)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  cosaTemplate   CosaTemplate @relation(fields: [cosaTemplateId], references: [id], onDelete: Cascade)
+  contract       Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([cosaTemplateId, contractId])
+  @@index([contractId])
+}
+
 model COSAAllocation {
   id             String   @id @default(cuid())
   cosaId         String
-  propertyId     String
+  contractId     String
   percentage     Decimal  @db.Decimal(5, 2)
+  unitCount      Int?
   computedAmount Decimal  @db.Decimal(12, 2)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   cosa           COSA     @relation(fields: [cosaId], references: [id], onDelete: Cascade)
-  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  contract       Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  invoiceItem    InvoiceItem?
 
-  @@unique([cosaId, propertyId])
-  @@index([propertyId])
+  @@unique([cosaId, contractId])
+  @@index([contractId])
 }
 
 model Deduction {

@@ -20,7 +20,7 @@ export default async function NewContractPage() {
       <DashboardPageHero
         eyebrow="Operations / Contracts"
         title="Create contract"
-        description="Create an agreement between a leasable property and a tenant with dates, rent terms, and billing start behavior. This is the first real operational step into invoice generation."
+        description="Create an agreement between a leasable property and a tenant with dates, rent terms, and billing cycle behavior. This is the first real operational step into invoice generation."
         icon={FileSpreadsheet}
         badges={["Lease source of truth", "Billing-ready", "Admin only"]}
         action={<Plus className="size-5 text-primary" />}

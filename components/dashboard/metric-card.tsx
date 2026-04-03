@@ -15,16 +15,16 @@ export function DashboardMetricCard({
   icon: Icon,
 }: DashboardMetricCardProps) {
   return (
-    <Card className="rounded-[1.65rem] border-border/70 bg-card/92 shadow-sm">
-      <CardContent className="flex items-start justify-between gap-4 p-5">
-        <div className="space-y-2">
+    <Card className="rounded-xl border-border/60 bg-card shadow-sm">
+      <CardContent className="flex items-start justify-between gap-4 p-4">
+        <div className="space-y-1.5">
           <CardDescription>{label}</CardDescription>
-          <div className="text-3xl font-semibold tracking-[-0.045em]">{value}</div>
-          <p className="text-sm leading-6 text-muted-foreground">{detail}</p>
+          <div className="text-2xl font-semibold tracking-[-0.04em]">{value}</div>
+          <p className="text-sm leading-5 text-muted-foreground">{detail}</p>
         </div>
 
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-[1.1rem] bg-primary/11 text-primary">
-          <Icon className="size-5" />
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="size-4.5" />
         </div>
       </CardContent>
     </Card>

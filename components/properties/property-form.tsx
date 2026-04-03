@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 const selectClassName =
-  "field-blank flex h-11 w-full rounded-lg border px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50";
+  "select-blank";
 
 const initialState: PropertyFormState = {};
 
@@ -77,7 +77,7 @@ export function PropertyForm({
   return (
     <form action={action} className="space-y-6">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="border-blank space-y-6 rounded-[1.85rem] p-6">
+        <div className="border-blank space-y-6 rounded-xl p-6">
           <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="name">Property name</Label>
@@ -231,14 +231,14 @@ export function PropertyForm({
           </div>
 
           {state.message ? (
-            <div className="rounded-[1.2rem] border border-border/70 bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
+            <div className="rounded-[1.2rem] border border-border/60 bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
               {state.message}
             </div>
           ) : null}
         </div>
 
         <aside className="space-y-4">
-          <div className="border-blank rounded-[1.85rem] p-5">
+          <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               {mode === "create" ? "New record" : "Update record"}
             </p>

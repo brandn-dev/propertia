@@ -1,6 +1,8 @@
 import Link from "next/link";
 import {
+  Building2,
   BriefcaseBusiness,
+  Eye,
   FileText,
   Mail,
   PencilLine,
@@ -33,12 +35,31 @@ function formatTenantName(tenant: {
   return tenant.businessName || [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") || "Unnamed tenant";
 }
 
+function getPeopleCount(tenant: {
+  firstName: string | null;
+  lastName: string | null;
+  _count: {
+    tenantPeople: number;
+    representatives: number;
+  };
+}) {
+  if (tenant._count.tenantPeople > 0) {
+    return tenant._count.tenantPeople;
+  }
+
+  if (tenant._count.representatives > 0) {
+    return tenant._count.representatives;
+  }
+
+  return tenant.firstName || tenant.lastName ? 1 : 0;
+}
+
 export default async function TenantsPage() {
   await requireRole("ADMIN");
   const tenants = await getTenantsOverview();
   const businessTenants = tenants.filter((tenant) => tenant.type === "BUSINESS").length;
-  const totalRepresentatives = tenants.reduce(
-    (sum, tenant) => sum + tenant._count.representatives,
+  const totalPeople = tenants.reduce(
+    (sum, tenant) => sum + getPeopleCount(tenant),
     0
   );
   const totalContracts = tenants.reduce((sum, tenant) => sum + tenant._count.contracts, 0);
@@ -49,14 +70,24 @@ export default async function TenantsPage() {
       <DashboardPageHero
         eyebrow="Workspace / Tenants"
         title="Tenant registry"
-        description="Individual and business tenants are modeled as reusable records that can move across contracts, invoices, and later payment histories. Business tenants can also carry multiple named representatives."
+        description="Individual and business tenants stay as reusable account records, while linked people are stored separately and can be reused across future workflows."
         icon={Users2}
-        badges={["Reusable profiles", "Individual + Business", "Representative-ready"]}
+        badges={["Reusable profiles", "Individual + Business", "People-linked"]}
         action={
-          <Button render={<Link href="/tenants/new" />} className="rounded-full">
-            <Plus />
-            New tenant
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              render={<Link href="/properties" />}
+              variant="outline"
+              className="button-blank rounded-full"
+            >
+              <Building2 />
+              Property boards
+            </Button>
+            <Button render={<Link href="/tenants/new" />} className="rounded-full">
+              <Plus />
+              New tenant
+            </Button>
+          </div>
         }
       />
 
@@ -74,9 +105,9 @@ export default async function TenantsPage() {
           icon={BriefcaseBusiness}
         />
         <DashboardMetricCard
-          label="Representatives"
-          value={String(totalRepresentatives)}
-          detail="People currently attached to business tenant records."
+          label="People"
+          value={String(totalPeople)}
+          detail="Linked reusable people currently attached to tenant accounts."
           icon={ShieldCheck}
         />
         <DashboardMetricCard
@@ -93,7 +124,7 @@ export default async function TenantsPage() {
         />
       </section>
 
-      <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+      <Card className="rounded-xl border-border/60 bg-card shadow-sm">
         <CardHeader>
           <CardTitle>Tenant table</CardTitle>
           <CardDescription>
@@ -131,15 +162,20 @@ export default async function TenantsPage() {
                 {tenants.map((tenant) => (
                   <TableRow key={tenant.id}>
                     <TableCell className="font-medium">
-                      {formatTenantName(tenant)}
-                      {tenant.type === "BUSINESS" ? (
+                      <Link
+                        href={`/tenants/${tenant.id}`}
+                        className="hover:text-primary hover:underline"
+                      >
+                        {formatTenantName(tenant)}
+                      </Link>
+                      {getPeopleCount(tenant) > 0 ? (
                         <p className="text-xs text-muted-foreground">
-                          {tenant._count.representatives} representatives
+                          {getPeopleCount(tenant)} people linked
                         </p>
                       ) : null}
                     </TableCell>
                     <TableCell>{tenant.type}</TableCell>
-                    <TableCell>{tenant._count.representatives}</TableCell>
+                    <TableCell>{getPeopleCount(tenant)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Phone className="size-3.5 text-muted-foreground" />
@@ -155,15 +191,26 @@ export default async function TenantsPage() {
                     <TableCell className="text-right">{tenant._count.contracts}</TableCell>
                     <TableCell className="text-right">{tenant._count.invoices}</TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        render={<Link href={`/tenants/${tenant.id}/edit`} />}
-                        variant="outline"
-                        size="sm"
-                        className="button-blank rounded-full"
-                      >
-                        <PencilLine />
-                        Edit
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          render={<Link href={`/tenants/${tenant.id}`} />}
+                          variant="outline"
+                          size="sm"
+                          className="button-blank rounded-full"
+                        >
+                          <Eye />
+                          View
+                        </Button>
+                        <Button
+                          render={<Link href={`/tenants/${tenant.id}/edit`} />}
+                          variant="outline"
+                          size="sm"
+                          className="button-blank rounded-full"
+                        >
+                          <PencilLine />
+                          Edit
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

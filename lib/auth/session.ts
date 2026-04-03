@@ -13,7 +13,7 @@ export type SessionData = {
   role?: AppRole;
 };
 
-function getSessionPassword() {
+export function getSessionPassword() {
   const password = process.env.SESSION_PASSWORD;
 
   if (!password || password.length < 32) {

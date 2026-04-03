@@ -6,10 +6,10 @@ function isValidDate(value: string) {
 
 export const invoiceGenerationSchema = z
   .object({
-    contractId: z
-      .string()
-      .trim()
-      .transform((value) => value || undefined),
+    tenantId: z.string().trim().min(1, "Select a business."),
+    cycleSelections: z
+      .array(z.string().trim().min(1))
+      .min(1, "Select at least one invoice to generate."),
     issueDate: z
       .string()
       .trim()

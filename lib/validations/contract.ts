@@ -1,11 +1,18 @@
 import { z } from "zod";
-import { CONTRACT_STATUSES } from "@/lib/form-options";
+import {
+  ADVANCE_RENT_APPLICATIONS,
+  CONTRACT_STATUSES,
+} from "@/lib/form-options";
 
 function isValidDate(value: string) {
   return !Number.isNaN(new Date(value).getTime());
 }
 
 function parseDecimal(value: string) {
+  return Number(value);
+}
+
+function parseInteger(value: string) {
   return Number(value);
 }
 
@@ -26,8 +33,8 @@ export const contractSchema = z
     paymentStartDate: z
       .string()
       .trim()
-      .min(1, "Payment start date is required.")
-      .refine(isValidDate, "Enter a valid payment start date."),
+      .min(1, "Billing cycle start is required.")
+      .refine(isValidDate, "Enter a valid billing cycle start date."),
     monthlyRent: z
       .string()
       .trim()
@@ -36,23 +43,37 @@ export const contractSchema = z
         (value) => !Number.isNaN(parseDecimal(value)) && parseDecimal(value) >= 0,
         "Monthly rent must be a valid non-negative number."
       ),
-    advanceRent: z
-      .string()
-      .trim()
-      .default("0")
-      .refine(
-        (value) => value === "" || (!Number.isNaN(parseDecimal(value)) && parseDecimal(value) >= 0),
-        "Advance rent must be a valid non-negative number."
-      ),
-    securityDeposit: z
+    advanceRentMonths: z
       .string()
       .trim()
       .default("0")
       .refine(
         (value) =>
-          value === "" || (!Number.isNaN(parseDecimal(value)) && parseDecimal(value) >= 0),
-        "Security deposit must be a valid non-negative number."
+          value === "" ||
+          (Number.isInteger(parseInteger(value)) && parseInteger(value) >= 0),
+        "Advance rent months must be a valid non-negative whole number."
       ),
+    securityDepositMonths: z
+      .string()
+      .trim()
+      .default("0")
+      .refine(
+        (value) =>
+          value === "" ||
+          (Number.isInteger(parseInteger(value)) && parseInteger(value) >= 0),
+        "Security deposit months must be a valid non-negative whole number."
+      ),
+    freeRentCycles: z
+      .string()
+      .trim()
+      .default("0")
+      .refine(
+        (value) =>
+          value === "" ||
+          (Number.isInteger(parseInteger(value)) && parseInteger(value) >= 0),
+        "Free-rent cycles must be a valid non-negative whole number."
+      ),
+    advanceRentApplication: z.enum(ADVANCE_RENT_APPLICATIONS),
     status: z.enum(CONTRACT_STATUSES),
     notes: z
       .string()
@@ -77,7 +98,7 @@ export const contractSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["paymentStartDate"],
-        message: "Payment start date cannot be earlier than the contract start date.",
+        message: "Billing cycle start cannot be earlier than the contract start date.",
       });
     }
 
@@ -85,7 +106,7 @@ export const contractSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["paymentStartDate"],
-        message: "Payment start date must fall within the contract period.",
+        message: "Billing cycle start must fall within the contract period.",
       });
     }
   });

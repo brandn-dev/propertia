@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 const SIZE_STYLES = {
   sm: {
     wrapper: "gap-2.5",
-    mark: "size-10 rounded-[1.15rem]",
+    mark: "size-10 rounded-full",
     icon: "size-5",
     title: "text-[1.05rem]",
     subtitle: "text-[0.68rem]",
@@ -18,7 +18,7 @@ const SIZE_STYLES = {
   },
   lg: {
     wrapper: "gap-4",
-    mark: "size-14 rounded-[1.65rem]",
+    mark: "size-14 rounded-xl",
     icon: "size-7",
     title: "text-[1.65rem]",
     subtitle: "text-[0.76rem]",

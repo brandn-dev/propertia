@@ -7,9 +7,11 @@ import {
   ReceiptText,
   Repeat2,
   Scale,
+  Share2,
   WalletCards,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth/user";
+import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
 import { getRecurringChargesOverview } from "@/lib/data/billing";
 import { getBillingOverview } from "@/lib/data/dashboard";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
@@ -61,11 +63,19 @@ export default async function BillingPage() {
       <DashboardPageHero
         eyebrow="Operations / Billing"
         title="Billing monitor"
-        description="Invoices are generated from contract billing anchors, recurring charges, and tenant utility readings. This is the receivables queue for collection follow-up and payment allocation."
+        description="Invoices are generated from contract billing anchors, recurring charges, COSA allocations, and tenant utility readings. This is the receivables queue for collection follow-up and payment allocation."
         icon={ReceiptText}
         badges={["Cycle-driven", "Recurring-charge aware", "Payment allocation ready"]}
         action={
           <div className="flex flex-wrap gap-2">
+            <Button
+              render={<Link href="/billing/cosa" />}
+              variant="outline"
+              className="button-blank rounded-full"
+            >
+              <Share2 />
+              COSA
+            </Button>
             <Button
               render={<Link href="/billing/charges" />}
               variant="outline"
@@ -109,7 +119,7 @@ export default async function BillingPage() {
         />
       </section>
 
-      <Card className="rounded-[1.85rem] border-border/70 bg-card/90 shadow-sm">
+      <Card className="rounded-xl border-border/60 bg-card shadow-sm">
         <CardHeader>
           <div className="flex flex-row items-start justify-between gap-4">
             <div>
@@ -119,6 +129,14 @@ export default async function BillingPage() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button
+                render={<Link href="/billing/cosa" />}
+                variant="outline"
+                className="button-blank rounded-full"
+              >
+                <Share2 />
+                COSA
+              </Button>
               <Button
                 render={<Link href="/billing/charges" />}
                 variant="outline"
@@ -143,7 +161,7 @@ export default async function BillingPage() {
             <DashboardEmptyState
               icon={WalletCards}
               title="No invoices yet"
-              description="Generate the first billing run from active contracts, recurring charges, and dedicated tenant meter readings. Once invoices exist, this becomes the daily collections and follow-up view."
+              description="Generate the first billing run from active contracts, recurring charges, COSA allocations, and dedicated tenant meter readings. Once invoices exist, this becomes the daily collections and follow-up view."
               action={
                 <Button render={<Link href="/billing/generate" />} className="rounded-full">
                   <Plus />
@@ -170,9 +188,9 @@ export default async function BillingPage() {
                 {invoices.map((invoice) => (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-medium">
-                      {invoice.invoiceNumber}
+                      {`Invoice for ${formatBillingCycleMonthLabel(invoice.billingPeriodStart)}`}
                       <p className="text-xs text-muted-foreground">
-                        {invoice._count.items} items
+                        {invoice.invoiceNumber} · {invoice._count.items} items
                       </p>
                     </TableCell>
                     <TableCell>

@@ -22,6 +22,10 @@ function getSystemTheme() {
   return window.matchMedia(THEME_MEDIA_QUERY).matches ? "dark" : "light";
 }
 
+function getResolvedThemeFromDocument(): ResolvedTheme {
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+}
+
 function resolveTheme(theme: AppTheme): ResolvedTheme {
   return theme === "system" ? getSystemTheme() : theme;
 }
@@ -30,6 +34,7 @@ function applyResolvedTheme(resolvedTheme: ResolvedTheme) {
   const root = document.documentElement;
   root.classList.remove("light", "dark");
   root.classList.add(resolvedTheme);
+  root.dataset.theme = resolvedTheme;
   root.style.colorScheme = resolvedTheme;
 }
 
@@ -53,8 +58,12 @@ export function ThemeProvider({
 }) {
   const [theme, setThemeState] = React.useState<AppTheme>(() => getStoredTheme());
   const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>(() =>
-    typeof window === "undefined" ? "light" : resolveTheme(getStoredTheme())
+    typeof document === "undefined" ? "light" : getResolvedThemeFromDocument()
   );
+
+  const setTheme = React.useCallback((nextTheme: AppTheme) => {
+    setThemeState(isAppTheme(nextTheme) ? nextTheme : DEFAULT_THEME);
+  }, []);
 
   React.useEffect(() => {
     const nextResolvedTheme = resolveTheme(theme);
@@ -110,9 +119,9 @@ export function ThemeProvider({
     () => ({
       theme,
       resolvedTheme,
-      setTheme: setThemeState,
+      setTheme,
     }),
-    [theme, resolvedTheme]
+    [theme, resolvedTheme, setTheme]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

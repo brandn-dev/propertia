@@ -44,15 +44,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
   return (
     <Sidebar variant="inset" collapsible="icon">
-      <SidebarHeader>
+      <SidebarHeader className="group-data-[collapsible=icon]:items-center">
         <SidebarBrand />
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="group-data-[collapsible=icon]:items-center">
         <NavMain sections={sections} />
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="group-data-[collapsible=icon]:items-center">
         <NavUser
           user={{
             name: user.displayName,

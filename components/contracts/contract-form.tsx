@@ -1,20 +1,23 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, LoaderCircle, Save } from "lucide-react";
 import type { ContractFormState } from "@/app/(dashboard)/contracts/actions";
 import {
+  ADVANCE_RENT_APPLICATION_LABELS,
+  ADVANCE_RENT_APPLICATIONS,
   CONTRACT_STATUSES,
   CONTRACT_STATUS_LABELS,
 } from "@/lib/form-options";
+import { formatCurrency } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 const selectClassName =
-  "field-blank flex h-11 w-full rounded-lg border px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50";
+  "select-blank";
 
 const initialState: ContractFormState = {};
 
@@ -44,8 +47,10 @@ type ContractFormProps = {
     endDate: string;
     paymentStartDate: string;
     monthlyRent: string;
-    advanceRent: string;
-    securityDeposit: string;
+    advanceRentMonths: string;
+    securityDepositMonths: string;
+    freeRentCycles: string;
+    advanceRentApplication: (typeof ADVANCE_RENT_APPLICATIONS)[number];
     status: (typeof CONTRACT_STATUSES)[number];
     notes: string;
   };
@@ -67,6 +72,11 @@ function formatTenantLabel(tenant: ContractFormProps["tenantOptions"][number]) {
   );
 }
 
+function toMoneyValue(value: string) {
+  const parsed = Number(value || "0");
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 export function ContractForm({
   mode,
   formAction,
@@ -79,19 +89,71 @@ export function ContractForm({
     endDate: "",
     paymentStartDate: "",
     monthlyRent: "",
-    advanceRent: "0",
-    securityDeposit: "0",
+    advanceRentMonths: "0",
+    securityDepositMonths: "0",
+    freeRentCycles: "0",
+    advanceRentApplication: "FIRST_BILLABLE_CYCLES",
     status: "DRAFT",
     notes: "",
   },
 }: ContractFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
   const canSubmit = propertyOptions.length > 0 && tenantOptions.length > 0;
+  const hasInitialBillingCycleOverride =
+    Boolean(initialValues.paymentStartDate) &&
+    Boolean(initialValues.startDate) &&
+    initialValues.paymentStartDate !== initialValues.startDate;
+  const [startDate, setStartDate] = useState(initialValues.startDate);
+  const [isBillingCycleOverride, setIsBillingCycleOverride] = useState(
+    hasInitialBillingCycleOverride
+  );
+  const [billingCycleStartDate, setBillingCycleStartDate] = useState(
+    initialValues.paymentStartDate || initialValues.startDate
+  );
+  const [monthlyRent, setMonthlyRent] = useState(initialValues.monthlyRent);
+  const [advanceRentMonths, setAdvanceRentMonths] = useState(
+    initialValues.advanceRentMonths
+  );
+  const [securityDepositMonths, setSecurityDepositMonths] = useState(
+    initialValues.securityDepositMonths
+  );
+
+  const monthlyRentValue = toMoneyValue(monthlyRent);
+  const advanceRentPreview = monthlyRentValue * Number(advanceRentMonths || "0");
+  const securityDepositPreview =
+    monthlyRentValue * Number(securityDepositMonths || "0");
+
+  const resolvedBillingCycleStartDate = isBillingCycleOverride
+    ? billingCycleStartDate
+    : startDate;
+
+  function handleStartDateChange(value: string) {
+    setStartDate(value);
+
+    if (!isBillingCycleOverride) {
+      setBillingCycleStartDate(value);
+    }
+  }
+
+  function handleBillingCycleOverrideChange(nextChecked: boolean) {
+    setIsBillingCycleOverride(nextChecked);
+
+    if (!nextChecked) {
+      setBillingCycleStartDate(startDate);
+    } else if (!billingCycleStartDate) {
+      setBillingCycleStartDate(startDate);
+    }
+  }
 
   return (
     <form action={action} className="space-y-6">
+      <input
+        type="hidden"
+        name="paymentStartDate"
+        value={resolvedBillingCycleStartDate}
+      />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="border-blank space-y-6 rounded-[1.85rem] p-6">
+        <div className="border-blank space-y-6 rounded-xl p-6">
           <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="propertyId">Property</Label>
@@ -133,9 +195,10 @@ export function ContractForm({
               <Label htmlFor="startDate">Start date</Label>
               <Input
                 id="startDate"
-                name="startDate"
                 type="date"
-                defaultValue={initialValues.startDate}
+                name="startDate"
+                value={startDate}
+                onChange={(event) => handleStartDateChange(event.target.value)}
                 className="field-blank h-11"
               />
               <FieldError message={state.errors?.startDate?.[0]} />
@@ -153,16 +216,53 @@ export function ContractForm({
               <FieldError message={state.errors?.endDate?.[0]} />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="paymentStartDate">Payment start</Label>
-              <Input
-                id="paymentStartDate"
-                name="paymentStartDate"
-                type="date"
-                defaultValue={initialValues.paymentStartDate}
-                className="field-blank h-11"
-              />
-              <FieldError message={state.errors?.paymentStartDate?.[0]} />
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="billingCycleOverride">Billing cycle start</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Defaults to the contract start date unless you need a later
+                    billing anchor.
+                  </p>
+                </div>
+
+                <label
+                  htmlFor="billingCycleOverride"
+                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                >
+                  <input
+                    id="billingCycleOverride"
+                    type="checkbox"
+                    checked={isBillingCycleOverride}
+                    onChange={(event) =>
+                      handleBillingCycleOverrideChange(event.target.checked)
+                    }
+                    className="size-4 rounded border border-input bg-transparent accent-primary"
+                  />
+                  Override
+                </label>
+              </div>
+
+              {isBillingCycleOverride ? (
+                <div className="space-y-2">
+                  <Input
+                    id="billingCycleStartDate"
+                    type="date"
+                    value={billingCycleStartDate}
+                    onChange={(event) => setBillingCycleStartDate(event.target.value)}
+                    className="field-blank h-11"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Free-rent and advance-rent application both begin from this
+                    billing cycle.
+                  </p>
+                  <FieldError message={state.errors?.paymentStartDate?.[0]} />
+                </div>
+              ) : (
+                <div className="field-blank flex h-11 items-center rounded-lg px-3 text-sm text-muted-foreground">
+                  {startDate || "Follows the contract start date"}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -190,7 +290,8 @@ export function ContractForm({
                 type="number"
                 min="0"
                 step="0.01"
-                defaultValue={initialValues.monthlyRent}
+                value={monthlyRent}
+                onChange={(event) => setMonthlyRent(event.target.value)}
                 placeholder="25000.00"
                 className="field-blank h-11"
               />
@@ -198,33 +299,82 @@ export function ContractForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="advanceRent">Advance rent</Label>
+              <Label htmlFor="advanceRentMonths">Advance rent months</Label>
               <Input
-                id="advanceRent"
-                name="advanceRent"
+                id="advanceRentMonths"
+                name="advanceRentMonths"
                 type="number"
                 min="0"
-                step="0.01"
-                defaultValue={initialValues.advanceRent}
-                placeholder="0.00"
+                step="1"
+                value={advanceRentMonths}
+                onChange={(event) => setAdvanceRentMonths(event.target.value)}
+                placeholder="0"
                 className="field-blank h-11"
               />
-              <FieldError message={state.errors?.advanceRent?.[0]} />
+              <FieldError message={state.errors?.advanceRentMonths?.[0]} />
+              <p className="text-xs text-muted-foreground">
+                Preview charge: {formatCurrency(advanceRentPreview)}
+              </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="securityDeposit">Security deposit</Label>
+              <Label htmlFor="securityDepositMonths">Security deposit months</Label>
               <Input
-                id="securityDeposit"
-                name="securityDeposit"
+                id="securityDepositMonths"
+                name="securityDepositMonths"
                 type="number"
                 min="0"
-                step="0.01"
-                defaultValue={initialValues.securityDeposit}
-                placeholder="0.00"
+                step="1"
+                value={securityDepositMonths}
+                onChange={(event) => setSecurityDepositMonths(event.target.value)}
+                placeholder="0"
                 className="field-blank h-11"
               />
-              <FieldError message={state.errors?.securityDeposit?.[0]} />
+              <FieldError message={state.errors?.securityDepositMonths?.[0]} />
+              <p className="text-xs text-muted-foreground">
+                Preview charge: {formatCurrency(securityDepositPreview)}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="freeRentCycles">Free-rent cycles</Label>
+              <Input
+                id="freeRentCycles"
+                name="freeRentCycles"
+                type="number"
+                min="0"
+                step="1"
+                defaultValue={initialValues.freeRentCycles}
+                placeholder="0"
+                className="field-blank h-11"
+              />
+              <FieldError message={state.errors?.freeRentCycles?.[0]} />
+              <p className="text-xs text-muted-foreground">
+                These cycles are waived first before any advance-rent credit is applied.
+              </p>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="advanceRentApplication">
+                Advance rent application
+              </Label>
+              <select
+                id="advanceRentApplication"
+                name="advanceRentApplication"
+                defaultValue={initialValues.advanceRentApplication}
+                className={selectClassName}
+              >
+                {ADVANCE_RENT_APPLICATIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {ADVANCE_RENT_APPLICATION_LABELS[option]}
+                  </option>
+                ))}
+              </select>
+              <FieldError message={state.errors?.advanceRentApplication?.[0]} />
+              <p className="text-xs text-muted-foreground">
+                Advance rent is billed once, then automatically applied after
+                the free-rent cycles have been consumed.
+              </p>
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -241,14 +391,14 @@ export function ContractForm({
           </div>
 
           {state.message ? (
-            <div className="rounded-[1.2rem] border border-border/70 bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
+            <div className="rounded-[1.2rem] border border-border/60 bg-muted/55 px-4 py-3 text-sm text-muted-foreground">
               {state.message}
             </div>
           ) : null}
         </div>
 
         <aside className="space-y-4">
-          <div className="border-blank rounded-[1.85rem] p-5">
+          <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               {mode === "create" ? "New record" : "Update record"}
             </p>
@@ -257,7 +407,7 @@ export function ContractForm({
             </h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
               {mode === "create"
-                ? "Create an agreement linking a leasable property to a tenant with rent, dates, and billing start rules."
+                ? "Create an agreement linking a leasable property to a tenant with rent, dates, and billing cycle rules."
                 : "Update the commercial terms of this agreement while preserving invoices, payments, and adjustment history."}
             </p>
 
