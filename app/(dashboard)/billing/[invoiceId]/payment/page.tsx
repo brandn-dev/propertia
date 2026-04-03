@@ -40,9 +40,9 @@ export default async function InvoicePaymentPage({
   }
 
   const payableItems = invoice.items
-    .map((item) => {
+    .map((item: typeof invoice.items[number]) => {
       const allocatedAmount = item.allocations.reduce(
-        (sum, allocation) => sum + toNumber(allocation.amountAllocated),
+        (sum: number, allocation: typeof item.allocations[number]) => sum + toNumber(allocation.amountAllocated),
         0
       );
       const remainingAmount = Math.max(0, toNumber(item.amount) - allocatedAmount);
@@ -56,7 +56,7 @@ export default async function InvoicePaymentPage({
         remainingAmount,
       };
     })
-    .filter((item) => item.remainingAmount > 0);
+    .filter((item: { remainingAmount: number }) => item.remainingAmount > 0);
 
   const action = recordPaymentAction.bind(null, invoice.id);
   const cycleLabel = formatBillingCycleMonthLabel(invoice.billingPeriodStart);

@@ -71,9 +71,9 @@ export default async function InvoiceDetailPage({
     invoice.publicAccessCode
   );
 
-  const itemsWithBalances = invoice.items.map((item) => {
+  const itemsWithBalances = invoice.items.map((item: typeof invoice.items[number]) => {
     const allocatedAmount = item.allocations.reduce(
-      (sum, allocation) => sum + toNumber(allocation.amountAllocated),
+      (sum: number, allocation: typeof item.allocations[number]) => sum + toNumber(allocation.amountAllocated),
       0
     );
 
@@ -85,12 +85,12 @@ export default async function InvoiceDetailPage({
   });
 
   const collectedAmount = invoice.payments.reduce(
-    (sum, payment) => sum + toNumber(payment.amountPaid),
+    (sum: number, payment: typeof invoice.payments[number]) => sum + toNumber(payment.amountPaid),
     0
   );
   const canRecordPayment =
     invoice.status !== "VOID" && toNumber(invoice.balanceDue) > 0;
-  const itemLookup = new Map(itemsWithBalances.map((item) => [item.id, item]));
+  const itemLookup = new Map<string, typeof itemsWithBalances[number]>(itemsWithBalances.map((item: typeof itemsWithBalances[number]) => [item.id, item]));
   const cycleLabel = formatBillingCycleMonthLabel(invoice.billingPeriodStart);
 
   return (
@@ -170,11 +170,11 @@ export default async function InvoiceDetailPage({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {itemsWithBalances.map((item) => (
+                {itemsWithBalances.map((item: typeof itemsWithBalances[number]) => (
                   <TableRow key={item.id}>
                     <TableCell>
                       <Badge variant="outline">
-                        {ITEM_TYPE_LABELS[item.itemType]}
+                        {ITEM_TYPE_LABELS[item.itemType as keyof typeof ITEM_TYPE_LABELS]}
                       </Badge>
                     </TableCell>
                     <TableCell className="font-medium">{item.description}</TableCell>
@@ -306,7 +306,7 @@ export default async function InvoiceDetailPage({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {invoice.payments.map((payment) => (
+                  {invoice.payments.map((payment: typeof invoice.payments[number]) => (
                     <div
                       key={payment.id}
                       className="rounded-[1.2rem] border border-border/60 bg-background/60 px-4 py-3 text-sm"
@@ -331,7 +331,7 @@ export default async function InvoiceDetailPage({
                       ) : null}
                       {payment.allocations.length > 0 ? (
                         <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
-                          {payment.allocations.map((allocation) => {
+                          {payment.allocations.map((allocation: typeof payment.allocations[number]) => {
                             const item = itemLookup.get(allocation.invoiceItemId);
 
                             return (

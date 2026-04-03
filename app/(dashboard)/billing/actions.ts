@@ -402,7 +402,7 @@ async function validateCosaSelections(params: {
     }),
   ]);
 
-  const property = properties.find((entry) => entry.id === propertyId);
+  const property = properties.find((entry: typeof properties[number]) => entry.id === propertyId);
 
   if (!property || property.status === "ARCHIVED") {
     return {
@@ -470,7 +470,7 @@ async function validateCosaSelections(params: {
   }
 
   const invalidContracts = contracts.filter(
-    (contract) =>
+    (contract: typeof contracts[number]) =>
       !propertyScopeIds.has(contract.propertyId) ||
       (contract.status !== "ACTIVE" && !editableContractIds.includes(contract.id))
   );
@@ -583,7 +583,7 @@ export async function generateInvoicesAction(
     prisma.invoice.findMany({
       where: {
         contractId: {
-          in: contracts.map((contract) => contract.id),
+          in: contracts.map((contract: typeof contracts[number]) => contract.id),
         },
       },
       select: {
@@ -595,7 +595,7 @@ export async function generateInvoicesAction(
     prisma.contractRecurringCharge.findMany({
       where: {
         contractId: {
-          in: contracts.map((contract) => contract.id),
+          in: contracts.map((contract: typeof contracts[number]) => contract.id),
         },
         isActive: true,
       },
@@ -612,7 +612,7 @@ export async function generateInvoicesAction(
     prisma.meterReading.findMany({
       where: {
         tenantId: {
-          in: contracts.map((contract) => contract.tenantId),
+          in: contracts.map((contract: typeof contracts[number]) => contract.tenantId),
         },
         readingDate: {
           lte: issueDate,
@@ -621,7 +621,7 @@ export async function generateInvoicesAction(
         meter: {
           isShared: false,
           propertyId: {
-            in: contracts.map((contract) => contract.property.id),
+            in: contracts.map((contract: typeof contracts[number]) => contract.property.id),
           },
         },
       },
@@ -645,7 +645,7 @@ export async function generateInvoicesAction(
     prisma.cOSAAllocation.findMany({
       where: {
         contractId: {
-          in: contracts.map((contract) => contract.id),
+          in: contracts.map((contract: typeof contracts[number]) => contract.id),
         },
         invoiceItem: null,
         cosa: {
@@ -728,16 +728,16 @@ export async function generateInvoicesAction(
     });
 
     const contractCharges = recurringCharges.filter(
-      (charge) => charge.contractId === contract.id
+      (charge: typeof recurringCharges[number]) => charge.contractId === contract.id
     );
 
     const contractReadings = readings.filter(
-      (reading) =>
+      (reading: typeof readings[number]) =>
         reading.tenantId === contract.tenantId &&
         reading.meter.propertyId === contract.property.id
     );
     const contractCosaAllocations = cosaAllocations.filter(
-      (allocation) => allocation.contractId === contract.id
+      (allocation: typeof cosaAllocations[number]) => allocation.contractId === contract.id
     );
 
     for (const cycle of missingCycles) {
@@ -753,16 +753,16 @@ export async function generateInvoicesAction(
 
       matchedSelectedCycleKeys.add(selectionKey);
 
-      const cycleCharges = contractCharges.filter((charge) =>
+      const cycleCharges = contractCharges.filter((charge: typeof contractCharges[number]) =>
         cycleOverlapsRange(cycle, charge.effectiveStartDate, charge.effectiveEndDate)
       );
 
       const cycleReadings = contractReadings.filter(
-        (reading) =>
+        (reading: typeof contractReadings[number]) =>
           reading.readingDate >= cycle.start && reading.readingDate <= cycle.end
       );
       const cycleCosaAllocations = contractCosaAllocations.filter(
-        (allocation) =>
+        (allocation: typeof contractCosaAllocations[number]) =>
           allocation.cosa.billingDate >= cycle.start &&
           allocation.cosa.billingDate <= cycle.end
       );
@@ -774,15 +774,15 @@ export async function generateInvoicesAction(
       });
       const cycleLabel = formatBillingCycleLabel(cycle);
       const recurringChargeAmount = cycleCharges.reduce(
-        (sum, charge) => sum + Number(charge.amount.toString()),
+        (sum: number, charge: typeof cycleCharges[number]) => sum + Number(charge.amount.toString()),
         0
       );
       const utilityAmount = cycleReadings.reduce(
-        (sum, reading) => sum + Number(reading.totalAmount.toString()),
+        (sum: number, reading: typeof cycleReadings[number]) => sum + Number(reading.totalAmount.toString()),
         0
       );
       const cosaAmount = cycleCosaAllocations.reduce(
-        (sum, allocation) => sum + Number(allocation.computedAmount.toString()),
+        (sum: number, allocation: typeof cycleCosaAllocations[number]) => sum + Number(allocation.computedAmount.toString()),
         0
       );
       const cycleIndex = getBillingCycleIndex(contract.paymentStartDate, cycle.start);
@@ -860,7 +860,7 @@ export async function generateInvoicesAction(
                       },
                     ]
                   : []),
-                ...cycleCharges.map((charge) => ({
+                ...cycleCharges.map((charge: typeof cycleCharges[number]) => ({
                   itemType: "RECURRING_CHARGE" as const,
                   description: `${charge.label} · ${toDateInputValue(cycle.start)} to ${toDateInputValue(cycle.end)}`,
                   quantity: toMoney(1),
@@ -868,7 +868,7 @@ export async function generateInvoicesAction(
                   amount: toMoney(Number(charge.amount.toString())),
                   contractRecurringChargeId: charge.id,
                 })),
-                ...cycleReadings.map((reading) => ({
+                ...cycleReadings.map((reading: typeof cycleReadings[number]) => ({
                   itemType: "UTILITY_READING" as const,
                   description: `${reading.meter.utilityType.replaceAll("_", " ")} reading · ${reading.meter.meterCode} · ${reading.readingDate.toISOString().slice(0, 10)}`,
                   quantity: toMoney(Number(reading.consumption.toString())),
@@ -876,7 +876,7 @@ export async function generateInvoicesAction(
                   amount: toMoney(Number(reading.totalAmount.toString())),
                   meterReadingId: reading.id,
                 })),
-                ...cycleCosaAllocations.map((allocation) => ({
+                ...cycleCosaAllocations.map((allocation: typeof cycleCosaAllocations[number]) => ({
                   itemType: "COSA" as const,
                   description: `${allocation.cosa.description} · ${allocation.cosa.billingDate.toISOString().slice(0, 10)}${
                     allocation.cosa.meter
@@ -991,7 +991,7 @@ export async function createCosaAction(
   if (
     validatedFields.data.allocationType === "BY_AREA" &&
     selectionValidation.contracts.some(
-      (contract) =>
+      (contract: typeof selectionValidation.contracts[number]) =>
         !contract.property.size || Number(contract.property.size.toString()) <= 0
     )
   ) {
@@ -1169,7 +1169,7 @@ export async function updateCosaAction(
   if (
     validatedFields.data.allocationType === "BY_AREA" &&
     selectionValidation.contracts.some(
-      (contract) =>
+      (contract: typeof selectionValidation.contracts[number]) =>
         !contract.property.size || Number(contract.property.size.toString()) <= 0
     )
   ) {
@@ -1314,7 +1314,7 @@ export async function createCosaTemplateAction(
   if (
     validatedFields.data.allocationType === "BY_AREA" &&
     selectionValidation.contracts.some(
-      (contract) =>
+      (contract: typeof selectionValidation.contracts[number]) =>
         !contract.property.size || Number(contract.property.size.toString()) <= 0
     )
   ) {
@@ -1429,7 +1429,7 @@ export async function updateCosaTemplateAction(
   if (
     validatedFields.data.allocationType === "BY_AREA" &&
     selectionValidation.contracts.some(
-      (contract) =>
+      (contract: typeof selectionValidation.contracts[number]) =>
         !contract.property.size || Number(contract.property.size.toString()) <= 0
     )
   ) {
