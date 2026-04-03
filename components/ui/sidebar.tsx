@@ -34,6 +34,22 @@ const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 const SIDEBAR_EASING = "ease-[cubic-bezier(0.2,0.9,0.24,1)]"
 const SIDEBAR_DURATION = "duration-500"
 
+function readSidebarOpenState() {
+  if (typeof document === "undefined") {
+    return null
+  }
+
+  const cookie = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
+
+  if (!cookie) {
+    return null
+  }
+
+  return cookie.slice(cookie.indexOf("=") + 1) !== "false"
+}
+
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
   open: boolean
@@ -75,6 +91,19 @@ function SidebarProvider({
   // We use openProp and setOpenProp for control from outside the component.
   const [_open, _setOpen] = React.useState(defaultOpen)
   const open = openProp ?? _open
+
+  React.useEffect(() => {
+    if (openProp !== undefined) {
+      return
+    }
+
+    const persistedOpen = readSidebarOpenState()
+
+    if (persistedOpen !== null) {
+      _setOpen(persistedOpen)
+    }
+  }, [openProp])
+
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
       const openState = typeof value === "function" ? value(open) : value

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { after } from "next/server";
 import type { AuthUser } from "@/lib/auth/user";
 import { formatDate } from "@/lib/format";
 import type {
@@ -369,6 +370,25 @@ async function buildSystemNotificationsForUser(user: Pick<AuthUser, "role">) {
     : buildMeterReaderNotifications();
 }
 
+function mapNotificationItems(
+  rows: Array<{
+    id: string;
+    kind: NotificationSummary["items"][number]["kind"];
+    severity: NotificationSummary["items"][number]["severity"];
+    title: string;
+    message: string;
+    href: string | null;
+    readAt: Date | null;
+    createdAt: Date;
+  }>
+) {
+  return rows.map((item) => ({
+    ...item,
+    createdAt: item.createdAt.toISOString(),
+    readAt: item.readAt ? item.readAt.toISOString() : null,
+  }));
+}
+
 export async function syncNotificationsForUser(user: Pick<AuthUser, "id" | "role">) {
   const notifications = await buildSystemNotificationsForUser(user);
   const activeKeys = notifications.map((notification) => notification.dedupeKey);
@@ -424,11 +444,19 @@ export async function syncNotificationsForUser(user: Pick<AuthUser, "id" | "role
   ]);
 }
 
+function scheduleNotificationSync(user: Pick<AuthUser, "id" | "role">) {
+  after(async () => {
+    try {
+      await syncNotificationsForUser(user);
+    } catch (error) {
+      console.error("Failed to sync notifications in the background.", error);
+    }
+  });
+}
+
 export async function getNotificationSummaryForUser(
   user: Pick<AuthUser, "id" | "role">
 ): Promise<NotificationSummary> {
-  await syncNotificationsForUser(user);
-
   const [unreadCount, rows] = await Promise.all([
     prisma.notification.count({
       where: {
@@ -455,13 +483,11 @@ export async function getNotificationSummaryForUser(
     }),
   ]);
 
+  scheduleNotificationSync(user);
+
   return {
     unreadCount,
-    items: rows.map((item) => ({
-      ...item,
-      createdAt: item.createdAt.toISOString(),
-      readAt: item.readAt ? item.readAt.toISOString() : null,
-    })),
+    items: mapNotificationItems(rows),
   };
 }
 
@@ -497,10 +523,6 @@ export async function getNotificationInboxForUser(
 
   return {
     unreadCount,
-    items: rows.map((item) => ({
-      ...item,
-      createdAt: item.createdAt.toISOString(),
-      readAt: item.readAt ? item.readAt.toISOString() : null,
-    })),
+    items: mapNotificationItems(rows),
   };
 }
