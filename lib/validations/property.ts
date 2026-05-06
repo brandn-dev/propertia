@@ -29,6 +29,10 @@ export const propertySchema = z.object({
     )
     .transform((value) => (value === "" ? undefined : value)),
   isLeasable: z.boolean(),
+  invoiceBrandingTemplateId: z
+    .string()
+    .trim()
+    .transform((value) => value || undefined),
   parentPropertyId: z
     .string()
     .trim()
@@ -39,6 +43,7 @@ export const propertySchema = z.object({
     .trim()
     .max(1000, "Description must be 1000 characters or fewer.")
     .transform((value) => value || undefined),
+  removeLogo: z.boolean(),
 });
 
 export type PropertyInput = z.infer<typeof propertySchema>;

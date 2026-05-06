@@ -1,18 +1,45 @@
 "use server";
 
 import type { Prisma } from "@prisma/client";
+import type { ZodError } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
 import { prisma } from "@/lib/prisma";
-import { tenantSchema } from "@/lib/validations/tenant";
+import { tenantSchema, type TenantInput } from "@/lib/validations/tenant";
 
 export type TenantFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  personErrors?: Array<Record<string, string[] | undefined> | undefined>;
 };
 
-type ParsedTenantPayload = ReturnType<typeof getTenantPayload>;
+type ParsedPerson = {
+  personId?: string;
+  firstName?: string;
+  lastName?: string;
+  middleName?: string;
+  positionTitle?: string;
+  contactNumber?: string;
+  email?: string;
+  address?: string;
+  validIdType?: string;
+  validIdNumber?: string;
+  notes?: string;
+  isPrimary?: boolean;
+};
+
+type ParsedTenantPayload = {
+  type: string;
+  businessName: string;
+  contactNumber: string;
+  email: string;
+  address: string;
+  validIdType: string;
+  validIdNumber: string;
+  people: ParsedPerson[];
+  peopleParseError: string | null;
+};
 
 function revalidateTenantViews() {
   ["/dashboard", "/tenants", "/contracts", "/billing"].forEach((path) =>
@@ -52,7 +79,7 @@ function parsePeople(value: FormDataEntryValue | null) {
   }
 }
 
-function getTenantPayload(formData: FormData) {
+function getTenantPayload(formData: FormData): ParsedTenantPayload {
   const peopleResult = parsePeople(formData.get("people"));
 
   return {
@@ -63,8 +90,69 @@ function getTenantPayload(formData: FormData) {
     address: String(formData.get("address") ?? ""),
     validIdType: String(formData.get("validIdType") ?? ""),
     validIdNumber: String(formData.get("validIdNumber") ?? ""),
-    people: peopleResult.people,
+    people: normalizePeoplePayload(peopleResult.people),
     peopleParseError: peopleResult.error,
+  };
+}
+
+function isBlankValue(value: unknown) {
+  return typeof value !== "string" || value.trim().length === 0;
+}
+
+function isEmptyPerson(person: ParsedPerson) {
+  return (
+    isBlankValue(person.firstName) &&
+    isBlankValue(person.lastName) &&
+    isBlankValue(person.middleName) &&
+    isBlankValue(person.positionTitle) &&
+    isBlankValue(person.contactNumber) &&
+    isBlankValue(person.email) &&
+    isBlankValue(person.address) &&
+    isBlankValue(person.validIdType) &&
+    isBlankValue(person.validIdNumber) &&
+    isBlankValue(person.notes)
+  );
+}
+
+function normalizePeoplePayload(people: ParsedTenantPayload["people"]) {
+  const normalizedPeople = people.filter((person) => !isEmptyPerson(person));
+
+  if (normalizedPeople.length === 0) {
+    return normalizedPeople;
+  }
+
+  const primaryIndex = normalizedPeople.findIndex((person) => Boolean(person.isPrimary));
+
+  return normalizedPeople.map((person, index) => ({
+    ...person,
+    isPrimary: primaryIndex === -1 ? index === 0 : index === primaryIndex,
+  }));
+}
+
+function buildTenantFormErrors(error: ZodError) {
+  const fieldErrors = error.flatten().fieldErrors;
+  const personErrors: TenantFormState["personErrors"] = [];
+
+  for (const issue of error.issues) {
+    const [root, index, field] = issue.path;
+
+    if (
+      root !== "people" ||
+      typeof index !== "number" ||
+      typeof field !== "string"
+    ) {
+      continue;
+    }
+
+    const rowErrors = personErrors[index] ?? {};
+    rowErrors[field] = [...(rowErrors[field] ?? []), issue.message];
+    personErrors[index] = rowErrors;
+  }
+
+  return {
+    errors: fieldErrors,
+    personErrors,
+    message: "Fix the highlighted tenant fields and try again.",
   };
 }
 
@@ -84,7 +172,7 @@ function getPeopleFieldError(payload: ParsedTenantPayload): TenantFormState | nu
 async function upsertTenantPeople(
   tx: Prisma.TransactionClient,
   tenantId: string,
-  people: ParsedTenantPayload["people"]
+  people: TenantInput["people"]
 ) {
   const linkedPeople = [];
 
@@ -143,10 +231,7 @@ export async function createTenantAction(
   const validatedFields = tenantSchema.safeParse(payload);
 
   if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Fix the highlighted tenant fields and try again.",
-    };
+    return buildTenantFormErrors(validatedFields.error);
   }
 
   const { people, ...tenantData } = validatedFields.data;
@@ -201,10 +286,7 @@ export async function updateTenantAction(
   const validatedFields = tenantSchema.safeParse(payload);
 
   if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Fix the highlighted tenant fields and try again.",
-    };
+    return buildTenantFormErrors(validatedFields.error);
   }
 
   const { people, ...tenantData } = validatedFields.data;

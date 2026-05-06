@@ -50,31 +50,78 @@ export function getBillingCycleAtIndex(anchorDate: Date, cycleIndex: number): Bi
   };
 }
 
+export function getBillingCycleIndex(anchorDate: Date, cycleStart: Date) {
+  for (let cycleIndex = 0; cycleIndex < 240; cycleIndex += 1) {
+    const cycle = getBillingCycleAtIndex(anchorDate, cycleIndex);
+
+    if (cycle.start.getTime() === cycleStart.getTime()) {
+      return cycleIndex;
+    }
+
+    if (cycle.start > cycleStart) {
+      break;
+    }
+  }
+
+  return -1;
+}
+
 export function findNextCompletedBillingCycles(params: {
   anchorDate: Date;
   contractEndDate: Date;
   issueDate: Date;
   existingPeriods: Set<string>;
+  includeCurrentCycle?: boolean;
+  includeNextCycleInIssueMonth?: boolean;
 }) {
-  const { anchorDate, contractEndDate, issueDate, existingPeriods } = params;
+  const {
+    anchorDate,
+    contractEndDate,
+    issueDate,
+    existingPeriods,
+    includeCurrentCycle = false,
+    includeNextCycleInIssueMonth = false,
+  } = params;
   const cycles: BillingCycle[] = [];
   let cycleIndex = 0;
 
   while (cycleIndex < 240) {
     const cycle = getBillingCycleAtIndex(anchorDate, cycleIndex);
 
-    if (cycle.start > contractEndDate || cycle.start > issueDate) {
-      break;
-    }
-
-    if (cycle.end > issueDate) {
+    if (cycle.start > contractEndDate) {
       break;
     }
 
     const key = `${toDateInputValue(cycle.start)}:${toDateInputValue(cycle.end)}`;
 
+    if (cycle.start > issueDate) {
+      const sameIssueMonth =
+        cycle.start.getFullYear() === issueDate.getFullYear() &&
+        cycle.start.getMonth() === issueDate.getMonth();
+
+      if (
+        includeNextCycleInIssueMonth &&
+        sameIssueMonth &&
+        !existingPeriods.has(key)
+      ) {
+        cycles.push(cycle);
+      }
+
+      break;
+    }
+
+    const isCurrentIncompleteCycle = cycle.end > issueDate;
+
+    if (isCurrentIncompleteCycle && !includeCurrentCycle) {
+      break;
+    }
+
     if (!existingPeriods.has(key)) {
       cycles.push(cycle);
+    }
+
+    if (isCurrentIncompleteCycle && !includeNextCycleInIssueMonth) {
+      break;
     }
 
     cycleIndex += 1;

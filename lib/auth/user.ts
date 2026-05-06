@@ -2,7 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { getSession } from "@/lib/auth/session";
 import type { AppRole } from "@/lib/auth/roles";
 
@@ -22,17 +22,19 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     return null;
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: {
-      id: true,
-      username: true,
-      displayName: true,
-      role: true,
-      isActive: true,
-      lastLoginAt: true,
-    },
-  });
+  const user = await withPrismaRetry(() =>
+    prisma.user.findUnique({
+      where: { id: session.userId },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        role: true,
+        isActive: true,
+        lastLoginAt: true,
+      },
+    })
+  );
 
   if (!user || !user.isActive) {
     return null;

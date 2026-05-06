@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useActionToast } from "@/components/ui/toast-provider";
 import { formatCurrency } from "@/lib/format";
 
 const initialState: RecordPaymentFormState = {};
@@ -68,6 +69,11 @@ export function PaymentForm({
   items,
 }: PaymentFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
+  useActionToast({
+    message: state.message,
+    title: "Payment not recorded",
+    intent: "error",
+  });
   const [allocationValues, setAllocationValues] = useState<Record<string, string>>(
     Object.fromEntries(items.map((item) => [item.id, ""]))
   );

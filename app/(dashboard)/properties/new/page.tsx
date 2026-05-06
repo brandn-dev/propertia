@@ -2,12 +2,18 @@ import { Building2, Plus } from "lucide-react";
 import { createPropertyAction } from "@/app/(dashboard)/properties/actions";
 import { PropertyForm } from "@/components/properties/property-form";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { getPropertyParentOptions } from "@/lib/data/admin";
+import {
+  getInvoiceBrandingTemplateOptions,
+  getPropertyParentOptions,
+} from "@/lib/data/admin";
 import { requireRole } from "@/lib/auth/user";
 
 export default async function NewPropertyPage() {
   await requireRole("ADMIN");
-  const parentOptions = await getPropertyParentOptions();
+  const [parentOptions, brandingTemplateOptions] = await Promise.all([
+    getPropertyParentOptions(),
+    getInvoiceBrandingTemplateOptions(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -23,6 +29,7 @@ export default async function NewPropertyPage() {
         mode="create"
         formAction={createPropertyAction}
         parentOptions={parentOptions}
+        brandingTemplateOptions={brandingTemplateOptions}
       />
     </div>
   );

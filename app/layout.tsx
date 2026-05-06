@@ -3,8 +3,10 @@ import { Geist_Mono, Manrope } from "next/font/google";
 import Script from "next/script";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ToastProvider } from "@/components/ui/toast-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getThemeInitScript } from "@/lib/theme";
+import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -44,7 +46,9 @@ export default function RootLayout({
           {getThemeInitScript()}
         </Script>
         <ThemeProvider>
-          <TooltipProvider delay={150}>{children}</TooltipProvider>
+          <ToastProvider>
+            <TooltipProvider delay={150}>{children}</TooltipProvider>
+          </ToastProvider>
         </ThemeProvider>
         <SpeedInsights />
       </body>

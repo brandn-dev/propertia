@@ -393,8 +393,8 @@ export async function syncNotificationsForUser(user: Pick<AuthUser, "id" | "role
   const notifications = await buildSystemNotificationsForUser(user);
   const activeKeys = notifications.map((notification) => notification.dedupeKey);
 
-  await prisma.$transaction([
-    ...notifications.map((notification) =>
+  await Promise.all(
+    notifications.map((notification) =>
       prisma.notification.upsert({
         where: {
           userId_dedupeKey: {
@@ -425,23 +425,24 @@ export async function syncNotificationsForUser(user: Pick<AuthUser, "id" | "role
           expiresAt: notification.expiresAt ?? null,
         },
       })
-    ),
-    prisma.notification.deleteMany({
-      where: {
-        userId: user.id,
-        kind: {
-          in: [...SYSTEM_NOTIFICATION_KINDS],
-        },
-        ...(activeKeys.length > 0
-          ? {
-              dedupeKey: {
-                notIn: activeKeys,
-              },
-            }
-          : {}),
+    )
+  );
+
+  await prisma.notification.deleteMany({
+    where: {
+      userId: user.id,
+      kind: {
+        in: [...SYSTEM_NOTIFICATION_KINDS],
       },
-    }),
-  ]);
+      ...(activeKeys.length > 0
+        ? {
+            dedupeKey: {
+              notIn: activeKeys,
+            },
+          }
+        : {}),
+    },
+  });
 }
 
 function scheduleNotificationSync(user: Pick<AuthUser, "id" | "role">) {

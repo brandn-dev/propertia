@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
+import {
+  getPropertyLogoFileError,
+  removePropertyLogoFile,
+  storePropertyLogoFile,
+} from "@/lib/properties/logo-storage";
 import { prisma } from "@/lib/prisma";
 import { propertySchema } from "@/lib/validations/property";
 
@@ -26,9 +31,57 @@ function getPropertyPayload(formData: FormData) {
     location: String(formData.get("location") ?? ""),
     size: String(formData.get("size") ?? ""),
     isLeasable: formData.get("isLeasable") === "on",
+    invoiceBrandingTemplateId: String(
+      formData.get("invoiceBrandingTemplateId") ?? ""
+    ),
     parentPropertyId: String(formData.get("parentPropertyId") ?? ""),
     status: String(formData.get("status") ?? ""),
     description: String(formData.get("description") ?? ""),
+    removeLogo: formData.get("removeLogo") === "true",
+  };
+}
+
+async function resolvePropertyLogoInput(
+  formData: FormData,
+  currentLogo?: {
+    logoUrl: string | null;
+    logoStorageKey: string | null;
+  }
+) {
+  const logoFile = formData.get("logoFile");
+  const removeLogo = formData.get("removeLogo") === "true";
+  const nextLogoFile =
+    logoFile instanceof File && logoFile.size > 0 ? logoFile : null;
+
+  if (nextLogoFile) {
+    const logoFileError = getPropertyLogoFileError(nextLogoFile);
+
+    if (logoFileError) {
+      return {
+        error: logoFileError,
+      };
+    }
+
+    const storedLogo = await storePropertyLogoFile(nextLogoFile);
+
+    return {
+      ...storedLogo,
+      replacedStorageKey: currentLogo?.logoStorageKey ?? null,
+    };
+  }
+
+  if (removeLogo) {
+    return {
+      logoUrl: null,
+      logoStorageKey: null,
+      replacedStorageKey: currentLogo?.logoStorageKey ?? null,
+    };
+  }
+
+  return {
+    logoUrl: currentLogo?.logoUrl ?? null,
+    logoStorageKey: currentLogo?.logoStorageKey ?? null,
+    replacedStorageKey: null,
   };
 }
 
@@ -106,6 +159,35 @@ export async function createPropertyAction(
     }
   }
 
+  if (data.invoiceBrandingTemplateId) {
+    const template = await prisma.invoiceBrandingTemplate.findUnique({
+      where: { id: data.invoiceBrandingTemplateId },
+      select: { id: true },
+    });
+
+    if (!template) {
+      return {
+        errors: {
+          invoiceBrandingTemplateId: ["Select a valid invoice template."],
+        },
+        message: "Invoice template could not be found.",
+      };
+    }
+  }
+
+  const logoInput = await resolvePropertyLogoInput(formData);
+
+  if ("error" in logoInput) {
+    const logoError = logoInput.error ?? "Property logo is invalid.";
+
+    return {
+      errors: {
+        logoFile: [logoError],
+      },
+      message: "Property logo could not be saved.",
+    };
+  }
+
   try {
     await prisma.property.create({
       data: {
@@ -116,12 +198,19 @@ export async function createPropertyAction(
         location: data.location,
         size: data.size ?? null,
         isLeasable: data.isLeasable,
+        invoiceBrandingTemplateId: data.invoiceBrandingTemplateId ?? null,
         parentPropertyId: data.parentPropertyId ?? null,
         status: data.status,
         description: data.description ?? null,
+        logoUrl: logoInput.logoUrl,
+        logoStorageKey: logoInput.logoStorageKey,
       },
     });
   } catch {
+    if (logoInput.logoStorageKey) {
+      await removePropertyLogoFile(logoInput.logoStorageKey);
+    }
+
     return {
       message: "Property could not be saved. Try again.",
     };
@@ -140,7 +229,7 @@ export async function updatePropertyAction(
 
   const existingProperty = await prisma.property.findUnique({
     where: { id: propertyId },
-    select: { id: true },
+    select: { id: true, logoUrl: true, logoStorageKey: true },
   });
 
   if (!existingProperty) {
@@ -205,6 +294,35 @@ export async function updatePropertyAction(
     }
   }
 
+  if (data.invoiceBrandingTemplateId) {
+    const template = await prisma.invoiceBrandingTemplate.findUnique({
+      where: { id: data.invoiceBrandingTemplateId },
+      select: { id: true },
+    });
+
+    if (!template) {
+      return {
+        errors: {
+          invoiceBrandingTemplateId: ["Select a valid invoice template."],
+        },
+        message: "Invoice template could not be found.",
+      };
+    }
+  }
+
+  const logoInput = await resolvePropertyLogoInput(formData, existingProperty);
+
+  if ("error" in logoInput) {
+    const logoError = logoInput.error ?? "Property logo is invalid.";
+
+    return {
+      errors: {
+        logoFile: [logoError],
+      },
+      message: "Property logo could not be updated.",
+    };
+  }
+
   try {
     await prisma.property.update({
       where: { id: propertyId },
@@ -216,15 +334,29 @@ export async function updatePropertyAction(
         location: data.location,
         size: data.size ?? null,
         isLeasable: data.isLeasable,
+        invoiceBrandingTemplateId: data.invoiceBrandingTemplateId ?? null,
         parentPropertyId: data.parentPropertyId ?? null,
         status: data.status,
         description: data.description ?? null,
+        logoUrl: logoInput.logoUrl,
+        logoStorageKey: logoInput.logoStorageKey,
       },
     });
   } catch {
+    if (
+      logoInput.logoStorageKey &&
+      logoInput.logoStorageKey !== existingProperty.logoStorageKey
+    ) {
+      await removePropertyLogoFile(logoInput.logoStorageKey);
+    }
+
     return {
       message: "Property could not be updated. Try again.",
     };
+  }
+
+  if (logoInput.replacedStorageKey) {
+    await removePropertyLogoFile(logoInput.replacedStorageKey);
   }
 
   revalidatePropertyViews();

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PropertyLogoField } from "@/components/properties/property-logo-field";
 
 const selectClassName =
   "select-blank";
@@ -33,6 +34,12 @@ type PropertyFormProps = {
     name: string;
     propertyCode: string;
   }[];
+  brandingTemplateOptions: {
+    id: string;
+    name: string;
+    brandName: string;
+    isDefault: boolean;
+  }[];
   initialValues?: {
     name: string;
     propertyCode: string;
@@ -41,9 +48,12 @@ type PropertyFormProps = {
     location: string;
     size: string;
     isLeasable: boolean;
+    invoiceBrandingTemplateId: string;
     parentPropertyId: string;
     status: (typeof PROPERTY_STATUSES)[number];
     description: string;
+    logoUrl: string;
+    logoStorageKey: string;
   };
 };
 
@@ -59,6 +69,7 @@ export function PropertyForm({
   mode,
   formAction,
   parentOptions,
+  brandingTemplateOptions,
   initialValues = {
     name: "",
     propertyCode: "",
@@ -67,15 +78,22 @@ export function PropertyForm({
     location: "",
     size: "",
     isLeasable: false,
+    invoiceBrandingTemplateId: "",
     parentPropertyId: "",
     status: "ACTIVE",
     description: "",
+    logoUrl: "",
+    logoStorageKey: "",
   },
 }: PropertyFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
 
   return (
-    <form action={action} className="space-y-6">
+    <form
+      action={action}
+      encType="multipart/form-data"
+      className="space-y-6"
+    >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="border-blank space-y-6 rounded-xl p-6">
           <div className="grid gap-5 md:grid-cols-2">
@@ -182,6 +200,25 @@ export function PropertyForm({
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="invoiceBrandingTemplateId">Invoice template</Label>
+              <select
+                id="invoiceBrandingTemplateId"
+                name="invoiceBrandingTemplateId"
+                defaultValue={initialValues.invoiceBrandingTemplateId}
+                className={selectClassName}
+              >
+                <option value="">System default</option>
+                {brandingTemplateOptions.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                    {template.isDefault ? " (Default)" : ""} · {template.brandName}
+                  </option>
+                ))}
+              </select>
+              <FieldError message={state.errors?.invoiceBrandingTemplateId?.[0]} />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="parentPropertyId">Parent property</Label>
               <select
                 id="parentPropertyId"
@@ -238,6 +275,11 @@ export function PropertyForm({
         </div>
 
         <aside className="space-y-4">
+          <PropertyLogoField
+            initialLogoUrl={initialValues.logoUrl || undefined}
+            errorMessage={state.errors?.logoFile?.[0]}
+          />
+
           <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               {mode === "create" ? "New record" : "Update record"}

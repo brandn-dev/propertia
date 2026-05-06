@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 function buildTenantPeople(tenant: {
   id: string;
@@ -99,19 +99,35 @@ function buildTenantPeople(tenant: {
 }
 
 export async function getPropertyParentOptions(excludeId?: string) {
-  return prisma.property.findMany({
-    where: excludeId
-      ? {
-          id: { not: excludeId },
-        }
-      : undefined,
-    orderBy: [{ name: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      propertyCode: true,
-    },
-  });
+  return withPrismaRetry(() =>
+    prisma.property.findMany({
+      where: excludeId
+        ? {
+            id: { not: excludeId },
+          }
+        : undefined,
+      orderBy: [{ name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        propertyCode: true,
+      },
+    })
+  );
+}
+
+export async function getInvoiceBrandingTemplateOptions() {
+  return withPrismaRetry(() =>
+    prisma.invoiceBrandingTemplate.findMany({
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        brandName: true,
+        isDefault: true,
+      },
+    })
+  );
 }
 
 export async function getContractPropertyOptions(includePropertyId?: string) {
@@ -185,6 +201,24 @@ export async function getUtilityPropertyOptions(includePropertyId?: string) {
       name: true,
       propertyCode: true,
       status: true,
+      contracts: {
+        where: {
+          status: {
+            in: ["ACTIVE", "DRAFT"],
+          },
+        },
+        orderBy: [{ status: "asc" }, { startDate: "desc" }],
+        take: 1,
+        select: {
+          tenant: {
+            select: {
+              firstName: true,
+              lastName: true,
+              businessName: true,
+            },
+          },
+        },
+      },
     },
   });
 }
@@ -466,9 +500,12 @@ export async function getPropertyForEdit(propertyId: string) {
       location: true,
       size: true,
       isLeasable: true,
+      invoiceBrandingTemplateId: true,
       parentPropertyId: true,
       status: true,
       description: true,
+      logoUrl: true,
+      logoStorageKey: true,
       _count: {
         select: {
           children: true,

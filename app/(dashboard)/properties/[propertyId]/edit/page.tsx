@@ -4,7 +4,11 @@ import { updatePropertyAction } from "@/app/(dashboard)/properties/actions";
 import { PropertyForm } from "@/components/properties/property-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { getPropertyForEdit, getPropertyParentOptions } from "@/lib/data/admin";
+import {
+  getInvoiceBrandingTemplateOptions,
+  getPropertyForEdit,
+  getPropertyParentOptions,
+} from "@/lib/data/admin";
 import { requireRole } from "@/lib/auth/user";
 
 type EditPropertyPageProps = {
@@ -18,9 +22,10 @@ export default async function EditPropertyPage({
 }: EditPropertyPageProps) {
   await requireRole("ADMIN");
   const { propertyId } = await params;
-  const [property, parentOptions] = await Promise.all([
+  const [property, parentOptions, brandingTemplateOptions] = await Promise.all([
     getPropertyForEdit(propertyId),
     getPropertyParentOptions(propertyId),
+    getInvoiceBrandingTemplateOptions(),
   ]);
 
   if (!property) {
@@ -69,6 +74,7 @@ export default async function EditPropertyPage({
         mode="edit"
         formAction={action}
         parentOptions={parentOptions}
+        brandingTemplateOptions={brandingTemplateOptions}
         initialValues={{
           name: property.name,
           propertyCode: property.propertyCode,
@@ -77,9 +83,12 @@ export default async function EditPropertyPage({
           location: property.location,
           size: property.size?.toString() ?? "",
           isLeasable: property.isLeasable,
+          invoiceBrandingTemplateId: property.invoiceBrandingTemplateId ?? "",
           parentPropertyId: property.parentPropertyId ?? "",
           status: property.status,
           description: property.description ?? "",
+          logoUrl: property.logoUrl ?? "",
+          logoStorageKey: property.logoStorageKey ?? "",
         }}
       />
     </div>

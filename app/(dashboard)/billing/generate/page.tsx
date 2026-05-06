@@ -7,6 +7,7 @@ import {
   getBillingCycleKey,
   getBillingMonthKey,
 } from "@/lib/billing/cycles";
+import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { InvoiceGenerationForm } from "@/components/billing/invoice-generation-form";
@@ -25,6 +26,7 @@ export default async function GenerateBillingPage() {
   const rawContractOptions = await getInvoiceGenerationContractOptions();
   const today = new Date();
   const issueDate = addDays(today, 0);
+  const cutoffDate = getHistoricalBacklogCutoffDate();
   const contractOptions = rawContractOptions.map((contract) => ({
     id: contract.id,
     tenantId: contract.tenantId,
@@ -44,13 +46,17 @@ export default async function GenerateBillingPage() {
             getBillingCycleKey(invoice.billingPeriodStart, invoice.billingPeriodEnd)
           )
         ),
+        includeCurrentCycle: true,
+        includeNextCycleInIssueMonth: true,
       }),
       new Set(
         contract.invoices.map((invoice) =>
           getBillingMonthKey(invoice.billingPeriodStart)
         )
       )
-    ).map((cycle) => formatBillingCycleLabel(cycle)),
+    )
+      .filter((cycle) => cycle.end >= cutoffDate)
+      .map((cycle) => formatBillingCycleLabel(cycle)),
     paymentAnchorLabel: formatDate(contract.paymentStartDate),
     recurringChargeCount: contract._count.recurringCharges,
     rentAdjustmentCount: contract._count.rentAdjustments,
@@ -74,7 +80,7 @@ export default async function GenerateBillingPage() {
       <DashboardPageHero
         eyebrow="Operations / Billing"
         title="Generate invoices"
-        description="Issue invoices from completed billing cycles anchored on each contract's payment start date. This run includes monthly rent, recurring charges, COSA allocations, and uninvoiced tenant-dedicated utility readings."
+        description="Issue invoices from contract billing cycles anchored on each payment start date. You can bill completed cycles and the current active cycle, while tenant-dedicated utility readings still pull from the previous completed cycle."
         icon={ReceiptText}
         badges={["Cycle-based", "Recurring-charge aware", "Admin only"]}
         action={<ReceiptText className="size-5 text-primary" />}

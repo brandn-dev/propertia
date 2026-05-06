@@ -328,6 +328,9 @@ export function TenantForm({
                           placeholder="Juan"
                           className="field-blank h-11"
                         />
+                        <FieldError
+                          message={state.personErrors?.[index]?.firstName?.[0]}
+                        />
                       </div>
 
                       <div className="space-y-2">
@@ -340,6 +343,9 @@ export function TenantForm({
                           placeholder="Dela Cruz"
                           className="field-blank h-11"
                         />
+                        <FieldError
+                          message={state.personErrors?.[index]?.lastName?.[0]}
+                        />
                       </div>
 
                       <div className="space-y-2">
@@ -351,6 +357,9 @@ export function TenantForm({
                           }
                           placeholder="Santos"
                           className="field-blank h-11"
+                        />
+                        <FieldError
+                          message={state.personErrors?.[index]?.middleName?.[0]}
                         />
                       </div>
 
@@ -368,6 +377,9 @@ export function TenantForm({
                           }
                           className="field-blank h-11"
                         />
+                        <FieldError
+                          message={state.personErrors?.[index]?.positionTitle?.[0]}
+                        />
                       </div>
 
                       <div className="space-y-2">
@@ -379,6 +391,9 @@ export function TenantForm({
                           }
                           placeholder="+63 917 000 0000"
                           className="field-blank h-11"
+                        />
+                        <FieldError
+                          message={state.personErrors?.[index]?.contactNumber?.[0]}
                         />
                       </div>
 
@@ -393,6 +408,9 @@ export function TenantForm({
                           placeholder="person@example.com"
                           className="field-blank h-11"
                         />
+                        <FieldError
+                          message={state.personErrors?.[index]?.email?.[0]}
+                        />
                       </div>
 
                       <div className="space-y-2 md:col-span-2">
@@ -404,6 +422,9 @@ export function TenantForm({
                           }
                           placeholder="Residential or mailing address for this person."
                           className="field-blank min-h-20"
+                        />
+                        <FieldError
+                          message={state.personErrors?.[index]?.address?.[0]}
                         />
                       </div>
 
@@ -417,6 +438,9 @@ export function TenantForm({
                           placeholder="Passport"
                           className="field-blank h-11"
                         />
+                        <FieldError
+                          message={state.personErrors?.[index]?.validIdType?.[0]}
+                        />
                       </div>
 
                       <div className="space-y-2">
@@ -429,6 +453,9 @@ export function TenantForm({
                           placeholder="P1234567A"
                           className="field-blank h-11"
                         />
+                        <FieldError
+                          message={state.personErrors?.[index]?.validIdNumber?.[0]}
+                        />
                       </div>
 
                       <div className="space-y-2 md:col-span-2">
@@ -440,6 +467,9 @@ export function TenantForm({
                           }
                           placeholder="Optional context for this person record."
                           className="field-blank min-h-20"
+                        />
+                        <FieldError
+                          message={state.personErrors?.[index]?.notes?.[0]}
                         />
                       </div>
                     </div>

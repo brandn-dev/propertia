@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 type DashboardPageHeroProps = {
   eyebrow?: string;
   title: string;
-  description: string;
+  description?: string;
   icon: LucideIcon;
   badges?: string[];
   action?: ReactNode;
@@ -45,9 +45,11 @@ export function DashboardPageHero({
             {action ? <div className="shrink-0">{action}</div> : null}
           </div>
 
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-            {description}
-          </p>
+          {description ? (
+            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+              {description}
+            </p>
+          ) : null}
         </div>
       </CardContent>
     </Card>

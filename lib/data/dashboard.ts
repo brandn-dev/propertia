@@ -254,19 +254,21 @@ export async function getUtilityMetersOverview() {
 }
 
 export async function getMeterReadingsOverview() {
-  return prisma.meterReading.findMany({
-    take: 30,
+  const readings = await prisma.meterReading.findMany({
     orderBy: [{ readingDate: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
+      meterId: true,
       readingDate: true,
       previousReading: true,
       currentReading: true,
       consumption: true,
       ratePerUnit: true,
       totalAmount: true,
+      origin: true,
       tenant: {
         select: {
+          id: true,
           firstName: true,
           lastName: true,
           businessName: true,
@@ -274,11 +276,13 @@ export async function getMeterReadingsOverview() {
       },
       meter: {
         select: {
+          id: true,
           meterCode: true,
           utilityType: true,
           isShared: true,
           property: {
             select: {
+              id: true,
               name: true,
               propertyCode: true,
             },
@@ -293,15 +297,54 @@ export async function getMeterReadingsOverview() {
       invoiceItem: {
         select: {
           id: true,
+          invoice: {
+            select: {
+              id: true,
+              invoiceNumber: true,
+            },
+          },
         },
       },
     },
   });
+
+  const laterBilledByMeterId = new Map<string, Set<string>>();
+  const readingsByMeter = new Map<string, typeof readings>();
+
+  for (const reading of readings) {
+    const entries = readingsByMeter.get(reading.meterId) ?? [];
+    entries.push(reading);
+    readingsByMeter.set(reading.meterId, entries);
+  }
+
+  for (const [meterId, meterReadings] of readingsByMeter.entries()) {
+    const sorted = [...meterReadings].sort(
+      (left, right) => left.readingDate.getTime() - right.readingDate.getTime()
+    );
+    const billedLaterIds = new Set<string>();
+    let seenLaterBilled = false;
+
+    for (let index = sorted.length - 1; index >= 0; index -= 1) {
+      if (seenLaterBilled) {
+        billedLaterIds.add(sorted[index].id);
+      }
+
+      if (sorted[index].invoiceItem) {
+        seenLaterBilled = true;
+      }
+    }
+
+    laterBilledByMeterId.set(meterId, billedLaterIds);
+  }
+
+  return readings.map((reading) => ({
+    ...reading,
+    canEdit: !reading.invoiceItem && !laterBilledByMeterId.get(reading.meterId)?.has(reading.id),
+  }));
 }
 
 export async function getPropertiesOverview() {
   return prisma.property.findMany({
-    take: 12,
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
     select: {
       id: true,
@@ -311,6 +354,24 @@ export async function getPropertiesOverview() {
       category: true,
       status: true,
       location: true,
+      isLeasable: true,
+      parentPropertyId: true,
+      contracts: {
+        where: {
+          status: "ACTIVE",
+        },
+        take: 1,
+        orderBy: [{ startDate: "desc" }],
+        select: {
+          tenant: {
+            select: {
+              businessName: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      },
       parent: {
         select: {
           name: true,
@@ -521,10 +582,10 @@ export async function getContractsOverview() {
 
 export async function getBillingOverview() {
   return prisma.invoice.findMany({
-    take: 12,
     orderBy: [{ dueDate: "asc" }, { issueDate: "desc" }],
     select: {
       id: true,
+      tenantId: true,
       invoiceNumber: true,
       issueDate: true,
       dueDate: true,
@@ -532,9 +593,11 @@ export async function getBillingOverview() {
       billingPeriodEnd: true,
       totalAmount: true,
       balanceDue: true,
+      origin: true,
       status: true,
       tenant: {
         select: {
+          id: true,
           firstName: true,
           lastName: true,
           businessName: true,
@@ -542,8 +605,10 @@ export async function getBillingOverview() {
       },
       contract: {
         select: {
+          id: true,
           property: {
             select: {
+              id: true,
               name: true,
               propertyCode: true,
             },

@@ -1,59 +1,32 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  CalendarClock,
-  CircleDollarSign,
-  FileText,
+  FilePenLine,
   Plus,
   ReceiptText,
-  WalletCards,
+  Trash2,
 } from "lucide-react";
+import { deleteBacklogInvoiceAction } from "@/app/(dashboard)/billing/[invoiceId]/actions";
 import { requireRole } from "@/lib/auth/user";
-import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
+import { InvoiceDocument } from "@/components/billing/invoice-document";
+import { InvoicePdfLauncher } from "@/components/billing/invoice-pdf-launcher";
+import { generateInvoiceQrDataUrl } from "@/lib/billing/invoice-qr";
+import { buildInvoicePresentationModel, formatTenantName } from "@/lib/billing/invoice-presenter";
 import { ensureInvoicePublicAccessCode } from "@/lib/billing/public-access";
 import { getInvoiceForView } from "@/lib/data/billing";
+import { INVOICE_ORIGIN_LABELS } from "@/lib/form-options";
 import { formatCurrency, formatDate, toNumber } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { InvoiceQrCard } from "@/components/billing/invoice-qr-card";
 import { Button } from "@/components/ui/button";
-import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 type InvoiceDetailPageProps = {
   params: Promise<{
     invoiceId: string;
   }>;
 };
-
-const ITEM_TYPE_LABELS = {
-  RENT: "Rent",
-  RECURRING_CHARGE: "Recurring charge",
-  UTILITY_READING: "Utility reading",
-  COSA: "COSA",
-  ADJUSTMENT: "Adjustment",
-  ARREARS: "Arrears",
-} as const;
-
-function formatTenantName(tenant: {
-  firstName: string | null;
-  lastName: string | null;
-  businessName: string | null;
-}) {
-  return (
-    tenant.businessName ||
-    [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") ||
-    "Tenant"
-  );
-}
 
 export default async function InvoiceDetailPage({
   params,
@@ -84,36 +57,71 @@ export default async function InvoiceDetailPage({
     };
   });
 
-  const collectedAmount = invoice.payments.reduce(
-    (sum, payment) => sum + toNumber(payment.amountPaid),
-    0
-  );
   const canRecordPayment =
     invoice.status !== "VOID" && toNumber(invoice.balanceDue) > 0;
+  const canDeleteInvoice = invoice.payments.length === 0;
+  const canEditBacklogInvoice = invoice.origin === "BACKLOG" && canDeleteInvoice;
+  const deleteBacklogInvoice = deleteBacklogInvoiceAction.bind(null, invoice.id);
   const itemLookup = new Map(itemsWithBalances.map((item) => [item.id, item]));
-  const cycleLabel = formatBillingCycleMonthLabel(invoice.billingPeriodStart);
+  const presentationModel = buildInvoicePresentationModel(invoice);
+  const qrDataUrl = await generateInvoiceQrDataUrl({
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    tenantName: formatTenantName(invoice.tenant),
+    propertyName: invoice.contract.property.name,
+    billingPeriodStart: invoice.billingPeriodStart,
+    billingPeriodEnd: invoice.billingPeriodEnd,
+    issueDate: invoice.issueDate,
+    dueDate: invoice.dueDate,
+    totalAmount: toNumber(invoice.totalAmount),
+    balanceDue: toNumber(invoice.balanceDue),
+  });
+  const cycleLabel = presentationModel.title.replace("Invoice for ", "");
+  const showQrCard = false;
+  const showPaymentsCard = true;
 
   return (
     <div className="space-y-6">
       <DashboardPageHero
         eyebrow="Operations / Billing"
         title={`Invoice for ${cycleLabel}`}
-        description={`Review the issued invoice for ${formatTenantName(invoice.tenant)} at ${invoice.contract.property.name}. This is the current rent, recurring-charge, COSA, and utility billing record for the selected cycle.`}
         icon={ReceiptText}
         badges={[
           invoice.invoiceNumber,
+          INVOICE_ORIGIN_LABELS[invoice.origin],
           invoice.status.replaceAll("_", " "),
           invoice.contract.property.propertyCode,
           formatDate(invoice.dueDate),
         ]}
         action={
           <div className="flex flex-wrap gap-2">
+            {canEditBacklogInvoice ? (
+              <>
+                <Button
+                  render={<Link href={`/billing/${invoice.id}/edit`} />}
+                  variant="outline"
+                  className="button-blank rounded-full"
+                >
+                  <FilePenLine />
+                  Edit backlog invoice
+                </Button>
+              </>
+            ) : null}
+            {canDeleteInvoice ? (
+              <form action={deleteBacklogInvoice}>
+                <Button type="submit" variant="destructive" className="rounded-full">
+                  <Trash2 />
+                  Delete invoice
+                </Button>
+              </form>
+            ) : null}
             {canRecordPayment ? (
               <Button render={<Link href={`/billing/${invoice.id}/payment`} />} className="rounded-full">
                 <Plus />
                 Record payment
               </Button>
             ) : null}
+            <InvoicePdfLauncher action={`/billing/${invoice.id}/pdf/file`} />
             <Button render={<Link href="/billing" />} variant="outline" className="button-blank rounded-full">
               Back to billing
             </Button>
@@ -121,169 +129,37 @@ export default async function InvoiceDetailPage({
         }
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardMetricCard
-          label="Total amount"
-          value={formatCurrency(toNumber(invoice.totalAmount))}
-          detail="Gross billed amount for the selected invoice."
-          icon={CircleDollarSign}
-        />
-        <DashboardMetricCard
-          label="Balance due"
-          value={formatCurrency(toNumber(invoice.balanceDue))}
-          detail="Amount still outstanding against this invoice."
-          icon={WalletCards}
-        />
-        <DashboardMetricCard
-          label="Collected"
-          value={formatCurrency(collectedAmount)}
-          detail={`${invoice.payments.length} payment record(s) applied to this invoice.`}
-          icon={FileText}
-        />
-        <DashboardMetricCard
-          label="Due date"
-          value={formatDate(invoice.dueDate)}
-          detail="Collections follow-up date for this invoice."
-          icon={CalendarClock}
-        />
-      </section>
+      <InvoiceDocument
+        model={presentationModel}
+        renderMode="internal"
+        accessBlock={{
+          qrDataUrl,
+          publicAccessCode,
+        }}
+      />
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="rounded-xl border-border/60 bg-card shadow-sm">
-          <CardHeader>
-              <CardTitle>Invoice items</CardTitle>
-              <CardDescription>
-              Rent, recurring charges, COSA shares, and utility items captured in this billing run.
-              </CardDescription>
-            </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Unit price</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Allocated</TableHead>
-                  <TableHead className="text-right">Remaining</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {itemsWithBalances.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {ITEM_TYPE_LABELS[item.itemType]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">{item.description}</TableCell>
-                    <TableCell className="text-right">
-                      {toNumber(item.quantity).toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(toNumber(item.unitPrice))}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(toNumber(item.amount))}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(item.allocatedAmount)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(item.remainingAmount)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+      {showQrCard || showPaymentsCard ? (
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+          <div className="space-y-4">
+            {showQrCard ? (
+              <InvoiceQrCard
+                invoiceId={invoice.id}
+                invoiceNumber={invoice.invoiceNumber}
+                publicAccessCode={publicAccessCode}
+                tenantName={formatTenantName(invoice.tenant)}
+                propertyName={invoice.contract.property.name}
+                billingPeriodStart={invoice.billingPeriodStart}
+                billingPeriodEnd={invoice.billingPeriodEnd}
+                issueDate={invoice.issueDate}
+                dueDate={invoice.dueDate}
+                totalAmount={toNumber(invoice.totalAmount)}
+                balanceDue={toNumber(invoice.balanceDue)}
+              />
+            ) : null}
+          </div>
 
-        <div className="space-y-4">
-          <InvoiceQrCard
-            invoiceId={invoice.id}
-            invoiceNumber={invoice.invoiceNumber}
-            publicAccessCode={publicAccessCode}
-            tenantName={formatTenantName(invoice.tenant)}
-            propertyName={invoice.contract.property.name}
-            billingPeriodStart={invoice.billingPeriodStart}
-            billingPeriodEnd={invoice.billingPeriodEnd}
-            issueDate={invoice.issueDate}
-            dueDate={invoice.dueDate}
-            totalAmount={toNumber(invoice.totalAmount)}
-            balanceDue={toNumber(invoice.balanceDue)}
-          />
-
-          <Card className="rounded-xl border-border/60 bg-card shadow-sm">
-            <CardHeader>
-              <CardTitle>Invoice summary</CardTitle>
-              <CardDescription>
-                Key billing dates, tenant, property, cycle anchor, and totals.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Tenant</span>
-                <span className="font-medium">{formatTenantName(invoice.tenant)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Property</span>
-                <span className="font-medium">{invoice.contract.property.name}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Billing period</span>
-                <span className="font-medium">
-                  {formatDate(invoice.billingPeriodStart)} to {formatDate(invoice.billingPeriodEnd)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Issue date</span>
-                <span className="font-medium">{formatDate(invoice.issueDate)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Due date</span>
-                <span className="font-medium">{formatDate(invoice.dueDate)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Status</span>
-                <Badge variant="outline">{invoice.status.replaceAll("_", " ")}</Badge>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Billing anchor</span>
-                <span className="font-medium">
-                  {formatDate(invoice.contract.paymentStartDate)}
-                </span>
-              </div>
-              <div className="h-px bg-border/70" />
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Rent subtotal</span>
-                <span className="font-medium">
-                  {formatCurrency(toNumber(invoice.subtotal))}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Additional charges</span>
-                <span className="font-medium">
-                  {formatCurrency(toNumber(invoice.additionalCharges))}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Discount</span>
-                <span className="font-medium">
-                  {formatCurrency(toNumber(invoice.discount))}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4 text-base">
-                <span className="font-medium">Total</span>
-                <span className="font-semibold">
-                  {formatCurrency(toNumber(invoice.totalAmount))}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-xl border-border/60 bg-card shadow-sm">
+          {showPaymentsCard ? (
+            <Card className="rounded-xl border-border/60 bg-card shadow-sm">
             <CardHeader>
               <CardTitle>Payments</CardTitle>
               <CardDescription>
@@ -355,8 +231,9 @@ export default async function InvoiceDetailPage({
               )}
             </CardContent>
           </Card>
-        </div>
-      </section>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }

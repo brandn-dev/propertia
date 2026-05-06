@@ -1,42 +1,24 @@
 import Link from "next/link";
 import {
-  CircleDollarSign,
   Clock3,
-  Eye,
   Plus,
   ReceiptText,
   Repeat2,
   Scale,
   Share2,
+  ClockArrowDown,
   WalletCards,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth/user";
-import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
 import { getRecurringChargesOverview } from "@/lib/data/billing";
 import { getBillingOverview } from "@/lib/data/dashboard";
+import { BillingMonitorWorkspace } from "@/components/billing/billing-monitor-workspace";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { formatCurrency, formatDate, toNumber } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
+import { formatCurrency, toNumber } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-
-function formatTenantName(tenant: {
-  firstName: string | null;
-  lastName: string | null;
-  businessName: string | null;
-}) {
-  return tenant.businessName || [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") || "Unassigned";
-}
 
 export default async function BillingPage() {
   await requireRole("ADMIN");
@@ -44,6 +26,11 @@ export default async function BillingPage() {
     getBillingOverview(),
     getRecurringChargesOverview(),
   ]);
+  const clientInvoices = invoices.map((invoice) => ({
+    ...invoice,
+    totalAmount: toNumber(invoice.totalAmount),
+    balanceDue: toNumber(invoice.balanceDue),
+  }));
   const openInvoices = invoices.filter((invoice) =>
     ["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(invoice.status)
   ).length;
@@ -68,6 +55,14 @@ export default async function BillingPage() {
         badges={["Cycle-driven", "Recurring-charge aware", "Payment allocation ready"]}
         action={
           <div className="flex flex-wrap gap-2">
+            <Button
+              render={<Link href="/billing/backlog" />}
+              variant="outline"
+              className="button-blank rounded-full"
+            >
+              <ClockArrowDown />
+              Backlog
+            </Button>
             <Button
               render={<Link href="/billing/cosa" />}
               variant="outline"
@@ -95,7 +90,7 @@ export default async function BillingPage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <DashboardMetricCard
           label="Visible invoices"
-          value={String(invoices.length)}
+          value={String(clientInvoices.length)}
           detail="Invoices currently surfaced by the billing queue."
           icon={ReceiptText}
         />
@@ -130,6 +125,14 @@ export default async function BillingPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
+                render={<Link href="/billing/backlog" />}
+                variant="outline"
+                className="button-blank rounded-full"
+              >
+                <ClockArrowDown />
+                Backlog
+              </Button>
+              <Button
                 render={<Link href="/billing/cosa" />}
                 variant="outline"
                 className="button-blank rounded-full"
@@ -157,7 +160,7 @@ export default async function BillingPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {invoices.length === 0 ? (
+          {clientInvoices.length === 0 ? (
             <DashboardEmptyState
               icon={WalletCards}
               title="No invoices yet"
@@ -170,79 +173,7 @@ export default async function BillingPage() {
               }
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead>Property</TableHead>
-                  <TableHead>Tenant</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Due date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Payments</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">
-                      {`Invoice for ${formatBillingCycleMonthLabel(invoice.billingPeriodStart)}`}
-                      <p className="text-xs text-muted-foreground">
-                        {invoice.invoiceNumber} · {invoice._count.items} items
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      {invoice.contract.property.name}
-                      <p className="text-xs text-muted-foreground">
-                        {invoice.contract.property.propertyCode}
-                      </p>
-                    </TableCell>
-                    <TableCell>{formatTenantName(invoice.tenant)}</TableCell>
-                    <TableCell>
-                      {formatDate(invoice.billingPeriodStart)}
-                      <p className="text-xs text-muted-foreground">
-                        to {formatDate(invoice.billingPeriodEnd)}
-                      </p>
-                    </TableCell>
-                    <TableCell>{formatDate(invoice.dueDate)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{invoice.status.replaceAll("_", " ")}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {invoice._count.payments}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(toNumber(invoice.balanceDue))}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          render={<Link href={`/billing/${invoice.id}`} />}
-                          variant="outline"
-                          size="sm"
-                          className="button-blank rounded-full"
-                        >
-                          <Eye />
-                          View
-                        </Button>
-                        {toNumber(invoice.balanceDue) > 0 ? (
-                          <Button
-                            render={<Link href={`/billing/${invoice.id}/payment`} />}
-                            size="sm"
-                            className="rounded-full"
-                          >
-                            <CircleDollarSign />
-                            Pay
-                          </Button>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <BillingMonitorWorkspace invoices={clientInvoices} />
           )}
         </CardContent>
       </Card>

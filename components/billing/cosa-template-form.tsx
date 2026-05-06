@@ -2,18 +2,10 @@
 
 import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Calculator,
-  LoaderCircle,
-  Save,
-} from "lucide-react";
+import { ArrowLeft, Calculator, LoaderCircle, Save } from "lucide-react";
 import type { CosaTemplateFormState } from "@/app/(dashboard)/billing/actions";
 import { calculateCosaAllocations } from "@/lib/billing/cosa";
-import {
-  ALLOCATION_TYPES,
-  ALLOCATION_TYPE_LABELS,
-} from "@/lib/form-options";
+import { ALLOCATION_TYPES, ALLOCATION_TYPE_LABELS } from "@/lib/form-options";
 import { formatCurrency } from "@/lib/format";
 import { getDescendantPropertyIds } from "@/lib/property-tree";
 import { Button } from "@/components/ui/button";
@@ -22,8 +14,7 @@ import { Label } from "@/components/ui/label";
 
 const initialState: CosaTemplateFormState = {};
 
-const selectClassName =
-  "select-blank";
+const selectClassName = "select-blank";
 
 type AllocationEntry = {
   contractId: string;
@@ -36,7 +27,7 @@ type CosaTemplateFormProps = {
   mode: "create" | "edit";
   formAction: (
     state: CosaTemplateFormState,
-    formData: FormData
+    formData: FormData,
   ) => Promise<CosaTemplateFormState>;
   propertyOptions: {
     id: string;
@@ -93,7 +84,7 @@ function FieldError({ message }: { message?: string }) {
 }
 
 function formatTenantName(
-  tenant: CosaTemplateFormProps["contractOptions"][number]["tenant"]
+  tenant: CosaTemplateFormProps["contractOptions"][number]["tenant"],
 ) {
   return (
     tenant.businessName ||
@@ -161,10 +152,14 @@ export function CosaTemplateForm({
   const [state, action, pending] = useActionState(formAction, initialState);
   const [propertyId, setPropertyId] = useState(initialValues.propertyId);
   const [meterId, setMeterId] = useState(initialValues.meterId);
-  const [defaultAmount, setDefaultAmount] = useState(initialValues.defaultAmount);
-  const [allocationType, setAllocationType] = useState(initialValues.allocationType);
+  const [defaultAmount, setDefaultAmount] = useState(
+    initialValues.defaultAmount,
+  );
+  const [allocationType, setAllocationType] = useState(
+    initialValues.allocationType,
+  );
   const [allocationEntries, setAllocationEntries] = useState<AllocationEntry[]>(
-    initialValues.allocations
+    initialValues.allocations,
   );
 
   const propertyScopeIds = useMemo(
@@ -172,30 +167,30 @@ export function CosaTemplateForm({
       propertyId
         ? getDescendantPropertyIds(propertyId, propertyOptions)
         : new Set<string>(),
-    [propertyId, propertyOptions]
+    [propertyId, propertyOptions],
   );
 
   const visibleContracts = useMemo(
     () =>
       contractOptions.filter((contract) =>
-        propertyScopeIds.has(contract.property.id)
+        propertyScopeIds.has(contract.property.id),
       ),
-    [contractOptions, propertyScopeIds]
+    [contractOptions, propertyScopeIds],
   );
 
   const visibleMeters = useMemo(
     () => meterOptions.filter((meter) => meter.propertyId === propertyId),
-    [meterOptions, propertyId]
+    [meterOptions, propertyId],
   );
 
   const contractLookup = useMemo(
     () => new Map(contractOptions.map((contract) => [contract.id, contract])),
-    [contractOptions]
+    [contractOptions],
   );
 
   function rehydrateEntriesForType(
     nextType: (typeof ALLOCATION_TYPES)[number],
-    currentEntries: AllocationEntry[]
+    currentEntries: AllocationEntry[],
   ) {
     if (nextType === "PERCENTAGE") {
       const equalPercentages = buildEqualPercentages(currentEntries.length);
@@ -209,7 +204,10 @@ export function CosaTemplateForm({
     }
 
     if (nextType === "CUSTOM") {
-      const equalAmounts = buildEqualAmounts(defaultAmount, currentEntries.length);
+      const equalAmounts = buildEqualAmounts(
+        defaultAmount,
+        currentEntries.length,
+      );
 
       return currentEntries.map((entry, index) => ({
         ...entry,
@@ -224,7 +222,9 @@ export function CosaTemplateForm({
         ...entry,
         percentage: "",
         unitCount:
-          entry.unitCount && Number(entry.unitCount) > 0 ? entry.unitCount : "1",
+          entry.unitCount && Number(entry.unitCount) > 0
+            ? entry.unitCount
+            : "1",
         amount: "",
       }));
     }
@@ -258,7 +258,8 @@ export function CosaTemplateForm({
     ) {
       return {
         allocations: [],
-        error: "Every selected contract needs a property size for area-based allocation.",
+        error:
+          "Every selected contract needs a property size for area-based allocation.",
       };
     }
 
@@ -273,7 +274,9 @@ export function CosaTemplateForm({
             return {
               contractId: entry.contractId,
               percentage:
-                entry.percentage.trim() !== "" ? Number(entry.percentage) : null,
+                entry.percentage.trim() !== ""
+                  ? Number(entry.percentage)
+                  : null,
               unitCount:
                 entry.unitCount.trim() !== "" ? Number(entry.unitCount) : null,
               amount: entry.amount.trim() !== "" ? Number(entry.amount) : null,
@@ -303,27 +306,34 @@ export function CosaTemplateForm({
         return currentMeterId;
       }
 
-      const selectedMeter = meterOptions.find((meter) => meter.id === currentMeterId);
+      const selectedMeter = meterOptions.find(
+        (meter) => meter.id === currentMeterId,
+      );
 
       return selectedMeter && selectedMeter.propertyId === nextPropertyId
         ? currentMeterId
         : "";
     });
 
-    const nextScopeIds = getDescendantPropertyIds(nextPropertyId, propertyOptions);
+    const nextScopeIds = getDescendantPropertyIds(
+      nextPropertyId,
+      propertyOptions,
+    );
 
     setAllocationEntries((currentEntries) =>
       currentEntries.filter((entry) => {
         const contract = contractLookup.get(entry.contractId);
         return contract ? nextScopeIds.has(contract.property.id) : false;
-      })
+      }),
     );
   }
 
-  function handleAllocationTypeChange(nextAllocationType: (typeof ALLOCATION_TYPES)[number]) {
+  function handleAllocationTypeChange(
+    nextAllocationType: (typeof ALLOCATION_TYPES)[number],
+  ) {
     setAllocationType(nextAllocationType);
     setAllocationEntries((currentEntries) =>
-      rehydrateEntriesForType(nextAllocationType, currentEntries)
+      rehydrateEntriesForType(nextAllocationType, currentEntries),
     );
   }
 
@@ -347,7 +357,7 @@ export function CosaTemplateForm({
 
       return rehydrateEntriesForType(
         allocationType,
-        currentEntries.filter((entry) => entry.contractId !== contractId)
+        currentEntries.filter((entry) => entry.contractId !== contractId),
       );
     });
   }
@@ -355,7 +365,7 @@ export function CosaTemplateForm({
   function updateAllocationEntry(
     contractId: string,
     key: "percentage" | "unitCount" | "amount",
-    value: string
+    value: string,
   ) {
     setAllocationEntries((currentEntries) =>
       currentEntries.map((entry) =>
@@ -364,8 +374,8 @@ export function CosaTemplateForm({
               ...entry,
               [key]: value,
             }
-          : entry
-      )
+          : entry,
+      ),
     );
   }
 
@@ -375,11 +385,14 @@ export function CosaTemplateForm({
       percentage: entry.percentage,
       unitCount: entry.unitCount,
       amount: entry.amount,
-    }))
+    })),
   );
 
   const previewLookup = new Map(
-    previewResult.allocations.map((allocation) => [allocation.contractId, allocation])
+    previewResult.allocations.map((allocation) => [
+      allocation.contractId,
+      allocation,
+    ]),
   );
 
   const selectedContracts = allocationEntries.flatMap((entry) => {
@@ -402,7 +415,12 @@ export function CosaTemplateForm({
 
   return (
     <form action={action} className="space-y-6">
-      <input type="hidden" name="allocations" value={serializedAllocations} readOnly />
+      <input
+        type="hidden"
+        name="allocations"
+        value={serializedAllocations}
+        readOnly
+      />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
@@ -454,7 +472,8 @@ export function CosaTemplateForm({
                   <option value="">No linked meter</option>
                   {visibleMeters.map((meter) => (
                     <option key={meter.id} value={meter.id}>
-                      {meter.meterCode} · {meter.utilityType.replaceAll("_", " ")}
+                      {meter.meterCode} ·{" "}
+                      {meter.utilityType.replaceAll("_", " ")}
                     </option>
                   ))}
                 </select>
@@ -469,7 +488,7 @@ export function CosaTemplateForm({
                   value={allocationType}
                   onChange={(event) =>
                     handleAllocationTypeChange(
-                      event.target.value as (typeof ALLOCATION_TYPES)[number]
+                      event.target.value as (typeof ALLOCATION_TYPES)[number],
                     )
                   }
                   className={selectClassName}
@@ -499,7 +518,8 @@ export function CosaTemplateForm({
                 />
                 <FieldError message={state.errors?.defaultAmount?.[0]} />
                 <p className="text-sm text-muted-foreground">
-                  Optional. If set, new monthly COSA records will start with this amount.
+                  Optional. If set, new monthly COSA records will start with
+                  this amount.
                 </p>
               </div>
 
@@ -512,9 +532,12 @@ export function CosaTemplateForm({
                     className="mt-1 size-4 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-ring"
                   />
                   <div className="space-y-1">
-                    <span className="text-sm font-medium">Template is active</span>
+                    <span className="text-sm font-medium">
+                      Template is active
+                    </span>
                     <p className="text-sm leading-6 text-muted-foreground">
-                      Active templates stay available when creating future monthly COSA records.
+                      Active templates stay available when creating future
+                      monthly COSA records.
                     </p>
                   </div>
                 </label>
@@ -535,7 +558,8 @@ export function CosaTemplateForm({
                   Default tenant allocation
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Pick the contracts that usually share this COSA charge. New monthly COSA entries can copy this setup in one step.
+                  Pick the contracts that usually share this COSA charge. New
+                  monthly COSA entries can copy this setup in one step.
                 </p>
               </div>
               <div className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-border/60 bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground">
@@ -558,10 +582,10 @@ export function CosaTemplateForm({
                 <div className="space-y-3">
                   {visibleContracts.map((contract) => {
                     const isChecked = allocationEntries.some(
-                      (entry) => entry.contractId === contract.id
+                      (entry) => entry.contractId === contract.id,
                     );
                     const selectedEntry = allocationEntries.find(
-                      (entry) => entry.contractId === contract.id
+                      (entry) => entry.contractId === contract.id,
                     );
                     const preview = previewLookup.get(contract.id);
 
@@ -576,7 +600,10 @@ export function CosaTemplateForm({
                               type="checkbox"
                               checked={isChecked}
                               onChange={(event) =>
-                                toggleContract(contract.id, event.target.checked)
+                                toggleContract(
+                                  contract.id,
+                                  event.target.checked,
+                                )
                               }
                               disabled={pending}
                               className="mt-1 size-4 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-ring"
@@ -586,7 +613,8 @@ export function CosaTemplateForm({
                                 {formatTenantName(contract.tenant)}
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                {contract.property.propertyCode} · {contract.property.name}
+                                {contract.property.propertyCode} ·{" "}
+                                {contract.property.name}
                               </p>
                               <p className="text-xs text-muted-foreground">
                                 Bills from {contract.paymentAnchorLabel}
@@ -607,14 +635,19 @@ export function CosaTemplateForm({
                                     : allocationType === "PERCENTAGE"
                                       ? `${selectedEntry?.percentage || "0"}%`
                                       : allocationType === "PER_UNIT"
-                                        ? formatUnitLabel(selectedEntry?.unitCount ?? "")
-                                      : "Ready"}
+                                        ? formatUnitLabel(
+                                            selectedEntry?.unitCount ?? "",
+                                          )
+                                        : "Ready"}
                                 </span>
                               </p>
                               {preview ? (
                                 <p>{preview.percentage.toFixed(2)}%</p>
-                              ) : allocationType === "PER_UNIT" && selectedEntry ? (
-                                <p>{formatUnitLabel(selectedEntry.unitCount)}</p>
+                              ) : allocationType === "PER_UNIT" &&
+                                selectedEntry ? (
+                                <p>
+                                  {formatUnitLabel(selectedEntry.unitCount)}
+                                </p>
                               ) : null}
                             </div>
                           ) : null}
@@ -640,7 +673,7 @@ export function CosaTemplateForm({
                                     updateAllocationEntry(
                                       contract.id,
                                       "percentage",
-                                      event.target.value
+                                      event.target.value,
                                     )
                                   }
                                   placeholder="25.00"
@@ -663,7 +696,7 @@ export function CosaTemplateForm({
                                     updateAllocationEntry(
                                       contract.id,
                                       "unitCount",
-                                      event.target.value
+                                      event.target.value,
                                     )
                                   }
                                   placeholder="1"
@@ -686,7 +719,7 @@ export function CosaTemplateForm({
                                     updateAllocationEntry(
                                       contract.id,
                                       "amount",
-                                      event.target.value
+                                      event.target.value,
                                     )
                                   }
                                   placeholder="3000.00"
@@ -705,7 +738,7 @@ export function CosaTemplateForm({
                                     ? `${selectedEntry?.percentage || "0"}% default share`
                                     : allocationType === "PER_UNIT"
                                       ? `${formatUnitLabel(selectedEntry?.unitCount ?? "")} default weight`
-                                    : "Set a default monthly amount to preview."}
+                                      : "Set a default monthly amount to preview."}
                               </div>
                             </div>
                           </div>
@@ -723,13 +756,19 @@ export function CosaTemplateForm({
                           Template preview
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          These defaults are copied into new monthly COSA records, then can still be adjusted before saving the month.
+                          These defaults are copied into new monthly COSA
+                          records, then can still be adjusted before saving the
+                          month.
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-muted-foreground">Default total</p>
+                        <p className="text-sm text-muted-foreground">
+                          Default total
+                        </p>
                         <p className="text-lg font-semibold text-foreground">
-                          {defaultAmount ? formatCurrency(Number(defaultAmount)) : "Not set"}
+                          {defaultAmount
+                            ? formatCurrency(Number(defaultAmount))
+                            : "Not set"}
                         </p>
                       </div>
                     </div>
@@ -749,7 +788,9 @@ export function CosaTemplateForm({
                               className="flex items-center justify-between gap-4"
                             >
                               <span className="text-muted-foreground">
-                                {formatTenantName(selectedContract.contract.tenant)}
+                                {formatTenantName(
+                                  selectedContract.contract.tenant,
+                                )}
                               </span>
                               <span className="font-medium text-foreground">
                                 {preview
@@ -757,10 +798,17 @@ export function CosaTemplateForm({
                                   : allocationType === "PERCENTAGE"
                                     ? `${selectedContract.entry.percentage || "0"}%`
                                     : allocationType === "PER_UNIT"
-                                      ? formatUnitLabel(selectedContract.entry.unitCount)
-                                    : allocationType === "CUSTOM"
-                                      ? formatCurrency(Number(selectedContract.entry.amount || 0))
-                                      : "Ready"}
+                                      ? formatUnitLabel(
+                                          selectedContract.entry.unitCount,
+                                        )
+                                      : allocationType === "CUSTOM"
+                                        ? formatCurrency(
+                                            Number(
+                                              selectedContract.entry.amount ||
+                                                0,
+                                            ),
+                                          )
+                                        : "Ready"}
                               </span>
                             </div>
                           );
@@ -780,10 +828,14 @@ export function CosaTemplateForm({
               {mode === "create" ? "New template" : "Update template"}
             </p>
             <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em]">
-              {mode === "create" ? "Create COSA template" : "Save COSA template"}
+              {mode === "create"
+                ? "Create COSA template"
+                : "Save COSA template"}
             </h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Templates keep the recurring participants and split logic in one reusable place. Future monthly COSA records can start from this default setup.
+              Templates keep the recurring participants and split logic in one
+              reusable place. Future monthly COSA records can start from this
+              default setup.
             </p>
 
             <div className="mt-5 space-y-3 rounded-[1.2rem] border border-border/60 bg-muted/40 p-4 text-sm">
@@ -802,7 +854,9 @@ export function CosaTemplateForm({
               <div className="flex items-center justify-between gap-4">
                 <span className="text-muted-foreground">Default amount</span>
                 <span className="font-medium text-foreground">
-                  {defaultAmount ? formatCurrency(Number(defaultAmount)) : "Not set"}
+                  {defaultAmount
+                    ? formatCurrency(Number(defaultAmount))
+                    : "Not set"}
                 </span>
               </div>
             </div>
@@ -832,14 +886,18 @@ export function CosaTemplateForm({
           <div className="border-blank rounded-xl p-5">
             <div className="flex items-center gap-2">
               <Calculator className="size-4 text-primary" />
-              <h3 className="font-semibold tracking-[-0.03em]">Template notes</h3>
+              <h3 className="font-semibold tracking-[-0.03em]">
+                Template notes
+              </h3>
             </div>
             <div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
               <p>
-                Save the common tenant split once here, then reuse it each month from the template list.
+                Save the common tenant split once here, then reuse it each month
+                from the template list.
               </p>
               <p>
-                Monthly COSA records copy these defaults as a snapshot, so later template edits do not rewrite old billing history.
+                Monthly COSA records copy these defaults as a snapshot, so later
+                template edits do not rewrite old billing history.
               </p>
             </div>
           </div>

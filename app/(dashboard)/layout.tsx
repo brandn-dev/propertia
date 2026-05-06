@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { Suspense } from "react";
 import { AppSidebarShell } from "@/components/dashboard/app-sidebar-shell";
 import { DashboardHeaderShell } from "@/components/dashboard/dashboard-header-shell";
@@ -6,16 +7,23 @@ import {
   DashboardSidebarSkeleton,
 } from "@/components/dashboard/dashboard-loading-screen";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { parseSidebarOpenState, SIDEBAR_COOKIE_NAME } from "@/lib/sidebar-state";
 
 export const unstable_instant = false;
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const sidebarOpen = parseSidebarOpenState(
+    cookieStore.get(SIDEBAR_COOKIE_NAME)?.value,
+    true
+  );
+
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={sidebarOpen}>
       <Suspense fallback={<DashboardSidebarSkeleton />}>
         <AppSidebarShell />
       </Suspense>

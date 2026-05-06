@@ -1,7 +1,15 @@
 import "server-only";
 
 import type { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import {
+  filterCyclesWithoutInvoicedMonths,
+  findNextCompletedBillingCycles,
+  formatBillingCycleLabel,
+  getBillingCycleKey,
+  getBillingMonthKey,
+} from "@/lib/billing/cycles";
+import { getHistoricalBacklogCutoffDate, getHistoricalBacklogLatestDate } from "@/lib/billing/backlog";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 
 const recurringChargeOverviewSelect = {
   id: true,
@@ -81,6 +89,230 @@ export async function getInvoiceGenerationContractOptions() {
       },
     },
   });
+}
+
+export async function getInvoiceBrandingTemplatesOverview() {
+  return withPrismaRetry(() =>
+    prisma.invoiceBrandingTemplate.findMany({
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        brandName: true,
+        brandSubtitle: true,
+        invoiceTitlePrefix: true,
+        logoUrl: true,
+        usePropertyLogo: true,
+        titleScale: true,
+        logoScalePercent: true,
+        brandNameSizePercent: true,
+        brandSubtitleSizePercent: true,
+        tenantNameSizePercent: true,
+        titleSizePercent: true,
+        brandNameWeight: true,
+        tenantNameWeight: true,
+        titleWeight: true,
+        accentColor: true,
+        labelColor: true,
+        valueColor: true,
+        mutedColor: true,
+        panelBackground: true,
+        isDefault: true,
+        properties: {
+          orderBy: [{ name: "asc" }],
+          select: {
+            id: true,
+            name: true,
+            propertyCode: true,
+          },
+        },
+        _count: {
+          select: {
+            properties: true,
+          },
+        },
+      },
+    })
+  );
+}
+
+export async function getInvoiceBrandingTemplateForEdit(templateId: string) {
+  return withPrismaRetry(() =>
+    prisma.invoiceBrandingTemplate.findUnique({
+      where: { id: templateId },
+      select: {
+        id: true,
+        name: true,
+        brandName: true,
+        brandSubtitle: true,
+        invoiceTitlePrefix: true,
+        logoUrl: true,
+        logoStorageKey: true,
+        usePropertyLogo: true,
+        titleScale: true,
+        logoScalePercent: true,
+        brandNameSizePercent: true,
+        brandSubtitleSizePercent: true,
+        tenantNameSizePercent: true,
+        titleSizePercent: true,
+        brandNameWeight: true,
+        tenantNameWeight: true,
+        titleWeight: true,
+        accentColor: true,
+        labelColor: true,
+        valueColor: true,
+        mutedColor: true,
+        panelBackground: true,
+        isDefault: true,
+        properties: {
+          orderBy: [{ name: "asc" }],
+          select: {
+            id: true,
+            name: true,
+            propertyCode: true,
+          },
+        },
+        _count: {
+          select: {
+            properties: true,
+          },
+        },
+      },
+    })
+  );
+}
+
+export async function getHistoricalBacklogContractOptions() {
+  const cutoffDate = getHistoricalBacklogCutoffDate();
+  const latestBacklogDate = getHistoricalBacklogLatestDate();
+  const contracts = await prisma.contract.findMany({
+    where: {
+      paymentStartDate: {
+        lt: cutoffDate,
+      },
+    },
+    orderBy: [{ paymentStartDate: "asc" }],
+    select: {
+      id: true,
+      tenantId: true,
+      status: true,
+      paymentStartDate: true,
+      endDate: true,
+      monthlyRent: true,
+      freeRentCycles: true,
+      advanceRentMonths: true,
+      advanceRentApplication: true,
+      advanceRent: true,
+      property: {
+        select: {
+          id: true,
+          name: true,
+          propertyCode: true,
+        },
+      },
+      tenant: {
+        select: {
+          firstName: true,
+          lastName: true,
+          businessName: true,
+        },
+      },
+      invoices: {
+        where: {
+          billingPeriodStart: {
+            lt: cutoffDate,
+          },
+        },
+        select: {
+          billingPeriodStart: true,
+          billingPeriodEnd: true,
+        },
+      },
+    },
+  });
+
+  const meterScopeFilters = contracts.map((contract) => ({
+    propertyId: contract.property.id,
+    tenantId: contract.tenantId,
+    isShared: false,
+  }));
+
+  const meters = meterScopeFilters.length
+    ? await prisma.utilityMeter.findMany({
+        where: {
+          OR: meterScopeFilters,
+        },
+        orderBy: [{ utilityType: "asc" }, { meterCode: "asc" }],
+        select: {
+          id: true,
+          propertyId: true,
+          tenantId: true,
+          meterCode: true,
+          utilityType: true,
+        },
+      })
+    : [];
+
+  const metersByContractScope = new Map<string, typeof meters>();
+
+  for (const contract of contracts) {
+    const scopeKey = `${contract.property.id}:${contract.tenantId}`;
+    metersByContractScope.set(
+      scopeKey,
+      meters.filter(
+        (meter) =>
+          meter.propertyId === contract.property.id &&
+          meter.tenantId === contract.tenantId
+      )
+    );
+  }
+
+  return contracts
+    .map((contract) => {
+      const existingPeriods = new Set(
+        contract.invoices.map((invoice) =>
+          getBillingCycleKey(invoice.billingPeriodStart, invoice.billingPeriodEnd)
+        )
+      );
+      const existingMonthKeys = new Set(
+        contract.invoices.map((invoice) =>
+          getBillingMonthKey(invoice.billingPeriodStart)
+        )
+      );
+      const pendingBacklogCycles = filterCyclesWithoutInvoicedMonths(
+        findNextCompletedBillingCycles({
+          anchorDate: contract.paymentStartDate,
+          contractEndDate: contract.endDate,
+          issueDate: latestBacklogDate,
+          existingPeriods,
+        }),
+        existingMonthKeys
+      ).filter((cycle) => cycle.start <= cutoffDate);
+
+      return {
+        id: contract.id,
+        tenantId: contract.tenantId,
+        status: contract.status,
+        paymentStartDate: contract.paymentStartDate.toISOString(),
+        endDate: contract.endDate.toISOString(),
+        monthlyRent: contract.monthlyRent.toString(),
+        freeRentCycles: contract.freeRentCycles,
+        advanceRentMonths: contract.advanceRentMonths,
+        advanceRentApplication: contract.advanceRentApplication,
+        advanceRent: contract.advanceRent.toString(),
+        property: contract.property,
+        tenant: contract.tenant,
+        meters:
+          metersByContractScope.get(`${contract.property.id}:${contract.tenantId}`) ?? [],
+        pendingBacklogCycles: pendingBacklogCycles.map((cycle) => ({
+          key: getBillingCycleKey(cycle.start, cycle.end),
+          start: cycle.start.toISOString(),
+          end: cycle.end.toISOString(),
+          label: formatBillingCycleLabel(cycle),
+        })),
+      };
+    })
+    .filter((contract) => contract.pendingBacklogCycles.length > 0);
 }
 
 export async function getRecurringChargeContractOptions(includeContractId?: string) {
@@ -569,6 +801,7 @@ export async function getInvoiceForView(invoiceId: string) {
     where: { id: invoiceId },
     select: {
       id: true,
+      tenantId: true,
       invoiceNumber: true,
       publicAccessCode: true,
       issueDate: true,
@@ -580,7 +813,9 @@ export async function getInvoiceForView(invoiceId: string) {
       discount: true,
       totalAmount: true,
       balanceDue: true,
+      origin: true,
       status: true,
+      notes: true,
       tenant: {
         select: {
           type: true,
@@ -597,8 +832,36 @@ export async function getInvoiceForView(invoiceId: string) {
           paymentStartDate: true,
           property: {
             select: {
+              id: true,
               name: true,
               propertyCode: true,
+              logoUrl: true,
+              invoiceBrandingTemplate: {
+                select: {
+                  id: true,
+                  name: true,
+                  brandName: true,
+                  brandSubtitle: true,
+                  invoiceTitlePrefix: true,
+                  logoUrl: true,
+                  usePropertyLogo: true,
+                  titleScale: true,
+                  logoScalePercent: true,
+                  brandNameSizePercent: true,
+                  brandSubtitleSizePercent: true,
+                  tenantNameSizePercent: true,
+                  titleSizePercent: true,
+                  brandNameWeight: true,
+                  tenantNameWeight: true,
+                  titleWeight: true,
+                  accentColor: true,
+                  labelColor: true,
+                  valueColor: true,
+                  mutedColor: true,
+                  panelBackground: true,
+                  isDefault: true,
+                },
+              },
             },
           },
         },
@@ -623,8 +886,14 @@ export async function getInvoiceForView(invoiceId: string) {
             select: {
               id: true,
               readingDate: true,
+              previousReading: true,
+              currentReading: true,
+              ratePerUnit: true,
+              consumption: true,
+              totalAmount: true,
               meter: {
                 select: {
+                  id: true,
                   meterCode: true,
                   utilityType: true,
                 },
@@ -699,7 +968,9 @@ export async function getInvoiceForPublicView(invoiceId: string) {
       discount: true,
       totalAmount: true,
       balanceDue: true,
+      origin: true,
       status: true,
+      notes: true,
       tenant: {
         select: {
           type: true,
@@ -715,6 +986,33 @@ export async function getInvoiceForPublicView(invoiceId: string) {
             select: {
               name: true,
               propertyCode: true,
+              logoUrl: true,
+              invoiceBrandingTemplate: {
+                select: {
+                  id: true,
+                  name: true,
+                  brandName: true,
+                  brandSubtitle: true,
+                  invoiceTitlePrefix: true,
+                  logoUrl: true,
+                  usePropertyLogo: true,
+                  titleScale: true,
+                  logoScalePercent: true,
+                  brandNameSizePercent: true,
+                  brandSubtitleSizePercent: true,
+                  tenantNameSizePercent: true,
+                  titleSizePercent: true,
+                  brandNameWeight: true,
+                  tenantNameWeight: true,
+                  titleWeight: true,
+                  accentColor: true,
+                  labelColor: true,
+                  valueColor: true,
+                  mutedColor: true,
+                  panelBackground: true,
+                  isDefault: true,
+                },
+              },
             },
           },
         },
@@ -728,6 +1026,13 @@ export async function getInvoiceForPublicView(invoiceId: string) {
           quantity: true,
           unitPrice: true,
           amount: true,
+          contractRecurringCharge: {
+            select: {
+              id: true,
+              label: true,
+              chargeType: true,
+            },
+          },
           cosaAllocation: {
             select: {
               id: true,

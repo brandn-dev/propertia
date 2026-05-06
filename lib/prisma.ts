@@ -48,3 +48,27 @@ export const prisma =
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
+
+function isRetryablePrismaError(error: unknown) {
+  return (
+    error instanceof Error &&
+    /Connection terminated unexpectedly|Can't reach database server|Timed out fetching a new connection/i.test(
+      error.message
+    )
+  );
+}
+
+export async function withPrismaRetry<T>(
+  run: () => Promise<T>,
+  retries = 1
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (retries <= 0 || !isRetryablePrismaError(error)) {
+      throw error;
+    }
+
+    return withPrismaRetry(run, retries - 1);
+  }
+}

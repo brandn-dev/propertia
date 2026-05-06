@@ -12,9 +12,11 @@ import {
   getBillingMonthKey,
   getInvoiceGenerationSelectionKey,
 } from "@/lib/billing/cycles";
+import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useActionToast } from "@/components/ui/toast-provider";
 
 const selectClassName =
   "select-blank";
@@ -93,11 +95,17 @@ export function InvoiceGenerationForm({
   initialValues,
 }: InvoiceGenerationFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
+  useActionToast({
+    message: state.message,
+    title: "Invoice generation blocked",
+    intent: "error",
+  });
   const [selectedTenantId, setSelectedTenantId] = useState(initialValues.tenantId);
   const [selectedCycleKeysByTenant, setSelectedCycleKeysByTenant] = useState<
     Record<string, string[]>
   >({});
   const [issueDate, setIssueDate] = useState(initialValues.issueDate);
+  const cutoffDate = getHistoricalBacklogCutoffDate();
 
   const issueDateValue = issueDate
     ? new Date(`${issueDate}T23:59:59.999`)
@@ -114,6 +122,8 @@ export function InvoiceGenerationForm({
             getBillingCycleKey(new Date(period.start), new Date(period.end))
           )
         ),
+        includeCurrentCycle: true,
+        includeNextCycleInIssueMonth: true,
       });
       const visiblePendingCycles = filterCyclesWithoutInvoicedMonths(
         pendingCycles,
@@ -122,7 +132,7 @@ export function InvoiceGenerationForm({
             getBillingMonthKey(new Date(period.start))
           )
         )
-      );
+      ).filter((cycle) => cycle.end >= cutoffDate);
 
       return {
         ...contract,
@@ -231,7 +241,8 @@ export function InvoiceGenerationForm({
                 <p className="text-sm leading-6 text-muted-foreground">
                   Billing periods are derived from each contract&apos;s billing
                   anchor. Pick the business first, then check only the invoice
-                  months you want to issue for that business.
+                  months you want to issue, including the current active month
+                  when needed.
                 </p>
               </div>
             </div>
@@ -262,6 +273,10 @@ export function InvoiceGenerationForm({
               <p className="text-sm text-muted-foreground">
                 Businesses only appear here when they have completed uninvoiced
                 billing months ready for issuance.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Earlier historical months still move through backlog. May 2026 can
+                generate here when still uninvoiced.
               </p>
             </div>
 
@@ -301,8 +316,8 @@ export function InvoiceGenerationForm({
 
                 {!currentTenant ? (
                   <p className="text-sm leading-6 text-muted-foreground">
-                    No eligible invoice cycles are available for the selected
-                    issue date.
+                  No eligible invoice cycles are available for the selected
+                  issue date.
                   </p>
                 ) : (
                   <div className="max-h-80 space-y-2 overflow-y-auto pr-1">

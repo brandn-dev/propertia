@@ -253,8 +253,9 @@ export function ContractForm({
                     className="field-blank h-11"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Free-rent and advance-rent application both begin from this
-                    billing cycle.
+                    Free-rent and advance-rent credit consumption both begin from
+                    this billing cycle. Collection of those funds happens outside
+                    this billing anchor.
                   </p>
                   <FieldError message={state.errors?.paymentStartDate?.[0]} />
                 </div>

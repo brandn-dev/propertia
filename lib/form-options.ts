@@ -48,6 +48,10 @@ export const ALLOCATION_TYPES = [
   "BY_AREA",
   "CUSTOM",
 ] as const;
+export const BACKLOG_PAYMENT_STATUSES = ["UNPAID", "PARTIAL", "PAID"] as const;
+export const BACKLOG_ADJUSTMENT_TYPES = ["ADJUSTMENT", "ARREARS"] as const;
+export const INVOICE_ORIGINS = ["GENERATED", "BACKLOG"] as const;
+export const METER_READING_ORIGINS = ["OPERATIONAL", "BACKLOG"] as const;
 
 export const PROPERTY_OWNERSHIP_TYPE_LABELS = {
   OWNED: "Owned",
@@ -124,4 +128,25 @@ export const ALLOCATION_TYPE_LABELS = {
   EQUAL_SPLIT: "Equal split",
   BY_AREA: "By area",
   CUSTOM: "Custom amount",
+} as const;
+
+export const BACKLOG_PAYMENT_STATUS_LABELS = {
+  UNPAID: "Unpaid",
+  PARTIAL: "Partially paid",
+  PAID: "Paid in full",
+} as const;
+
+export const BACKLOG_ADJUSTMENT_TYPE_LABELS = {
+  ADJUSTMENT: "Adjustment",
+  ARREARS: "Arrears",
+} as const;
+
+export const INVOICE_ORIGIN_LABELS = {
+  GENERATED: "Generated",
+  BACKLOG: "Backlog",
+} as const;
+
+export const METER_READING_ORIGIN_LABELS = {
+  OPERATIONAL: "Operational",
+  BACKLOG: "Backlog",
 } as const;

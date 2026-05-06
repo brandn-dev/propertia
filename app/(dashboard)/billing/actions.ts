@@ -1,9 +1,13 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
+import {
+  getInvoiceTemplateLogoFileError,
+  removeInvoiceTemplateLogoFile,
+  storeInvoiceTemplateLogoFile,
+} from "@/lib/properties/logo-storage";
 import { prisma } from "@/lib/prisma";
 import {
   filterCyclesWithoutInvoicedMonths,
@@ -16,9 +20,13 @@ import {
   getBillingMonthKey,
 } from "@/lib/billing/cycles";
 import { calculateAdjustedMonthlyRent } from "@/lib/billing/rent-adjustments";
+import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
 import { generateInvoiceAccessCode } from "@/lib/billing/public-access";
 import { calculateCosaAllocations } from "@/lib/billing/cosa";
+import { buildInvoiceNumber } from "@/lib/billing/invoice-number";
 import { getDescendantPropertyIds } from "@/lib/property-tree";
+import { withToast } from "@/lib/toast";
+import { invoiceBrandingTemplateSchema } from "@/lib/validations/invoice-branding-template";
 import { cosaSchema } from "@/lib/validations/cosa";
 import { cosaTemplateSchema } from "@/lib/validations/cosa-template";
 import { invoiceGenerationSchema } from "@/lib/validations/invoice-generation";
@@ -42,6 +50,11 @@ export type CosaFormState = {
 };
 
 export type CosaTemplateFormState = {
+  message?: string;
+  errors?: Record<string, string[] | undefined>;
+};
+
+export type InvoiceBrandingTemplateFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
 };
@@ -107,6 +120,36 @@ function getCosaTemplatePayload(formData: FormData) {
     isActive: formData.get("isActive") === "on",
     allocations: allocationsResult.allocations,
     allocationsParseError: allocationsResult.error,
+  };
+}
+
+function getInvoiceBrandingTemplatePayload(formData: FormData) {
+  return {
+    name: String(formData.get("name") ?? ""),
+    brandName: String(formData.get("brandName") ?? ""),
+    brandSubtitle: String(formData.get("brandSubtitle") ?? ""),
+    invoiceTitlePrefix: String(formData.get("invoiceTitlePrefix") ?? ""),
+    usePropertyLogo: formData.get("usePropertyLogo") === "on",
+    titleScale: String(formData.get("titleScale") ?? ""),
+    logoScalePercent: String(formData.get("logoScalePercent") ?? ""),
+    brandNameSizePercent: String(formData.get("brandNameSizePercent") ?? ""),
+    brandSubtitleSizePercent: String(formData.get("brandSubtitleSizePercent") ?? ""),
+    tenantNameSizePercent: String(formData.get("tenantNameSizePercent") ?? ""),
+    titleSizePercent: String(formData.get("titleSizePercent") ?? ""),
+    brandNameWeight: String(formData.get("brandNameWeight") ?? ""),
+    tenantNameWeight: String(formData.get("tenantNameWeight") ?? ""),
+    titleWeight: String(formData.get("titleWeight") ?? ""),
+    accentColor: String(formData.get("accentColor") ?? ""),
+    labelColor: String(formData.get("labelColor") ?? ""),
+    valueColor: String(formData.get("valueColor") ?? ""),
+    mutedColor: String(formData.get("mutedColor") ?? ""),
+    panelBackground: String(formData.get("panelBackground") ?? ""),
+    isDefault: formData.get("isDefault") === "on",
+    removeLogo: formData.get("removeLogo") === "true",
+    propertyIds: formData
+      .getAll("propertyIds")
+      .map((value) => String(value))
+      .filter(Boolean),
   };
 }
 
@@ -197,17 +240,80 @@ function getCosaTemplateParseError(
   };
 }
 
+async function resolveInvoiceTemplateLogoInput(
+  formData: FormData,
+  currentLogo?: {
+    logoUrl: string | null;
+    logoStorageKey: string | null;
+  }
+) {
+  const logoFile = formData.get("logoFile");
+  const removeLogo = formData.get("removeLogo") === "true";
+  const nextLogoFile =
+    logoFile instanceof File && logoFile.size > 0 ? logoFile : null;
+
+  if (nextLogoFile) {
+    const logoFileError = getInvoiceTemplateLogoFileError(nextLogoFile);
+
+    if (logoFileError) {
+      return {
+        error: logoFileError,
+      };
+    }
+
+    const storedLogo = await storeInvoiceTemplateLogoFile(nextLogoFile);
+
+    return {
+      ...storedLogo,
+      replacedStorageKey: currentLogo?.logoStorageKey ?? null,
+    };
+  }
+
+  if (removeLogo) {
+    return {
+      logoUrl: null,
+      logoStorageKey: null,
+      replacedStorageKey: currentLogo?.logoStorageKey ?? null,
+    };
+  }
+
+  return {
+    logoUrl: currentLogo?.logoUrl ?? null,
+    logoStorageKey: currentLogo?.logoStorageKey ?? null,
+    replacedStorageKey: null,
+  };
+}
+
 function revalidateBillingViews() {
   [
     "/dashboard",
     "/billing",
+    "/billing/invoice-templates",
+    "/billing/backlog",
     "/billing/cosa",
     "/billing/cosa/templates",
     "/billing/charges",
     "/contracts",
     "/tenants",
     "/utilities",
+    "/properties",
   ].forEach((path) => revalidatePath(path));
+}
+
+async function validateInvoiceBrandingTemplateProperties(propertyIds: string[]) {
+  if (propertyIds.length === 0) {
+    return true;
+  }
+
+  const count = await prisma.property.count({
+    where: {
+      id: {
+        in: propertyIds,
+      },
+    },
+  });
+
+  return count === propertyIds.length;
 }
 
 function toMoney(value: number) {
@@ -224,16 +330,6 @@ function endOfDay(value: Date) {
   const next = new Date(value);
   next.setHours(23, 59, 59, 999);
   return next;
-}
-
-function buildInvoiceNumber(issueDate: Date, propertyCode: string) {
-  const year = issueDate.getFullYear();
-  const month = String(issueDate.getMonth() + 1).padStart(2, "0");
-  const day = String(issueDate.getDate()).padStart(2, "0");
-  const suffix = randomUUID().slice(0, 8).toUpperCase();
-  const cleanPropertyCode = propertyCode.replace(/[^A-Za-z0-9]/g, "").slice(0, 8);
-
-  return `INV-${year}${month}${day}-${cleanPropertyCode || "PROP"}-${suffix}`;
 }
 
 function deriveWholeMonths(amount: number, baseRent: number) {
@@ -523,6 +619,7 @@ export async function generateInvoicesAction(
 
   const issueDate = endOfDay(new Date(validatedFields.data.issueDate));
   const dueDate = endOfDay(new Date(validatedFields.data.dueDate));
+  const cutoffDate = getHistoricalBacklogCutoffDate();
 
   const contracts = await prisma.contract.findMany({
     where: {
@@ -704,9 +801,11 @@ export async function generateInvoicesAction(
         contractEndDate: contract.endDate,
         issueDate,
         existingPeriods: existingPeriodsByContract.get(contract.id) ?? new Set<string>(),
+        includeCurrentCycle: true,
+        includeNextCycleInIssueMonth: true,
       }),
       existingMonthsByContract.get(contract.id) ?? new Set<string>()
-    );
+    ).filter((cycle) => cycle.end >= cutoffDate);
     const baseRent = Number(contract.monthlyRent.toString());
     const advanceRentMonths =
       contract.advanceRentMonths > 0
@@ -752,6 +851,11 @@ export async function generateInvoicesAction(
       }
 
       matchedSelectedCycleKeys.add(selectionKey);
+      const cycleIndex = getBillingCycleIndex(contract.paymentStartDate, cycle.start);
+      const previousCycle =
+        cycleIndex > 0
+          ? getBillingCycleAtIndex(contract.paymentStartDate, cycleIndex - 1)
+          : null;
 
       const cycleCharges = contractCharges.filter((charge) =>
         cycleOverlapsRange(cycle, charge.effectiveStartDate, charge.effectiveEndDate)
@@ -759,7 +863,9 @@ export async function generateInvoicesAction(
 
       const cycleReadings = contractReadings.filter(
         (reading) =>
-          reading.readingDate >= cycle.start && reading.readingDate <= cycle.end
+          previousCycle != null &&
+          reading.readingDate >= previousCycle.start &&
+          reading.readingDate <= previousCycle.end
       );
       const cycleCosaAllocations = contractCosaAllocations.filter(
         (allocation) =>
@@ -773,6 +879,9 @@ export async function generateInvoicesAction(
         adjustments: contract.rentAdjustments,
       });
       const cycleLabel = formatBillingCycleLabel(cycle);
+      const utilityCoverageLabel = previousCycle
+        ? `${toDateInputValue(previousCycle.start)} to ${toDateInputValue(previousCycle.end)}`
+        : null;
       const recurringChargeAmount = cycleCharges.reduce(
         (sum, charge) => sum + Number(charge.amount.toString()),
         0
@@ -785,11 +894,8 @@ export async function generateInvoicesAction(
         (sum, allocation) => sum + Number(allocation.computedAmount.toString()),
         0
       );
-      const cycleIndex = getBillingCycleIndex(contract.paymentStartDate, cycle.start);
       const oneTimeSecurityDepositCharge =
         cycleIndex === 0 ? Number(contract.securityDeposit.toString()) : 0;
-      const oneTimeAdvanceRentCharge =
-        cycleIndex === 0 ? Number(contract.advanceRent.toString()) : 0;
       const isFreeRentCycle =
         cycleIndex > -1 && cycleIndex < contract.freeRentCycles;
       const freeRentConcessionAmount = isFreeRentCycle ? rentAmount : 0;
@@ -805,7 +911,6 @@ export async function generateInvoicesAction(
         utilityAmount +
         cosaAmount +
         oneTimeSecurityDepositCharge +
-        oneTimeAdvanceRentCharge -
         freeRentConcessionAmount -
         advanceRentCreditAmount;
       const totalAmount = rentAmount + additionalCharges;
@@ -849,17 +954,6 @@ export async function generateInvoicesAction(
                       },
                     ]
                   : []),
-                ...(oneTimeAdvanceRentCharge > 0
-                  ? [
-                      {
-                        itemType: "ADJUSTMENT" as const,
-                        description: `Advance rent charge · ${advanceRentMonths} month(s)`,
-                        quantity: toMoney(1),
-                        unitPrice: toMoney(oneTimeAdvanceRentCharge),
-                        amount: toMoney(oneTimeAdvanceRentCharge),
-                      },
-                    ]
-                  : []),
                 ...cycleCharges.map((charge) => ({
                   itemType: "RECURRING_CHARGE" as const,
                   description: `${charge.label} · ${toDateInputValue(cycle.start)} to ${toDateInputValue(cycle.end)}`,
@@ -870,7 +964,9 @@ export async function generateInvoicesAction(
                 })),
                 ...cycleReadings.map((reading) => ({
                   itemType: "UTILITY_READING" as const,
-                  description: `${reading.meter.utilityType.replaceAll("_", " ")} reading · ${reading.meter.meterCode} · ${reading.readingDate.toISOString().slice(0, 10)}`,
+                  description: `${reading.meter.utilityType.replaceAll("_", " ")} reading · ${reading.meter.meterCode} · ${reading.readingDate.toISOString().slice(0, 10)}${
+                    utilityCoverageLabel ? ` · service ${utilityCoverageLabel}` : ""
+                  }`,
                   quantity: toMoney(Number(reading.consumption.toString())),
                   unitPrice: toMoney(Number(reading.ratePerUnit.toString())),
                   amount: toMoney(Number(reading.totalAmount.toString())),
@@ -946,7 +1042,13 @@ export async function generateInvoicesAction(
   }
 
   revalidateBillingViews();
-  redirect("/billing");
+  redirect(
+    withToast("/billing", {
+      intent: "success",
+      title: "Invoices generated",
+      description: `Generated ${operations.length} invoice cycle(s).`,
+    })
+  );
 }
 
 export async function createCosaAction(
@@ -1483,6 +1585,269 @@ export async function updateCosaTemplateAction(
   redirect("/billing/cosa/templates");
 }
 
+export async function createInvoiceBrandingTemplateAction(
+  _previousState: InvoiceBrandingTemplateFormState,
+  formData: FormData
+): Promise<InvoiceBrandingTemplateFormState> {
+  await requireRole("ADMIN");
+
+  const payload = getInvoiceBrandingTemplatePayload(formData);
+  const validatedFields = invoiceBrandingTemplateSchema.safeParse(payload);
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Fix the highlighted invoice template fields and try again.",
+    };
+  }
+
+  if (
+    !(await validateInvoiceBrandingTemplateProperties(
+      payload.propertyIds
+    ))
+  ) {
+    return {
+      errors: {
+        propertyIds: ["Select valid properties for this template."],
+      },
+      message: "Template property assignments are invalid.",
+    };
+  }
+
+  const logoInput = await resolveInvoiceTemplateLogoInput(formData);
+
+  if ("error" in logoInput) {
+    const logoError = logoInput.error ?? "Template logo is invalid.";
+
+    return {
+      errors: {
+        logoFile: [logoError],
+      },
+      message: "Template logo could not be saved.",
+    };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (validatedFields.data.isDefault) {
+        await tx.invoiceBrandingTemplate.updateMany({
+          where: {
+            isDefault: true,
+          },
+          data: {
+            isDefault: false,
+          },
+        });
+      }
+
+      const template = await tx.invoiceBrandingTemplate.create({
+        data: {
+          name: validatedFields.data.name,
+          brandName: validatedFields.data.brandName,
+          brandSubtitle: validatedFields.data.brandSubtitle,
+          invoiceTitlePrefix: validatedFields.data.invoiceTitlePrefix,
+          logoUrl: logoInput.logoUrl,
+          logoStorageKey: logoInput.logoStorageKey,
+          usePropertyLogo: validatedFields.data.usePropertyLogo,
+          titleScale: validatedFields.data.titleScale,
+          logoScalePercent: validatedFields.data.logoScalePercent,
+          brandNameSizePercent: validatedFields.data.brandNameSizePercent,
+          brandSubtitleSizePercent: validatedFields.data.brandSubtitleSizePercent,
+          tenantNameSizePercent: validatedFields.data.tenantNameSizePercent,
+          titleSizePercent: validatedFields.data.titleSizePercent,
+          brandNameWeight: validatedFields.data.brandNameWeight,
+          tenantNameWeight: validatedFields.data.tenantNameWeight,
+          titleWeight: validatedFields.data.titleWeight,
+          accentColor: validatedFields.data.accentColor,
+          labelColor: validatedFields.data.labelColor,
+          valueColor: validatedFields.data.valueColor,
+          mutedColor: validatedFields.data.mutedColor,
+          panelBackground: validatedFields.data.panelBackground,
+          isDefault: validatedFields.data.isDefault,
+        },
+      });
+
+      if (payload.propertyIds.length > 0) {
+        await tx.property.updateMany({
+          where: {
+            id: {
+              in: payload.propertyIds,
+            },
+          },
+          data: {
+            invoiceBrandingTemplateId: template.id,
+          },
+        });
+      }
+    });
+  } catch {
+    if (logoInput.logoStorageKey) {
+      await removeInvoiceTemplateLogoFile(logoInput.logoStorageKey);
+    }
+
+    return {
+      message: "Invoice template could not be saved. Try again.",
+    };
+  }
+
+  revalidateBillingViews();
+  redirect("/billing/invoice-templates");
+}
+
+export async function updateInvoiceBrandingTemplateAction(
+  templateId: string,
+  _previousState: InvoiceBrandingTemplateFormState,
+  formData: FormData
+): Promise<InvoiceBrandingTemplateFormState> {
+  await requireRole("ADMIN");
+
+  const existingTemplate = await prisma.invoiceBrandingTemplate.findUnique({
+    where: { id: templateId },
+    select: {
+      id: true,
+      logoUrl: true,
+      logoStorageKey: true,
+      properties: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!existingTemplate) {
+    return {
+      message: "Invoice template no longer exists.",
+    };
+  }
+
+  const payload = getInvoiceBrandingTemplatePayload(formData);
+  const validatedFields = invoiceBrandingTemplateSchema.safeParse(payload);
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Fix the highlighted invoice template fields and try again.",
+    };
+  }
+
+  if (
+    !(await validateInvoiceBrandingTemplateProperties(
+      payload.propertyIds
+    ))
+  ) {
+    return {
+      errors: {
+        propertyIds: ["Select valid properties for this template."],
+      },
+      message: "Template property assignments are invalid.",
+    };
+  }
+
+  const logoInput = await resolveInvoiceTemplateLogoInput(
+    formData,
+    existingTemplate
+  );
+
+  if ("error" in logoInput) {
+    const logoError = logoInput.error ?? "Template logo is invalid.";
+
+    return {
+      errors: {
+        logoFile: [logoError],
+      },
+      message: "Template logo could not be updated.",
+    };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (validatedFields.data.isDefault) {
+        await tx.invoiceBrandingTemplate.updateMany({
+          where: {
+            isDefault: true,
+            id: { not: templateId },
+          },
+          data: {
+            isDefault: false,
+          },
+        });
+      }
+
+      await tx.invoiceBrandingTemplate.update({
+        where: { id: templateId },
+        data: {
+          name: validatedFields.data.name,
+          brandName: validatedFields.data.brandName,
+          brandSubtitle: validatedFields.data.brandSubtitle,
+          invoiceTitlePrefix: validatedFields.data.invoiceTitlePrefix,
+          logoUrl: logoInput.logoUrl,
+          logoStorageKey: logoInput.logoStorageKey,
+          usePropertyLogo: validatedFields.data.usePropertyLogo,
+          titleScale: validatedFields.data.titleScale,
+          logoScalePercent: validatedFields.data.logoScalePercent,
+          brandNameSizePercent: validatedFields.data.brandNameSizePercent,
+          brandSubtitleSizePercent: validatedFields.data.brandSubtitleSizePercent,
+          tenantNameSizePercent: validatedFields.data.tenantNameSizePercent,
+          titleSizePercent: validatedFields.data.titleSizePercent,
+          brandNameWeight: validatedFields.data.brandNameWeight,
+          tenantNameWeight: validatedFields.data.tenantNameWeight,
+          titleWeight: validatedFields.data.titleWeight,
+          accentColor: validatedFields.data.accentColor,
+          labelColor: validatedFields.data.labelColor,
+          valueColor: validatedFields.data.valueColor,
+          mutedColor: validatedFields.data.mutedColor,
+          panelBackground: validatedFields.data.panelBackground,
+          isDefault: validatedFields.data.isDefault,
+        },
+      });
+
+      await tx.property.updateMany({
+        where: {
+          invoiceBrandingTemplateId: templateId,
+          id: {
+            notIn: payload.propertyIds,
+          },
+        },
+        data: {
+          invoiceBrandingTemplateId: null,
+        },
+      });
+
+      if (payload.propertyIds.length > 0) {
+        await tx.property.updateMany({
+          where: {
+            id: {
+              in: payload.propertyIds,
+            },
+          },
+          data: {
+            invoiceBrandingTemplateId: templateId,
+          },
+        });
+      }
+    });
+  } catch {
+    if (
+      logoInput.logoStorageKey &&
+      logoInput.logoStorageKey !== existingTemplate.logoStorageKey
+    ) {
+      await removeInvoiceTemplateLogoFile(logoInput.logoStorageKey);
+    }
+
+    return {
+      message: "Invoice template could not be updated. Try again.",
+    };
+  }
+
+  if (logoInput.replacedStorageKey) {
+    await removeInvoiceTemplateLogoFile(logoInput.replacedStorageKey);
+  }
+
+  revalidateBillingViews();
+  redirect("/billing/invoice-templates");
+}
+
 export async function createRecurringChargeAction(
   _previousState: RecurringChargeFormState,
   formData: FormData
@@ -1631,6 +1996,7 @@ export async function recordPaymentAction(
     where: { id: invoiceId },
     select: {
       id: true,
+      invoiceNumber: true,
       contractId: true,
       dueDate: true,
       status: true,
@@ -1761,5 +2127,11 @@ export async function recordPaymentAction(
   }
 
   revalidateBillingViews();
-  redirect(`/billing/${invoice.id}`);
+  redirect(
+    withToast(`/billing/${invoice.id}`, {
+      intent: "success",
+      title: "Payment recorded",
+      description: `Recorded payment for ${invoice.invoiceNumber}.`,
+    })
+  );
 }

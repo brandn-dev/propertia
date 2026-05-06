@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
+import { PropertyTreeFlow } from "@/components/properties/property-tree-flow";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -84,6 +85,8 @@ export default async function PropertiesPage() {
           icon={Radar}
         />
       </section>
+
+      <PropertyTreeFlow properties={properties} />
 
       <Card className="rounded-xl border-border/60 bg-card shadow-sm">
         <CardHeader>

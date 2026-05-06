@@ -25,6 +25,13 @@ type UtilityMeterFormProps = {
     name: string;
     propertyCode: string;
     status: string;
+    contracts: {
+      tenant: {
+        firstName: string | null;
+        lastName: string | null;
+        businessName: string | null;
+      };
+    }[];
   }[];
   tenantOptions: {
     id: string;
@@ -85,6 +92,24 @@ export function UtilityMeterForm({
     );
   }
 
+  function formatPropertyLabel(
+    property: UtilityMeterFormProps["propertyOptions"][number]
+  ) {
+    const assignedTenant = property.contracts[0]?.tenant;
+    const businessLabel = assignedTenant
+      ? assignedTenant.businessName ||
+        [assignedTenant.firstName, assignedTenant.lastName]
+          .filter(Boolean)
+          .join(" ")
+      : "";
+
+    if (businessLabel) {
+      return `${businessLabel} · ${property.name} (${property.propertyCode})`;
+    }
+
+    return `${property.name} (${property.propertyCode})`;
+  }
+
   const canSubmit = isShared || eligibleTenants.length > 0;
 
   function handlePropertyChange(nextPropertyId: string) {
@@ -126,7 +151,7 @@ export function UtilityMeterForm({
                 <option value="">Select a property</option>
                 {propertyOptions.map((property) => (
                   <option key={property.id} value={property.id}>
-                    {property.name} ({property.propertyCode})
+                    {formatPropertyLabel(property)}
                   </option>
                 ))}
               </select>
