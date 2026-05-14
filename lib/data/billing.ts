@@ -11,6 +11,10 @@ import {
 import { getHistoricalBacklogCutoffDate, getHistoricalBacklogLatestDate } from "@/lib/billing/backlog";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 
+function getContractScopeKey(propertyId: string, tenantId: string) {
+  return `${propertyId}:${tenantId}`;
+}
+
 const recurringChargeOverviewSelect = {
   id: true,
   chargeType: true,
@@ -124,13 +128,24 @@ export async function getInvoiceGenerationContractOptions() {
       })
     : [];
 
+  const readingsByScope = new Map<string, typeof readings>();
+
+  for (const reading of readings) {
+    const scopeKey = getContractScopeKey(
+      reading.meter.propertyId,
+      reading.tenantId ?? ""
+    );
+    const entries = readingsByScope.get(scopeKey) ?? [];
+    entries.push(reading);
+    readingsByScope.set(scopeKey, entries);
+  }
+
   return contracts.map((contract) => ({
     ...contract,
-    readings: readings.filter(
-      (reading) =>
-        reading.tenantId === contract.tenantId &&
-        reading.meter.propertyId === contract.property.id
-    ),
+    readings:
+      readingsByScope.get(
+        getContractScopeKey(contract.property.id, contract.tenantId)
+      ) ?? [],
   }));
 }
 
@@ -350,16 +365,14 @@ export async function getHistoricalBacklogContractOptions() {
 
   const metersByContractScope = new Map<string, typeof meters>();
 
-  for (const contract of contracts) {
-    const scopeKey = `${contract.property.id}:${contract.tenantId}`;
-    metersByContractScope.set(
-      scopeKey,
-      meters.filter(
-        (meter) =>
-          meter.propertyId === contract.property.id &&
-          meter.tenantId === contract.tenantId
-      )
+  for (const meter of meters) {
+    const scopeKey = getContractScopeKey(
+      meter.propertyId,
+      meter.tenantId ?? ""
     );
+    const entries = metersByContractScope.get(scopeKey) ?? [];
+    entries.push(meter);
+    metersByContractScope.set(scopeKey, entries);
   }
 
   return contracts
@@ -416,7 +429,9 @@ export async function getHistoricalBacklogContractOptions() {
           isActive: charge.isActive,
         })),
         meters: (
-          metersByContractScope.get(`${contract.property.id}:${contract.tenantId}`) ?? []
+          metersByContractScope.get(
+            getContractScopeKey(contract.property.id, contract.tenantId)
+          ) ?? []
         ).map((meter) => ({
           ...meter,
           openingReading: meter.openingReading.toString(),

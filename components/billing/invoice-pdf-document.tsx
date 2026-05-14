@@ -11,7 +11,6 @@ import {
   Svg,
   Text,
   View,
-  type PageSize,
 } from "@react-pdf/renderer";
 import type { InvoicePresentationModel } from "@/lib/billing/invoice-presenter";
 import type { InvoicePaperSize } from "@/lib/billing/invoice-pdf-options";
@@ -492,7 +491,7 @@ export function InvoicePdfDocument({
   );
 }
 
-function resolvePdfPageSize(paperSize: InvoicePaperSize): PageSize {
+function resolvePdfPageSize(paperSize: InvoicePaperSize) {
   switch (paperSize) {
     case "a4":
       return "A4";

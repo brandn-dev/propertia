@@ -309,39 +309,23 @@ export async function getMeterReadingsOverview() {
     },
   });
 
-  const laterBilledByMeterId = new Map<string, Set<string>>();
-  const readingsByMeter = new Map<string, typeof readings>();
+  const metersWithLaterBilledReadings = new Set<string>();
+  const rows: Array<(typeof readings)[number] & { canEdit: boolean }> = [];
 
   for (const reading of readings) {
-    const entries = readingsByMeter.get(reading.meterId) ?? [];
-    entries.push(reading);
-    readingsByMeter.set(reading.meterId, entries);
-  }
+    rows.push({
+      ...reading,
+      canEdit:
+        !reading.invoiceItem &&
+        !metersWithLaterBilledReadings.has(reading.meterId),
+    });
 
-  for (const [meterId, meterReadings] of readingsByMeter.entries()) {
-    const sorted = [...meterReadings].sort(
-      (left, right) => left.readingDate.getTime() - right.readingDate.getTime()
-    );
-    const billedLaterIds = new Set<string>();
-    let seenLaterBilled = false;
-
-    for (let index = sorted.length - 1; index >= 0; index -= 1) {
-      if (seenLaterBilled) {
-        billedLaterIds.add(sorted[index].id);
-      }
-
-      if (sorted[index].invoiceItem) {
-        seenLaterBilled = true;
-      }
+    if (reading.invoiceItem) {
+      metersWithLaterBilledReadings.add(reading.meterId);
     }
-
-    laterBilledByMeterId.set(meterId, billedLaterIds);
   }
 
-  return readings.map((reading) => ({
-    ...reading,
-    canEdit: !reading.invoiceItem && !laterBilledByMeterId.get(reading.meterId)?.has(reading.id),
-  }));
+  return rows;
 }
 
 export async function getPropertiesOverview() {

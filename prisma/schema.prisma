@@ -361,6 +361,9 @@ model Contract {
   @@index([propertyId])
   @@index([tenantId])
   @@index([status])
+  @@index([status, paymentStartDate])
+  @@index([tenantId, status, paymentStartDate])
+  @@index([status, endDate])
 }
 
 model ContractRecurringCharge {
@@ -426,6 +429,8 @@ model Invoice {
   @@index([contractId])
   @@index([tenantId])
   @@index([status, dueDate])
+  @@index([tenantId, status, dueDate])
+  @@index([dueDate, issueDate])
 }
 
 model InvoiceItem {
@@ -512,6 +517,8 @@ model UtilityMeter {
   @@index([tenantId])
   @@index([retiredAt])
   @@index([replacesMeterId])
+  @@index([isShared, createdAt])
+  @@index([propertyId, tenantId, isShared])
 }
 
 model MeterReading {
@@ -537,6 +544,8 @@ model MeterReading {
   @@unique([meterId, readingDate])
   @@index([readingDate])
   @@index([tenantId])
+  @@index([readingDate, createdAt])
+  @@index([meterId, readingDate, createdAt])
 }
 
 model COSA {
