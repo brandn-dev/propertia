@@ -11,8 +11,10 @@ import {
   Svg,
   Text,
   View,
+  type PageSize,
 } from "@react-pdf/renderer";
 import type { InvoicePresentationModel } from "@/lib/billing/invoice-presenter";
+import type { InvoicePaperSize } from "@/lib/billing/invoice-pdf-options";
 
 const PDF_REGULAR_FONT_PATH = "/System/Library/Fonts/SFNS.ttf";
 const PDF_MONO_FONT_PATH = "/System/Library/Fonts/SFNSMono.ttf";
@@ -324,10 +326,12 @@ const styles = StyleSheet.create({
 export function InvoicePdfDocument({
   model,
   variant,
+  paperSize = "letter",
   accessBlock,
 }: {
   model: InvoicePresentationModel;
   variant: "internal" | "public";
+  paperSize?: InvoicePaperSize;
   accessBlock?: {
     qrDataUrl: string;
     publicAccessCode: string;
@@ -341,7 +345,7 @@ export function InvoicePdfDocument({
       creator="Propertia"
       producer="Propertia"
     >
-      <Page size="LETTER" style={styles.page}>
+      <Page size={resolvePdfPageSize(paperSize)} style={styles.page}>
         <View style={styles.shell}>
           <View style={styles.header}>
             <View style={styles.headerTop}>
@@ -486,6 +490,17 @@ export function InvoicePdfDocument({
       </Page>
     </Document>
   );
+}
+
+function resolvePdfPageSize(paperSize: InvoicePaperSize): PageSize {
+  switch (paperSize) {
+    case "a4":
+      return "A4";
+    case "legal":
+      return "LEGAL";
+    default:
+      return "LETTER";
+  }
 }
 
 function SideMetaItem({

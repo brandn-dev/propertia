@@ -1,3 +1,5 @@
+import { renderToBuffer } from "@react-pdf/renderer";
+import { InvoicePdfDocument } from "@/components/billing/invoice-pdf-document";
 import type { InvoicePresentationModel } from "@/lib/billing/invoice-presenter";
 import type { InvoicePaperSize } from "@/lib/billing/invoice-pdf-options";
 import { createInvoicePdfRenderToken, type InvoicePdfRenderVariant } from "@/lib/billing/invoice-pdf-token";
@@ -81,7 +83,46 @@ export async function renderInvoiceBestPdfBuffer({
       paperSize: options.paperSize,
       itemCount: model.items.length,
     });
+    try {
+      return await renderChromeInvoicePdfBuffer(url);
+    } catch (chromeError) {
+      console.error("Chrome HTML PDF render failed, falling back to React PDF render.", chromeError, {
+        invoiceId,
+        variant: options.variant,
+        paperSize: options.paperSize,
+        itemCount: model.items.length,
+      });
 
-    return renderChromeInvoicePdfBuffer(url);
+      return renderReactInvoicePdfBuffer({
+        model,
+        variant: options.variant,
+        paperSize: options.paperSize,
+        accessBlock: options.accessBlock,
+      });
+    }
   }
+}
+
+async function renderReactInvoicePdfBuffer({
+  model,
+  variant,
+  paperSize = DEFAULT_INVOICE_PAPER_SIZE,
+  accessBlock,
+}: {
+  model: InvoicePresentationModel;
+  variant: InvoicePdfRenderVariant;
+  paperSize?: InvoicePaperSize;
+  accessBlock?: {
+    qrDataUrl: string;
+    publicAccessCode: string;
+  };
+}) {
+  return renderToBuffer(
+    <InvoicePdfDocument
+      model={model}
+      variant={variant}
+      paperSize={paperSize}
+      accessBlock={accessBlock}
+    />
+  );
 }

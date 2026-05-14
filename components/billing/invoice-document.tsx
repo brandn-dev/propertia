@@ -23,10 +23,10 @@ type InvoiceDocumentProps = {
 };
 
 const PAPER_CLASS =
-  "invoice-print-surface font-sans rounded-[1.2rem] border border-[#dbe5ef] bg-white text-[#0f172a] shadow-[0_30px_80px_-36px_rgba(15,23,42,0.28)] print:rounded-none print:border-0 print:bg-white print:shadow-none";
+  "invoice-print-surface font-sans rounded-[1.2rem] border border-[color:var(--invoice-paper-border)] bg-[color:var(--invoice-paper-background)] text-[color:var(--invoice-paper-foreground)] shadow-[0_30px_80px_-36px_rgba(15,23,42,0.28)] print:rounded-none print:border-0 print:bg-white print:shadow-none";
 const LABEL_CLASS =
   "text-[0.62rem] uppercase tracking-[0.24em] text-[color:var(--invoice-label-color)]";
-const DIVIDER_CLASS = "border-[#dbe5ef]";
+const DIVIDER_CLASS = "border-[color:var(--invoice-paper-border)]";
 const VALUE_CLASS = "text-[color:var(--invoice-value-color)]";
 const MUTED_CLASS = "text-[color:var(--invoice-muted-color)]";
 const ACCENT_CLASS = "text-[color:var(--invoice-accent-color)]";
@@ -60,11 +60,22 @@ export function InvoiceDocument({
   const articleStyle = {
     minHeight: paperLayout ? paperPreset.previewMinHeight : undefined,
     "--invoice-preview-min-height": paperPreset.previewMinHeight,
+    "--invoice-paper-background": paperLayout ? "#ffffff" : "var(--card)",
+    "--invoice-paper-foreground": paperLayout ? "#0f172a" : "var(--card-foreground)",
+    "--invoice-paper-border": paperLayout ? "#dbe5ef" : "var(--border)",
     "--invoice-accent-color": model.branding.accentColor,
-    "--invoice-label-color": model.branding.labelColor,
-    "--invoice-value-color": model.branding.valueColor,
-    "--invoice-muted-color": model.branding.mutedColor,
-    "--invoice-panel-background": model.branding.panelBackground,
+    "--invoice-label-color": paperLayout
+      ? model.branding.labelColor
+      : "var(--muted-foreground)",
+    "--invoice-value-color": paperLayout
+      ? model.branding.valueColor
+      : "var(--card-foreground)",
+    "--invoice-muted-color": paperLayout
+      ? model.branding.mutedColor
+      : "var(--muted-foreground)",
+    "--invoice-panel-background": paperLayout
+      ? model.branding.panelBackground
+      : "var(--background)",
   } as CSSProperties;
   const contentInsetClass = paperLayout
     ? "pl-3 pr-8"
@@ -82,7 +93,9 @@ export function InvoiceDocument({
   const articleClassName = cn(
     PAPER_CLASS,
     paperLayout ? `invoice-paper--${paperPreset.value}` : "",
-    frameless ? "rounded-none border-0 bg-white shadow-none" : "",
+    frameless
+      ? "rounded-none border-0 bg-[color:var(--invoice-paper-background)] shadow-none"
+      : "",
     responsiveLayout
       ? "px-0 py-4 sm:px-0 sm:py-5 md:min-h-[var(--invoice-preview-min-height)] md:px-8 md:py-8"
       : compactPaper
@@ -258,7 +271,8 @@ export function InvoiceDocument({
                               "py-2.5 pr-4 align-top break-words font-medium text-[#0f172a]",
                               item.itemType === "UTILITY_READING" || item.itemType === "COSA"
                                 ? "text-[0.9rem] leading-[1.35]"
-                                : "text-sm leading-[1.45]"
+                                : "text-sm leading-[1.45]",
+                              VALUE_CLASS
                             )}
                           >
                             {item.description}
@@ -680,9 +694,10 @@ function InvoiceReceiptFooter({ paperLayout }: { paperLayout: boolean }) {
 
   return (
     <footer className={cn("space-y-3 border-t pt-4", DIVIDER_CLASS)}>
-      <div
-        className={cn(
-          "grid gap-x-6 gap-y-3 text-[0.72rem] text-[#475569]",
+        <div
+          className={cn(
+          "grid gap-x-6 gap-y-3 text-[0.72rem]",
+          MUTED_CLASS,
           paperLayout ? "grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-3"
         )}
       >
