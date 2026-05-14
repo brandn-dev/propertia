@@ -94,6 +94,7 @@ export async function renderInvoiceBestPdfBuffer({
       });
 
       return renderReactInvoicePdfBuffer({
+        requestUrl,
         model,
         variant: options.variant,
         paperSize: options.paperSize,
@@ -104,11 +105,13 @@ export async function renderInvoiceBestPdfBuffer({
 }
 
 async function renderReactInvoicePdfBuffer({
+  requestUrl,
   model,
   variant,
   paperSize = DEFAULT_INVOICE_PAPER_SIZE,
   accessBlock,
 }: {
+  requestUrl: string;
   model: InvoicePresentationModel;
   variant: InvoicePdfRenderVariant;
   paperSize?: InvoicePaperSize;
@@ -117,12 +120,47 @@ async function renderReactInvoicePdfBuffer({
     publicAccessCode: string;
   };
 }) {
+  const resolvedModel = absolutizeInvoiceModelUrls(model, requestUrl);
+
   return renderToBuffer(
     <InvoicePdfDocument
-      model={model}
+      model={resolvedModel}
       variant={variant}
       paperSize={paperSize}
       accessBlock={accessBlock}
     />
   );
+}
+
+function absolutizeInvoiceModelUrls(
+  model: InvoicePresentationModel,
+  requestUrl: string
+) {
+  const logoUrl = absolutizeUrl(model.branding.logoUrl, requestUrl);
+  const propertyLogoUrl = absolutizeUrl(model.propertyLogoUrl, requestUrl);
+
+  if (logoUrl === model.branding.logoUrl && propertyLogoUrl === model.propertyLogoUrl) {
+    return model;
+  }
+
+  return {
+    ...model,
+    propertyLogoUrl,
+    branding: {
+      ...model.branding,
+      logoUrl,
+    },
+  };
+}
+
+function absolutizeUrl(value: string | null, requestUrl: string) {
+  if (!value) {
+    return value;
+  }
+
+  try {
+    return new URL(value, requestUrl).toString();
+  } catch {
+    return value;
+  }
 }

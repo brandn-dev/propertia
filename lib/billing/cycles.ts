@@ -1,4 +1,8 @@
-import { toDateInputValue } from "@/lib/format";
+import {
+  APP_TIME_ZONE,
+  getDatePartsInAppTimeZone,
+  toDateInputValue,
+} from "@/lib/format";
 
 export type BillingCycle = {
   start: Date;
@@ -179,11 +183,13 @@ export function getInvoiceGenerationSelectionKey(
 }
 
 export function getBillingMonthKey(date: Date | string) {
-  const value = typeof date === "string" ? new Date(date) : date;
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const parts = getDatePartsInAppTimeZone(date);
 
-  return `${year}-${month}`;
+  if (!parts) {
+    return "";
+  }
+
+  return `${parts.year}-${parts.month}`;
 }
 
 export function filterCyclesWithoutInvoicedMonths(
@@ -205,10 +211,13 @@ export function filterCyclesWithoutInvoicedMonths(
 }
 
 export function formatBillingCycleMonthLabel(date: Date | string) {
+  const value = typeof date === "string" ? new Date(date) : date;
+
   return new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIME_ZONE,
     month: "long",
     year: "numeric",
-  }).format(typeof date === "string" ? new Date(date) : date);
+  }).format(value);
 }
 
 export function formatBillingCycleLabel(cycle: BillingCycle) {
