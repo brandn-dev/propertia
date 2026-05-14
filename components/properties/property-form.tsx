@@ -91,7 +91,6 @@ export function PropertyForm({
   return (
     <form
       action={action}
-      encType="multipart/form-data"
       className="space-y-6"
     >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">

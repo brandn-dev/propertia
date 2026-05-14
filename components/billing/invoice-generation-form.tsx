@@ -11,8 +11,12 @@ import {
   getBillingCycleKey,
   getBillingMonthKey,
   getInvoiceGenerationSelectionKey,
+  getUtilityBillingWindowForCycle,
+  isReadingInUtilityBillingWindow,
 } from "@/lib/billing/cycles";
 import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
+import { UTILITY_TYPE_LABELS } from "@/lib/form-options";
+import { getUtilityUnitLabel } from "@/lib/utility-units";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +42,7 @@ type InvoiceGenerationFormProps = {
       end: string;
     }[];
     property: {
+      id: string;
       name: string;
       propertyCode: string;
     };
@@ -50,6 +55,24 @@ type InvoiceGenerationFormProps = {
     recurringChargeCount: number;
     rentAdjustmentCount: number;
     pendingCycleLabels: string[];
+    readings: {
+      id: string;
+      readingDate: string;
+      consumption: string;
+      ratePerUnit: string;
+      totalAmount: string;
+      meter: {
+        propertyId: string;
+        meterCode: string;
+        utilityType: keyof typeof UTILITY_TYPE_LABELS & (
+          | "OTHER"
+          | "ELECTRICITY"
+          | "WATER"
+          | "GAS"
+          | "SEWER"
+        );
+      };
+    }[];
   }[];
   initialValues: {
     tenantId: string;
@@ -62,6 +85,7 @@ type PendingCycleOption = {
   id: string;
   label: string;
   meta: string;
+  readingOptions: ReadingSelectionOption[];
 };
 
 type PendingTenantGroup = {
@@ -69,6 +93,18 @@ type PendingTenantGroup = {
   label: string;
   contractCount: number;
   cycles: PendingCycleOption[];
+};
+
+type ReadingSelectionOption = {
+  id: string;
+  selectionKey: string;
+  meterCode: string;
+  utilityTypeLabel: string;
+  readingDateLabel: string;
+  serviceCoverageLabel: string;
+  consumptionLabel: string;
+  rateLabel: string;
+  amountLabel: string;
 };
 
 function FieldError({ message }: { message?: string }) {
@@ -89,6 +125,21 @@ function formatTenantName(
   );
 }
 
+function formatFullDate(value: Date | string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatMoney(value: number) {
+  return `₱${new Intl.NumberFormat("en-PH", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value)}`;
+}
+
 export function InvoiceGenerationForm({
   formAction,
   contractOptions,
@@ -102,6 +153,9 @@ export function InvoiceGenerationForm({
   });
   const [selectedTenantId, setSelectedTenantId] = useState(initialValues.tenantId);
   const [selectedCycleKeysByTenant, setSelectedCycleKeysByTenant] = useState<
+    Record<string, string[]>
+  >({});
+  const [selectedReadingKeysByCycle, setSelectedReadingKeysByCycle] = useState<
     Record<string, string[]>
   >({});
   const [issueDate, setIssueDate] = useState(initialValues.issueDate);
@@ -137,11 +191,48 @@ export function InvoiceGenerationForm({
       return {
         ...contract,
         tenantLabel: formatTenantName(contract.tenant),
-        pendingCycleOptions: visiblePendingCycles.map((cycle) => ({
-          id: getInvoiceGenerationSelectionKey(contract.id, cycle.start, cycle.end),
-          label: formatBillingCycleLabel(cycle),
-          meta: `${contract.property.propertyCode} · ${contract.property.name}`,
-        })),
+        pendingCycleOptions: visiblePendingCycles.map((cycle) => {
+          const cycleSelectionKey = getInvoiceGenerationSelectionKey(
+            contract.id,
+            cycle.start,
+            cycle.end
+          );
+          const utilityBillingWindow = getUtilityBillingWindowForCycle({
+            anchorDate: new Date(contract.paymentAnchorDate),
+            cycleStart: cycle.start,
+            issueDate: issueDateValue,
+          });
+          const readingOptions = utilityBillingWindow
+            ? contract.readings
+                .filter((reading) => {
+                  const readingDate = new Date(reading.readingDate);
+                  return isReadingInUtilityBillingWindow(
+                    readingDate,
+                    utilityBillingWindow
+                  );
+                })
+                .map((reading) => ({
+                  id: reading.id,
+                  selectionKey: `${cycleSelectionKey}::${reading.id}`,
+                  meterCode: reading.meter.meterCode,
+                  utilityTypeLabel: UTILITY_TYPE_LABELS[reading.meter.utilityType],
+                  readingDateLabel: formatFullDate(reading.readingDate),
+                  serviceCoverageLabel: `${formatFullDate(
+                    utilityBillingWindow.serviceCycle.start
+                  )} to ${formatFullDate(utilityBillingWindow.serviceCycle.end)}`,
+                  consumptionLabel: `${Number(reading.consumption)} ${getUtilityUnitLabel(reading.meter.utilityType)}`,
+                  rateLabel: `${formatMoney(Number(reading.ratePerUnit))} / ${getUtilityUnitLabel(reading.meter.utilityType)}`,
+                  amountLabel: formatMoney(Number(reading.totalAmount)),
+                }))
+            : [];
+
+          return {
+            id: cycleSelectionKey,
+            label: formatBillingCycleLabel(cycle),
+            meta: `${contract.property.propertyCode} · ${contract.property.name}`,
+            readingOptions,
+          };
+        }),
       };
     })
     .filter((contract) => contract.pendingCycleOptions.length > 0);
@@ -182,6 +273,18 @@ export function InvoiceGenerationForm({
         currentTenant.cycles.map((cycle) => cycle.id)
       ).filter((cycleId) => visibleCycleLabels.some((cycle) => cycle.id === cycleId))
     : [];
+  const selectedVisibleCycles = visibleCycleLabels.filter((cycle) =>
+    effectiveSelectedCycleKeys.includes(cycle.id)
+  );
+  const utilityReadingSelectionCount = selectedVisibleCycles.reduce(
+    (sum, cycle) => {
+      const effectiveReadingSelection =
+        selectedReadingKeysByCycle[cycle.id] ??
+        cycle.readingOptions.map((reading) => reading.selectionKey);
+      return sum + effectiveReadingSelection.length;
+    },
+    0
+  );
 
   function handleTenantChange(nextTenantId: string) {
     setSelectedTenantId(nextTenantId);
@@ -227,6 +330,26 @@ export function InvoiceGenerationForm({
     }));
   }
 
+  function toggleReading(cycleId: string, readingSelectionKey: string) {
+    const cycle = visibleCycleLabels.find((candidate) => candidate.id === cycleId);
+
+    if (!cycle) {
+      return;
+    }
+
+    setSelectedReadingKeysByCycle((current) => {
+      const currentSelection =
+        current[cycleId] ?? cycle.readingOptions.map((reading) => reading.selectionKey);
+
+      return {
+        ...current,
+        [cycleId]: currentSelection.includes(readingSelectionKey)
+          ? currentSelection.filter((key) => key !== readingSelectionKey)
+          : [...currentSelection, readingSelectionKey],
+      };
+    });
+  }
+
   return (
     <form action={action} className="space-y-6">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -241,8 +364,9 @@ export function InvoiceGenerationForm({
                 <p className="text-sm leading-6 text-muted-foreground">
                   Billing periods are derived from each contract&apos;s billing
                   anchor. Pick the business first, then check only the invoice
-                  months you want to issue, including the current active month
-                  when needed.
+                  months you want to issue. Connected-meter utility readings
+                  appear under each selected cycle and stay preselected unless
+                  you remove them.
                 </p>
               </div>
             </div>
@@ -278,6 +402,7 @@ export function InvoiceGenerationForm({
                 Earlier historical months still move through backlog. May 2026 can
                 generate here when still uninvoiced.
               </p>
+              <FieldError message={state.errors?.readingSelections?.[0]} />
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -287,7 +412,8 @@ export function InvoiceGenerationForm({
                     <p className="text-sm font-medium">Invoices to generate</p>
                     <p className="text-sm text-muted-foreground">
                       Check the billing months you want to issue for the selected
-                      business.
+                      business, then keep or remove the utility readings under
+                      each chosen cycle.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -325,31 +451,101 @@ export function InvoiceGenerationForm({
                       const isChecked = effectiveSelectedCycleKeys.includes(
                         cycle.id
                       );
+                      const effectiveReadingSelection =
+                        selectedReadingKeysByCycle[cycle.id] ??
+                        cycle.readingOptions.map(
+                          (readingOption) => readingOption.selectionKey
+                        );
 
                       return (
-                        <label
+                        <div
                           key={cycle.id}
-                          className={`flex items-start gap-3 rounded-[1rem] border px-4 py-3 transition-colors ${
+                          className={`rounded-[1rem] border px-4 py-3 transition-colors ${
                             isChecked
                               ? "border-primary/50 bg-primary/8"
                               : "border-border/60 bg-background/55 hover:bg-muted/30"
                           }`}
                         >
-                          <input
-                            type="checkbox"
-                            name="cycleSelections"
-                            value={cycle.id}
-                            checked={isChecked}
-                            onChange={() => toggleCycle(cycle.id)}
-                            className="mt-1 size-4 rounded border border-border bg-background text-primary accent-primary"
-                          />
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <p className="text-sm font-medium">{cycle.label}</p>
-                            <p className="text-sm leading-6 text-muted-foreground">
-                              {cycle.meta}
-                            </p>
-                          </div>
-                        </label>
+                          <label className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              name="cycleSelections"
+                              value={cycle.id}
+                              checked={isChecked}
+                              onChange={() => toggleCycle(cycle.id)}
+                              className="mt-1 size-4 rounded border border-border bg-background text-primary accent-primary"
+                            />
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <p className="text-sm font-medium">{cycle.label}</p>
+                              <p className="text-sm leading-6 text-muted-foreground">
+                                {cycle.meta}
+                              </p>
+                            </div>
+                          </label>
+
+                          {isChecked && cycle.readingOptions.length > 0 ? (
+                            <div className="mt-3 space-y-2 rounded-[0.95rem] border border-border/60 bg-background/45 p-3">
+                              <div className="space-y-1">
+                                <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                  Utility readings
+                                </p>
+                                <p className="text-xs leading-5 text-muted-foreground">
+                                  Connected dedicated-meter readings for this cycle. Uncheck any line you do not want to bill now.
+                                </p>
+                              </div>
+
+                              <div className="space-y-2">
+                                {cycle.readingOptions.map((reading) => {
+                                  const isReadingChecked = effectiveReadingSelection.includes(
+                                    reading.selectionKey
+                                  );
+
+                                  return (
+                                    <label
+                                      key={reading.selectionKey}
+                                      className={`flex items-start gap-3 rounded-[0.9rem] border px-3 py-3 transition-colors ${
+                                        isReadingChecked
+                                          ? "border-primary/45 bg-primary/6"
+                                          : "border-border/55 bg-background/60"
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        name="readingSelections"
+                                        value={reading.selectionKey}
+                                        checked={isReadingChecked}
+                                        onChange={() =>
+                                          toggleReading(cycle.id, reading.selectionKey)
+                                        }
+                                        className="mt-1 size-4 rounded border border-border bg-background text-primary accent-primary"
+                                      />
+                                      <div className="min-w-0 flex-1 space-y-1">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                          <p className="text-sm font-medium">
+                                            {reading.utilityTypeLabel} · {reading.meterCode}
+                                          </p>
+                                          <p className="text-sm font-semibold">
+                                            {reading.amountLabel}
+                                          </p>
+                                        </div>
+                                        <p className="text-xs leading-5 text-muted-foreground">
+                                          Reading date: {reading.readingDateLabel}
+                                        </p>
+                                        <p className="text-xs leading-5 text-muted-foreground">
+                                          Service: {reading.serviceCoverageLabel}
+                                        </p>
+                                        <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                                          <p>Consumption: {reading.consumptionLabel}</p>
+                                          <p>Rate: {reading.rateLabel}</p>
+                                        </div>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
                       );
                     })}
                   </div>
@@ -401,8 +597,8 @@ export function InvoiceGenerationForm({
             </h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
               Each cycle includes base rent, active recurring charges, any
-              uninvoiced COSA allocations, and tenant-dedicated utility
-              readings captured inside that billing window. Rent adjustments
+              uninvoiced COSA allocations, and whichever connected-meter
+              utility readings you keep selected for the run. Rent adjustments
               effective before the cycle start are applied automatically.
             </p>
 
@@ -445,6 +641,11 @@ export function InvoiceGenerationForm({
                     <p className="text-xs text-muted-foreground">
                       {effectiveSelectedCycleKeys.length - 8} more cycle(s) will
                       also be generated.
+                    </p>
+                  ) : null}
+                  {utilityReadingSelectionCount > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {utilityReadingSelectionCount} utility reading(s) currently selected.
                     </p>
                   ) : null}
                 </div>

@@ -17,6 +17,10 @@ import {
   Search,
   Users2,
 } from "lucide-react";
+import {
+  formatContractEndDate,
+  isOpenEndedContractEndDate,
+} from "@/lib/contracts/term";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -78,6 +82,10 @@ function getFloorLabel(spaceName: string) {
 }
 
 function formatContractDuration(startDate: string, endDate: string) {
+  if (isOpenEndedContractEndDate(endDate)) {
+    return "Month-to-month";
+  }
+
   const start = new Date(startDate);
   const end = new Date(endDate);
   const months =
@@ -425,7 +433,7 @@ export function PropertyTenantExplorer({
                       label="Start"
                     />
                     <NodeBadge
-                      count={formatDate(selectedSpaceRow.contract.endDate)}
+                      count={formatContractEndDate(selectedSpaceRow.contract.endDate)}
                       label="End"
                     />
                   </div>

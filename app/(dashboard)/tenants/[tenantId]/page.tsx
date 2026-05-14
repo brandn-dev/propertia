@@ -19,6 +19,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth/user";
+import { formatContractEndDate } from "@/lib/contracts/term";
 import { getTenantProfile } from "@/lib/data/admin";
 import {
   formatCompactNumber,
@@ -415,7 +416,7 @@ export default async function TenantProfilePage({
                     <TableCell>
                       {formatDate(contract.startDate)}
                       <p className="text-xs text-muted-foreground">
-                        to {formatDate(contract.endDate)}
+                        to {formatContractEndDate(contract.endDate)}
                       </p>
                     </TableCell>
                     <TableCell>{formatDate(contract.paymentStartDate)}</TableCell>

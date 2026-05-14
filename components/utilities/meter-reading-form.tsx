@@ -26,6 +26,9 @@ type MeterOption = {
   meterCode: string;
   utilityType: keyof typeof UTILITY_TYPE_LABELS;
   isShared: boolean;
+  openedAt: string;
+  retiredAt: string | null;
+  openingReading: string;
   tenant: {
     id: string;
     type: string;
@@ -42,6 +45,7 @@ type MeterOption = {
     id: string;
     readingDate: string;
     currentReading: string;
+    ratePerUnit: string;
     isBilled?: boolean;
   }[];
 };
@@ -213,7 +217,10 @@ export function MeterReadingForm({
 
   const previousReadingValue = previousReadingEntry
     ? Number(previousReadingEntry.currentReading)
-    : 0;
+    : selectedMeter
+      ? Number(selectedMeter.openingReading)
+      : 0;
+  const suggestedRatePerUnit = previousReadingEntry?.ratePerUnit ?? "";
   const currentReadingValue = currentReading === "" ? null : Number(currentReading);
   const ratePerUnitValue = ratePerUnit === "" ? null : Number(ratePerUnit);
   const computedConsumption =
@@ -247,6 +254,43 @@ export function MeterReadingForm({
     if (!nextMeters.some((meter) => meter.id === selectedMeterId)) {
       setSelectedMeterId("");
     }
+  }
+
+  function handleMeterChange(nextMeterId: string) {
+    setSelectedMeterId(nextMeterId);
+
+    if (isEditMode) {
+      return;
+    }
+
+    const nextMeter = meterOptions.find((meter) => meter.id === nextMeterId) ?? null;
+
+    if (!nextMeter || !readingDate) {
+      setRatePerUnit("");
+      return;
+    }
+
+    const nextPreviousReading =
+      [...nextMeter.readings]
+        .reverse()
+        .find((reading) => reading.readingDate < readingDate) ?? null;
+
+    setRatePerUnit(nextPreviousReading?.ratePerUnit ?? "");
+  }
+
+  function handleReadingDateChange(nextReadingDate: string) {
+    setReadingDate(nextReadingDate);
+
+    if (isEditMode || !selectedMeter) {
+      return;
+    }
+
+    const nextPreviousReading =
+      [...readingHistory]
+        .reverse()
+        .find((reading) => reading.readingDate < nextReadingDate) ?? null;
+
+    setRatePerUnit(nextPreviousReading?.ratePerUnit ?? "");
   }
 
   function formatReadingValue(value: number) {
@@ -334,13 +378,13 @@ export function MeterReadingForm({
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="meterId">Assigned meter</Label>
                   <select
-                    id="meterId"
-                    name="meterId"
-                    value={selectedMeterId}
-                    onChange={(event) => setSelectedMeterId(event.target.value)}
-                    className={selectClassName}
-                    disabled={!selectedScopeKey || availableMeters.length === 0}
-                  >
+                id="meterId"
+                name="meterId"
+                value={selectedMeterId}
+                onChange={(event) => handleMeterChange(event.target.value)}
+                className={selectClassName}
+                disabled={!selectedScopeKey || availableMeters.length === 0}
+              >
                     <option value="">
                       {selectedScopeKey
                         ? availableMeters.length > 0
@@ -366,7 +410,7 @@ export function MeterReadingForm({
                 name="readingDate"
                 type="date"
                 value={readingDate}
-                onChange={(event) => setReadingDate(event.target.value)}
+                onChange={(event) => handleReadingDateChange(event.target.value)}
                 className="field-blank h-11"
               />
               <FieldError message={state.errors?.readingDate?.[0]} />
@@ -436,6 +480,11 @@ export function MeterReadingForm({
                 className="field-blank h-11"
               />
               <FieldError message={state.errors?.ratePerUnit?.[0]} />
+              {!isEditMode && suggestedRatePerUnit ? (
+                <p className="text-xs text-muted-foreground">
+                  Prefilled from previous utility charge on this meter.
+                </p>
+              ) : null}
             </div>
 
             <div className="field-blank md:col-span-2 rounded-[1.2rem] border bg-background/60 px-4 py-4">
@@ -460,7 +509,7 @@ export function MeterReadingForm({
                   <p className="text-sm leading-6 text-muted-foreground">
                     {previousReadingEntry
                       ? `Previous reading: ${formatUtilityQuantity(selectedMeter.utilityType, previousReadingEntry.currentReading)} on ${formatDate(previousReadingEntry.readingDate)}.`
-                      : "No previous reading found. This will be treated as the initial reading for the selected meter."}
+                      : `No previous reading found. Initial baseline is ${formatUtilityQuantity(selectedMeter.utilityType, selectedMeter.openingReading)} from meter activation.`}
                   </p>
                   <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                     <span>

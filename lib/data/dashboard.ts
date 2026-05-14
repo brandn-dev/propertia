@@ -230,6 +230,7 @@ export async function getUtilityMetersOverview() {
       meterCode: true,
       utilityType: true,
       isShared: true,
+      retiredAt: true,
       tenant: {
         select: {
           firstName: true,

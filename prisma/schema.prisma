@@ -127,6 +127,7 @@ enum RentBasedOn {
 enum AdvanceRentApplication {
   FIRST_BILLABLE_CYCLES
   LAST_BILLABLE_CYCLES
+  SPLIT_FIRST_AND_LAST_CYCLES
 }
 
 enum NotificationKind {
@@ -339,6 +340,8 @@ model Contract {
   advanceRentMonths   Int           @default(0)
   freeRentCycles      Int           @default(0)
   advanceRentApplication AdvanceRentApplication @default(FIRST_BILLABLE_CYCLES)
+  advanceRentFirstMonths Int        @default(0)
+  advanceRentLastMonths  Int        @default(0)
   advanceRent      Decimal          @default(0) @db.Decimal(12, 2)
   securityDeposit  Decimal          @default(0) @db.Decimal(12, 2)
   paymentStartDate DateTime
@@ -485,22 +488,30 @@ model PaymentAllocation {
 }
 
 model UtilityMeter {
-  id          String         @id @default(cuid())
-  propertyId  String
-  tenantId    String?
-  utilityType UtilityType
-  meterCode   String         @unique
-  isShared    Boolean        @default(false)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  property    Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenant      Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  readings    MeterReading[]
-  cosas       COSA[]
-  cosaTemplates CosaTemplate[]
+  id                String         @id @default(cuid())
+  propertyId        String
+  tenantId          String?
+  utilityType       UtilityType
+  meterCode         String         @unique
+  isShared          Boolean        @default(false)
+  openedAt          DateTime       @default(now())
+  retiredAt         DateTime?
+  openingReading    Decimal        @default(0) @db.Decimal(12, 2)
+  replacesMeterId   String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  property          Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant            Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  replacesMeter     UtilityMeter?  @relation("UtilityMeterReplacementChain", fields: [replacesMeterId], references: [id], onDelete: SetNull)
+  replacementMeters UtilityMeter[] @relation("UtilityMeterReplacementChain")
+  readings          MeterReading[]
+  cosas             COSA[]
+  cosaTemplates     CosaTemplate[]
 
   @@index([propertyId])
   @@index([tenantId])
+  @@index([retiredAt])
+  @@index([replacesMeterId])
 }
 
 model MeterReading {

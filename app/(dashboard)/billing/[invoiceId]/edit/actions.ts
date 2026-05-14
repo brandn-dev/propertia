@@ -8,6 +8,10 @@ import {
   getBillingCycleAtIndex,
   getBillingCycleIndex,
 } from "@/lib/billing/cycles";
+import {
+  buildAdvanceApplicationCycleIndexes,
+  deriveWholeMonths,
+} from "@/lib/contracts/advance-rent";
 import { UTILITY_TYPE_LABELS } from "@/lib/form-options";
 import { toDateInputValue } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
@@ -69,7 +73,12 @@ type AutoManagedContract = {
   monthlyRent: { toString(): string };
   freeRentCycles: number;
   advanceRentMonths: number;
-  advanceRentApplication: "FIRST_BILLABLE_CYCLES" | "LAST_BILLABLE_CYCLES";
+  advanceRentApplication:
+    | "FIRST_BILLABLE_CYCLES"
+    | "LAST_BILLABLE_CYCLES"
+    | "SPLIT_FIRST_AND_LAST_CYCLES";
+  advanceRentFirstMonths: number;
+  advanceRentLastMonths: number;
   advanceRent: { toString(): string };
 };
 
@@ -123,14 +132,6 @@ function isAutoManagedBacklogLine(itemType: string, description: string) {
   );
 }
 
-function deriveWholeMonths(amount: number, baseRent: number) {
-  if (baseRent <= 0 || amount <= 0) {
-    return 0;
-  }
-
-  return Math.max(0, Math.round(amount / baseRent));
-}
-
 function getContractCycleCount(anchorDate: Date, contractEndDate: Date) {
   let count = 0;
 
@@ -145,24 +146,6 @@ function getContractCycleCount(anchorDate: Date, contractEndDate: Date) {
   }
 
   return count;
-}
-
-function buildAdvanceApplicationCycleIndexes(params: {
-  totalCycles: number;
-  freeRentCycles: number;
-  advanceRentMonths: number;
-  application: "FIRST_BILLABLE_CYCLES" | "LAST_BILLABLE_CYCLES";
-}) {
-  const { totalCycles, freeRentCycles, advanceRentMonths, application } = params;
-  const billableCycleIndexes = Array.from({ length: totalCycles }, (_, index) => index).filter(
-    (index) => index >= freeRentCycles
-  );
-  const selectedIndexes =
-    application === "LAST_BILLABLE_CYCLES"
-      ? billableCycleIndexes.slice(-advanceRentMonths)
-      : billableCycleIndexes.slice(0, advanceRentMonths);
-
-  return new Set(selectedIndexes);
 }
 
 function getAutoFreeRentConcessionAmount(params: {
@@ -221,7 +204,9 @@ function getAutoAdvanceRentEffects(params: {
     totalCycles,
     freeRentCycles: contract.freeRentCycles,
     advanceRentMonths,
-    application: contract.advanceRentApplication,
+    advanceRentApplication: contract.advanceRentApplication,
+    advanceRentFirstMonths: contract.advanceRentFirstMonths,
+    advanceRentLastMonths: contract.advanceRentLastMonths,
   });
   const isFreeRentCycle = cycleIndex < contract.freeRentCycles;
   const isAdvanceRentApplicationCycle =
@@ -674,6 +659,8 @@ export async function updateBacklogInvoiceAction(
           freeRentCycles: true,
           advanceRentMonths: true,
           advanceRentApplication: true,
+          advanceRentFirstMonths: true,
+          advanceRentLastMonths: true,
           advanceRent: true,
           property: {
             select: {

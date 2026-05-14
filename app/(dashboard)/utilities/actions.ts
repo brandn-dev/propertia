@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
 import { prisma } from "@/lib/prisma";
 import { meterReadingSchema } from "@/lib/validations/meter-reading";
-import { utilityMeterSchema } from "@/lib/validations/utility-meter";
+import {
+  utilityMeterReplacementSchema,
+  utilityMeterSchema,
+} from "@/lib/validations/utility-meter";
 
 export type UtilityMeterFormState = {
   message?: string;
@@ -44,6 +47,14 @@ function getMeterReadingPayload(formData: FormData) {
     readingDate: String(formData.get("readingDate") ?? ""),
     currentReading: String(formData.get("currentReading") ?? ""),
     ratePerUnit: String(formData.get("ratePerUnit") ?? ""),
+  };
+}
+
+function getUtilityMeterReplacementPayload(formData: FormData) {
+  return {
+    openedAt: String(formData.get("openedAt") ?? ""),
+    meterCode: String(formData.get("meterCode") ?? ""),
+    openingReading: String(formData.get("openingReading") ?? ""),
   };
 }
 
@@ -327,6 +338,110 @@ export async function updateUtilityMeterAction(
   redirect("/utilities/meters");
 }
 
+export async function replaceUtilityMeterAction(
+  meterId: string,
+  _previousState: UtilityMeterFormState,
+  formData: FormData
+): Promise<UtilityMeterFormState> {
+  await requireRole("ADMIN");
+
+  const validatedFields = utilityMeterReplacementSchema.safeParse(
+    getUtilityMeterReplacementPayload(formData)
+  );
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Fix the highlighted replacement fields and try again.",
+    };
+  }
+
+  const existingMeter = await prisma.utilityMeter.findUnique({
+    where: { id: meterId },
+    select: {
+      id: true,
+      propertyId: true,
+      tenantId: true,
+      utilityType: true,
+      isShared: true,
+      retiredAt: true,
+      readings: {
+        take: 1,
+        orderBy: [{ readingDate: "desc" }, { createdAt: "desc" }],
+        select: {
+          readingDate: true,
+        },
+      },
+    },
+  });
+
+  if (!existingMeter) {
+    return {
+      message: "Meter no longer exists.",
+    };
+  }
+
+  if (existingMeter.retiredAt) {
+    return {
+      message: "This meter has already been retired.",
+    };
+  }
+
+  if (await utilityMeterCodeExists(validatedFields.data.meterCode)) {
+    return {
+      errors: {
+        meterCode: ["That meter code is already in use."],
+      },
+      message: "Meter code must be unique.",
+    };
+  }
+
+  const openedAt = new Date(validatedFields.data.openedAt);
+  const latestReading = existingMeter.readings[0] ?? null;
+
+  if (latestReading && openedAt < latestReading.readingDate) {
+    return {
+      errors: {
+        openedAt: [
+          "Replacement date cannot be earlier than the latest recorded reading on this meter.",
+        ],
+      },
+      message: "Replacement chronology is invalid.",
+    };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.utilityMeter.update({
+        where: { id: meterId },
+        data: {
+          retiredAt: openedAt,
+        },
+      });
+
+      await tx.utilityMeter.create({
+        data: {
+          propertyId: existingMeter.propertyId,
+          tenantId: existingMeter.isShared ? null : existingMeter.tenantId,
+          utilityType: existingMeter.utilityType,
+          meterCode: validatedFields.data.meterCode,
+          isShared: existingMeter.isShared,
+          openedAt,
+          openingReading: toFixedDecimal(Number(validatedFields.data.openingReading)),
+          replacesMeterId: existingMeter.id,
+        },
+      });
+    });
+  } catch {
+    return {
+      message: "Replacement meter could not be saved. Try again.",
+    };
+  }
+
+  revalidateUtilityViews();
+  redirect("/utilities/meters");
+}
+
 export async function createMeterReadingAction(
   _previousState: MeterReadingFormState,
   formData: FormData
@@ -349,6 +464,9 @@ export async function createMeterReadingAction(
     select: {
       id: true,
       tenantId: true,
+      openedAt: true,
+      retiredAt: true,
+      openingReading: true,
       readings: {
         take: 1,
         orderBy: [{ readingDate: "desc" }, { createdAt: "desc" }],
@@ -372,6 +490,28 @@ export async function createMeterReadingAction(
   const latestReading = meter.readings[0] ?? null;
   const readingDate = new Date(validatedFields.data.readingDate);
 
+  if (readingDate < meter.openedAt) {
+    return {
+      errors: {
+        readingDate: [
+          "Reading date cannot be earlier than this meter's activation date.",
+        ],
+      },
+      message: "Reading date is outside this meter's active timeline.",
+    };
+  }
+
+  if (meter.retiredAt && readingDate > meter.retiredAt) {
+    return {
+      errors: {
+        readingDate: [
+          "Reading date cannot be later than this meter's retirement date.",
+        ],
+      },
+      message: "This meter has already been retired.",
+    };
+  }
+
   if (latestReading && readingDate <= latestReading.readingDate) {
     return {
       errors: {
@@ -385,7 +525,7 @@ export async function createMeterReadingAction(
 
   const previousReading = latestReading
     ? Number(latestReading.currentReading.toString())
-    : 0;
+    : Number(meter.openingReading.toString());
   const currentReading = Number(validatedFields.data.currentReading);
 
   if (currentReading < previousReading) {
@@ -459,6 +599,9 @@ export async function updateMeterReadingAction(
       meter: {
         select: {
           tenantId: true,
+          openedAt: true,
+          retiredAt: true,
+          openingReading: true,
         },
       },
     },
@@ -488,6 +631,28 @@ export async function updateMeterReadingAction(
   const readingDate = new Date(validatedFields.data.readingDate);
   const currentReading = Number(validatedFields.data.currentReading);
   const ratePerUnit = Number(validatedFields.data.ratePerUnit);
+
+  if (readingDate < existingReading.meter.openedAt) {
+    return {
+      errors: {
+        readingDate: [
+          "Reading date cannot be earlier than this meter's activation date.",
+        ],
+      },
+      message: "Reading date is outside this meter's active timeline.",
+    };
+  }
+
+  if (existingReading.meter.retiredAt && readingDate > existingReading.meter.retiredAt) {
+    return {
+      errors: {
+        readingDate: [
+          "Reading date cannot be later than this meter's retirement date.",
+        ],
+      },
+      message: "Reading date is outside this meter's active timeline.",
+    };
+  }
 
   const siblingReadings = await prisma.meterReading.findMany({
     where: {
@@ -540,7 +705,7 @@ export async function updateMeterReadingAction(
   const nextReading = findNextReading(siblingReadings, readingDate);
   const previousReadingValue = previousReading
     ? Number(previousReading.currentReading.toString())
-    : 0;
+    : Number(existingReading.meter.openingReading.toString());
 
   if (currentReading < previousReadingValue) {
     return {

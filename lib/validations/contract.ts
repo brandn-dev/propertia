@@ -16,6 +16,13 @@ function parseInteger(value: string) {
   return Number(value);
 }
 
+function isNonNegativeWholeNumber(value: string) {
+  return (
+    value === "" ||
+    (Number.isInteger(parseInteger(value)) && parseInteger(value) >= 0)
+  );
+}
+
 export const contractSchema = z
   .object({
     propertyId: z.string().trim().min(1, "Property is required."),
@@ -48,19 +55,31 @@ export const contractSchema = z
       .trim()
       .default("0")
       .refine(
-        (value) =>
-          value === "" ||
-          (Number.isInteger(parseInteger(value)) && parseInteger(value) >= 0),
+        isNonNegativeWholeNumber,
         "Advance rent months must be a valid non-negative whole number."
+      ),
+    advanceRentFirstMonths: z
+      .string()
+      .trim()
+      .default("0")
+      .refine(
+        isNonNegativeWholeNumber,
+        "Advance rent months applied first must be a valid non-negative whole number."
+      ),
+    advanceRentLastMonths: z
+      .string()
+      .trim()
+      .default("0")
+      .refine(
+        isNonNegativeWholeNumber,
+        "Advance rent months applied last must be a valid non-negative whole number."
       ),
     securityDepositMonths: z
       .string()
       .trim()
       .default("0")
       .refine(
-        (value) =>
-          value === "" ||
-          (Number.isInteger(parseInteger(value)) && parseInteger(value) >= 0),
+        isNonNegativeWholeNumber,
         "Security deposit months must be a valid non-negative whole number."
       ),
     freeRentCycles: z
@@ -68,9 +87,7 @@ export const contractSchema = z
       .trim()
       .default("0")
       .refine(
-        (value) =>
-          value === "" ||
-          (Number.isInteger(parseInteger(value)) && parseInteger(value) >= 0),
+        isNonNegativeWholeNumber,
         "Free-rent cycles must be a valid non-negative whole number."
       ),
     advanceRentApplication: z.enum(ADVANCE_RENT_APPLICATIONS),
@@ -85,6 +102,9 @@ export const contractSchema = z
     const start = new Date(value.startDate);
     const end = new Date(value.endDate);
     const paymentStart = new Date(value.paymentStartDate);
+    const advanceRentMonths = parseInteger(value.advanceRentMonths || "0");
+    const advanceRentFirstMonths = parseInteger(value.advanceRentFirstMonths || "0");
+    const advanceRentLastMonths = parseInteger(value.advanceRentLastMonths || "0");
 
     if (end <= start) {
       ctx.addIssue({
@@ -108,6 +128,23 @@ export const contractSchema = z
         path: ["paymentStartDate"],
         message: "Billing cycle start must fall within the contract period.",
       });
+    }
+
+    if (value.advanceRentApplication === "SPLIT_FIRST_AND_LAST_CYCLES") {
+      if (advanceRentFirstMonths + advanceRentLastMonths !== advanceRentMonths) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["advanceRentFirstMonths"],
+          message:
+            "First and last placement must add up to the total advance rent months.",
+        });
+        ctx.addIssue({
+          code: "custom",
+          path: ["advanceRentLastMonths"],
+          message:
+            "First and last placement must add up to the total advance rent months.",
+        });
+      }
     }
   });
 

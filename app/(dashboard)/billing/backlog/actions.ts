@@ -16,22 +16,32 @@ import {
   getBillingCycleIndex,
   getBillingCycleKey,
   getBillingMonthKey,
+  cycleOverlapsRange,
 } from "@/lib/billing/cycles";
 import { buildInvoiceNumber } from "@/lib/billing/invoice-number";
 import { generateInvoiceAccessCode } from "@/lib/billing/public-access";
-import { UTILITY_TYPE_LABELS } from "@/lib/form-options";
+import {
+  buildAdvanceApplicationCycleIndexes,
+  deriveWholeMonths,
+} from "@/lib/contracts/advance-rent";
+import {
+  RECURRING_CHARGE_TYPE_LABELS,
+  UTILITY_TYPE_LABELS,
+} from "@/lib/form-options";
 import { toDateInputValue } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { withToast } from "@/lib/toast";
 import {
   backlogBulkRowSchema,
   historicalBacklogSchema,
+  type HistoricalBacklogInput,
   type HistoricalBacklogBulkRowInput,
 } from "@/lib/validations/historical-backlog";
 
 export type HistoricalBacklogFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  rowKey?: string;
 };
 
 export type HistoricalBacklogBulkFormState = {
@@ -66,13 +76,27 @@ type BacklogContractRecord = {
   monthlyRent: { toString(): string };
   freeRentCycles: number;
   advanceRentMonths: number;
-  advanceRentApplication: "FIRST_BILLABLE_CYCLES" | "LAST_BILLABLE_CYCLES";
+  advanceRentApplication:
+    | "FIRST_BILLABLE_CYCLES"
+    | "LAST_BILLABLE_CYCLES"
+    | "SPLIT_FIRST_AND_LAST_CYCLES";
+  advanceRentFirstMonths: number;
+  advanceRentLastMonths: number;
   advanceRent: { toString(): string };
   property: {
     id: string;
     name: string;
     propertyCode: string;
   };
+  recurringCharges: Array<{
+    id: string;
+    chargeType: keyof typeof RECURRING_CHARGE_TYPE_LABELS;
+    label: string;
+    amount: { toString(): string };
+    effectiveStartDate: Date;
+    effectiveEndDate: Date | null;
+    isActive: boolean;
+  }>;
   invoices: Array<{
     billingPeriodStart: Date;
     billingPeriodEnd: Date;
@@ -94,6 +118,12 @@ type CreatedReadingRow = {
 
 type BacklogAdjustmentLine = {
   itemType: "ADJUSTMENT" | "ARREARS";
+  label: string;
+  amount: number;
+};
+
+type BacklogRecurringChargeLine = {
+  id: string;
   label: string;
   amount: number;
 };
@@ -146,6 +176,10 @@ function getHistoricalBacklogPayload(formData: FormData) {
     formData.get("utilityReadings"),
     "Utility reading rows could not be read. Try again."
   );
+  const recurringChargeIdsResult = parseSerializedRows(
+    formData.get("recurringChargeIds"),
+    "Recurring charge rows could not be read. Try again."
+  );
   const utilityChargesResult = parseSerializedRows(
     formData.get("utilityCharges"),
     "Utility charge rows could not be read. Try again."
@@ -156,6 +190,7 @@ function getHistoricalBacklogPayload(formData: FormData) {
   );
 
   return {
+    rowKey: String(formData.get("rowKey") ?? ""),
     contractId: String(formData.get("contractId") ?? ""),
     billingPeriodStart: String(formData.get("billingPeriodStart") ?? ""),
     billingPeriodEnd: String(formData.get("billingPeriodEnd") ?? ""),
@@ -172,6 +207,8 @@ function getHistoricalBacklogPayload(formData: FormData) {
     notes: String(formData.get("notes") ?? ""),
     utilityReadings: utilityReadingsResult.rows,
     utilityReadingsParseError: utilityReadingsResult.error,
+    recurringChargeIds: recurringChargeIdsResult.rows,
+    recurringChargeIdsParseError: recurringChargeIdsResult.error,
     utilityCharges: utilityChargesResult.rows,
     utilityChargesParseError: utilityChargesResult.error,
     adjustments: adjustmentsResult.rows,
@@ -200,6 +237,10 @@ function getHistoricalBacklogParseError(
     errors.utilityReadings = [payload.utilityReadingsParseError];
   }
 
+  if (payload.recurringChargeIdsParseError) {
+    errors.recurringChargeIds = [payload.recurringChargeIdsParseError];
+  }
+
   if (payload.utilityChargesParseError) {
     errors.utilityCharges = [payload.utilityChargesParseError];
   }
@@ -214,6 +255,7 @@ function getHistoricalBacklogParseError(
 
   return {
     errors,
+    rowKey: payload.rowKey,
     message: "Backlog rows could not be read. Try again.",
   };
 }
@@ -338,6 +380,90 @@ function buildRequestedPaymentAmount(
   return Number(payment.amount ?? "0");
 }
 
+function getPrismaErrorCode(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+  ) {
+    return (error as { code: string }).code;
+  }
+
+  return null;
+}
+
+function getPrismaErrorTarget(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "meta" in error &&
+    typeof (error as { meta?: unknown }).meta === "object" &&
+    (error as { meta?: { target?: unknown } }).meta !== null
+  ) {
+    const target = (error as { meta?: { target?: unknown } }).meta?.target;
+
+    if (Array.isArray(target)) {
+      return target.filter((value): value is string => typeof value === "string");
+    }
+  }
+
+  return [];
+}
+
+function isUniqueConstraintOnFields(error: unknown, fields: string[]) {
+  const code = getPrismaErrorCode(error);
+  const target = getPrismaErrorTarget(error);
+
+  return code === "P2002" && fields.every((field) => target.includes(field));
+}
+
+function getHistoricalBacklogSaveError(error: unknown): HistoricalBacklogFormState {
+  if (
+    isUniqueConstraintOnFields(error, [
+      "contractId",
+      "billingPeriodStart",
+      "billingPeriodEnd",
+    ])
+  ) {
+    return {
+      errors: {
+        billingPeriodStart: [
+          "This backlog month was already saved for this contract.",
+        ],
+      },
+      message: "Backlog month already exists.",
+    };
+  }
+
+  if (isUniqueConstraintOnFields(error, ["meterId", "readingDate"])) {
+    return {
+      errors: {
+        utilityReadings: [
+          "One or more meter reading dates already exist for the selected meter.",
+        ],
+      },
+      message: "Backlog utility reading dates already exist.",
+    };
+  }
+
+  if (isUniqueConstraintOnFields(error, ["invoiceNumber"])) {
+    return {
+      message: "Invoice number collision happened while saving. Try once more.",
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+    };
+  }
+
+  return {
+    message: "Historical month could not be saved. Try again.",
+  };
+}
+
 function resolveHistoricalCycle(
   contract: BacklogContractRecord,
   cycleStart: Date,
@@ -370,17 +496,6 @@ function getAutoFreeRentConcessionAmount(params: {
   return rentAmount;
 }
 
-function deriveWholeMonths(amount: number, baseRent: number) {
-  if (amount <= 0 || baseRent <= 0) {
-    return 0;
-  }
-
-  const ratio = amount / baseRent;
-  const rounded = Math.round(ratio);
-
-  return Math.abs(ratio - rounded) < 0.01 ? rounded : 0;
-}
-
 function getContractCycleCount(anchorDate: Date, contractEndDate: Date) {
   let count = 0;
 
@@ -395,24 +510,6 @@ function getContractCycleCount(anchorDate: Date, contractEndDate: Date) {
   }
 
   return count;
-}
-
-function buildAdvanceApplicationCycleIndexes(params: {
-  totalCycles: number;
-  freeRentCycles: number;
-  advanceRentMonths: number;
-  application: "FIRST_BILLABLE_CYCLES" | "LAST_BILLABLE_CYCLES";
-}) {
-  const { totalCycles, freeRentCycles, advanceRentMonths, application } = params;
-  const billableCycleIndexes = Array.from({ length: totalCycles }, (_, index) => index)
-    .filter((index) => index >= freeRentCycles);
-
-  const selectedIndexes =
-    application === "LAST_BILLABLE_CYCLES"
-      ? billableCycleIndexes.slice(-advanceRentMonths)
-      : billableCycleIndexes.slice(0, advanceRentMonths);
-
-  return new Set(selectedIndexes);
 }
 
 function getAutoAdvanceRentEffects(params: {
@@ -451,7 +548,9 @@ function getAutoAdvanceRentEffects(params: {
     totalCycles,
     freeRentCycles: contract.freeRentCycles,
     advanceRentMonths,
-    application: contract.advanceRentApplication,
+    advanceRentApplication: contract.advanceRentApplication,
+    advanceRentFirstMonths: contract.advanceRentFirstMonths,
+    advanceRentLastMonths: contract.advanceRentLastMonths,
   });
   const isFreeRentCycle = cycleIndex < contract.freeRentCycles;
   const isAdvanceRentApplicationCycle =
@@ -460,6 +559,58 @@ function getAutoAdvanceRentEffects(params: {
   return {
     chargeAmount: 0,
     creditAmount: isAdvanceRentApplicationCycle ? Math.min(baseRent, rentAmount) : 0,
+  };
+}
+
+function getApplicableBacklogRecurringCharges(
+  contract: BacklogContractRecord,
+  cycleStart: Date,
+  cycleEnd: Date
+) {
+  const cycle = {
+    start: startOfDay(cycleStart),
+    end: endOfDay(cycleEnd),
+  };
+
+  return contract.recurringCharges.filter(
+    (charge) =>
+      charge.isActive &&
+      cycleOverlapsRange(cycle, charge.effectiveStartDate, charge.effectiveEndDate)
+  );
+}
+
+function resolveSelectedBacklogRecurringCharges(params: {
+  contract: BacklogContractRecord;
+  cycleStart: Date;
+  cycleEnd: Date;
+  selectedIds: string[];
+}) {
+  const applicableCharges = getApplicableBacklogRecurringCharges(
+    params.contract,
+    params.cycleStart,
+    params.cycleEnd
+  );
+  const applicableChargeMap = new Map(
+    applicableCharges.map((charge) => [charge.id, charge] as const)
+  );
+  const invalidIds = [...new Set(params.selectedIds)].filter(
+    (chargeId) => !applicableChargeMap.has(chargeId)
+  );
+
+  return {
+    invalidIds,
+    selectedCharges: [...new Set(params.selectedIds)]
+      .map((chargeId) => applicableChargeMap.get(chargeId) ?? null)
+      .filter(
+        (
+          charge
+        ): charge is (typeof applicableCharges)[number] => charge !== null
+      )
+      .map((charge) => ({
+        id: charge.id,
+        label: charge.label,
+        amount: Number(charge.amount.toString()),
+      })),
   };
 }
 
@@ -785,6 +936,7 @@ async function createBacklogInvoiceRecord(params: {
   issueDate: Date;
   dueDate: Date;
   rentAmount: number;
+  recurringCharges?: BacklogRecurringChargeLine[];
   utilityReadings?: CreatedReadingRow[];
   subsequentUpdates?: Map<
     string,
@@ -815,6 +967,7 @@ async function createBacklogInvoiceRecord(params: {
     issueDate,
     dueDate,
     rentAmount,
+    recurringCharges = [],
     utilityReadings = [],
     subsequentUpdates = new Map(),
     manualUtilityAmount = 0,
@@ -867,9 +1020,14 @@ async function createBacklogInvoiceRecord(params: {
     (sum, row) => sum + row.totalAmount,
     0
   );
+  const recurringChargeAmount = recurringCharges.reduce(
+    (sum, row) => sum + row.amount,
+    0
+  );
   const adjustmentAmount = adjustments.reduce((sum, row) => sum + row.amount, 0);
   const additionalCharges =
     autoAdvanceRentChargeAmount +
+    recurringChargeAmount +
     utilityReadingAmount +
     manualUtilityAmount +
     adjustmentAmount -
@@ -878,110 +1036,145 @@ async function createBacklogInvoiceRecord(params: {
   const totalAmount = rentAmount + additionalCharges;
   const requestedPaymentAmount = buildRequestedPaymentAmount(payment, totalAmount);
 
-  const invoice = await tx.invoice.create({
-    data: {
-      invoiceNumber: buildInvoiceNumber(issueDate, contract.property.propertyCode),
-      contractId: contract.id,
-      tenantId: contract.tenantId,
-      publicAccessCode: generateInvoiceAccessCode(),
-      issueDate,
-      dueDate,
-      billingPeriodStart: cycleStart,
-      billingPeriodEnd: cycleEnd,
-      subtotal: toMoney(rentAmount),
-      additionalCharges: toMoney(additionalCharges),
-      discount: toMoney(0),
-      totalAmount: toMoney(totalAmount),
-      balanceDue: toMoney(totalAmount),
-      origin: "BACKLOG",
-      status: getInvoiceStatusFromBalance(totalAmount, false),
-      notes: composeBacklogInvoiceNotes({
-        notes: notes ?? undefined,
-        readingMissing,
-        utilityNote,
-        freeRentConcessionAmount: autoFreeRentConcessionAmount,
-        advanceRentChargeAmount: autoAdvanceRentChargeAmount,
-        advanceRentCreditAmount: autoAdvanceRentCreditAmount,
-        bulk,
-      }),
-      items: {
-        create: [
-          ...(rentAmount > 0
-            ? [
-                {
-                  itemType: "RENT" as const,
-                  description: `Historical rent · ${cycleLabel} · ${contract.property.name}`,
-                  quantity: toMoney(1),
-                  unitPrice: toMoney(rentAmount),
-                  amount: toMoney(rentAmount),
-                },
-              ]
-            : []),
-          ...createdReadings.map((reading) => ({
-            itemType: "UTILITY_READING" as const,
-            description: `${UTILITY_TYPE_LABELS[reading.utilityType]} reading · ${reading.meterCode} · ${toDateInputValue(reading.readingDate)}`,
-            quantity: toMoney(reading.consumption),
-            unitPrice: toMoney(reading.ratePerUnit),
-            amount: toMoney(reading.totalAmount),
-            meterReadingId: reading.id,
-          })),
-          ...(manualUtilityAmount > 0
-            ? [
-                {
-                  itemType: "UTILITY_READING" as const,
-                  description: formatManualUtilityDescription({
-                    amount: manualUtilityAmount,
-                    note: utilityNote,
-                    readingMissing,
-                  }),
-                  quantity: toMoney(1),
-                  unitPrice: toMoney(manualUtilityAmount),
-                  amount: toMoney(manualUtilityAmount),
-                },
-              ]
-            : []),
-          ...(autoFreeRentConcessionAmount > 0
-            ? [
-                {
-                  itemType: "ADJUSTMENT" as const,
-                  description: `Free rent concession · ${cycleLabel}`,
-                  quantity: toMoney(1),
-                  unitPrice: toMoney(-autoFreeRentConcessionAmount),
-                  amount: toMoney(-autoFreeRentConcessionAmount),
-                },
-              ]
-            : []),
-          ...(autoAdvanceRentCreditAmount > 0
-            ? [
-                {
-                  itemType: "ADJUSTMENT" as const,
-                  description: `Advance rent applied · ${cycleLabel}`,
-                  quantity: toMoney(1),
-                  unitPrice: toMoney(-autoAdvanceRentCreditAmount),
-                  amount: toMoney(-autoAdvanceRentCreditAmount),
-                },
-              ]
-            : []),
-          ...adjustments.map((adjustment) => ({
-            itemType: adjustment.itemType,
-            description: adjustment.label,
-            quantity: toMoney(1),
-            unitPrice: toMoney(adjustment.amount),
-            amount: toMoney(adjustment.amount),
-          })),
-        ],
-      },
+  const invoiceData = {
+    contractId: contract.id,
+    tenantId: contract.tenantId,
+    publicAccessCode: generateInvoiceAccessCode(),
+    issueDate,
+    dueDate,
+    billingPeriodStart: cycleStart,
+    billingPeriodEnd: cycleEnd,
+    subtotal: toMoney(rentAmount),
+    additionalCharges: toMoney(additionalCharges),
+    discount: toMoney(0),
+    totalAmount: toMoney(totalAmount),
+    balanceDue: toMoney(totalAmount),
+    origin: "BACKLOG" as const,
+    status: getInvoiceStatusFromBalance(totalAmount, false),
+    notes: composeBacklogInvoiceNotes({
+      notes: notes ?? undefined,
+      readingMissing,
+      utilityNote,
+      freeRentConcessionAmount: autoFreeRentConcessionAmount,
+      advanceRentChargeAmount: autoAdvanceRentChargeAmount,
+      advanceRentCreditAmount: autoAdvanceRentCreditAmount,
+      bulk,
+    }),
+    items: {
+      create: [
+        ...(rentAmount > 0
+          ? [
+              {
+                itemType: "RENT" as const,
+                description: `Historical rent · ${cycleLabel} · ${contract.property.name}`,
+                quantity: toMoney(1),
+                unitPrice: toMoney(rentAmount),
+                amount: toMoney(rentAmount),
+              },
+            ]
+          : []),
+        ...recurringCharges.map((charge) => ({
+          itemType: "RECURRING_CHARGE" as const,
+          description: `${charge.label} · ${toDateInputValue(cycleStart)} to ${toDateInputValue(cycleEnd)}`,
+          quantity: toMoney(1),
+          unitPrice: toMoney(charge.amount),
+          amount: toMoney(charge.amount),
+          contractRecurringChargeId: charge.id,
+        })),
+        ...createdReadings.map((reading) => ({
+          itemType: "UTILITY_READING" as const,
+          description: `${UTILITY_TYPE_LABELS[reading.utilityType]} reading · ${reading.meterCode} · ${toDateInputValue(reading.readingDate)}`,
+          quantity: toMoney(reading.consumption),
+          unitPrice: toMoney(reading.ratePerUnit),
+          amount: toMoney(reading.totalAmount),
+          meterReadingId: reading.id,
+        })),
+        ...(manualUtilityAmount > 0
+          ? [
+              {
+                itemType: "UTILITY_READING" as const,
+                description: formatManualUtilityDescription({
+                  amount: manualUtilityAmount,
+                  note: utilityNote,
+                  readingMissing,
+                }),
+                quantity: toMoney(1),
+                unitPrice: toMoney(manualUtilityAmount),
+                amount: toMoney(manualUtilityAmount),
+              },
+            ]
+          : []),
+        ...(autoFreeRentConcessionAmount > 0
+          ? [
+              {
+                itemType: "ADJUSTMENT" as const,
+                description: `Free rent concession · ${cycleLabel}`,
+                quantity: toMoney(1),
+                unitPrice: toMoney(-autoFreeRentConcessionAmount),
+                amount: toMoney(-autoFreeRentConcessionAmount),
+              },
+            ]
+          : []),
+        ...(autoAdvanceRentCreditAmount > 0
+          ? [
+              {
+                itemType: "ADJUSTMENT" as const,
+                description: `Advance rent applied · ${cycleLabel}`,
+                quantity: toMoney(1),
+                unitPrice: toMoney(-autoAdvanceRentCreditAmount),
+                amount: toMoney(-autoAdvanceRentCreditAmount),
+              },
+            ]
+          : []),
+        ...adjustments.map((adjustment) => ({
+          itemType: adjustment.itemType,
+          description: adjustment.label,
+          quantity: toMoney(1),
+          unitPrice: toMoney(adjustment.amount),
+          amount: toMoney(adjustment.amount),
+        })),
+      ],
     },
-    include: {
-      items: {
-        orderBy: [{ createdAt: "asc" }],
-        select: {
-          id: true,
-          amount: true,
+  };
+
+  let invoice: {
+    id: string;
+    items: Array<{
+      id: string;
+      amount: { toString(): string };
+    }>;
+  } | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      invoice = await tx.invoice.create({
+        data: {
+          invoiceNumber: buildInvoiceNumber(issueDate, contract.property.propertyCode),
+          ...invoiceData,
         },
-      },
-    },
-  });
+        include: {
+          items: {
+            orderBy: [{ createdAt: "asc" }],
+            select: {
+              id: true,
+              amount: true,
+            },
+          },
+        },
+      });
+      break;
+    } catch (error) {
+      if (isUniqueConstraintOnFields(error, ["invoiceNumber"]) && attempt < 2) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  if (!invoice) {
+    throw new Error("Invoice could not be created.");
+  }
 
   if (requestedPaymentAmount > totalAmount + 0.001) {
     throw new Error("Payment amount cannot exceed the backlog invoice total.");
@@ -1047,7 +1240,20 @@ async function getBacklogContractsByIds(contractIds: string[]) {
       freeRentCycles: true,
       advanceRentMonths: true,
       advanceRentApplication: true,
+      advanceRentFirstMonths: true,
+      advanceRentLastMonths: true,
       advanceRent: true,
+      recurringCharges: {
+        select: {
+          id: true,
+          chargeType: true,
+          label: true,
+          amount: true,
+          effectiveStartDate: true,
+          effectiveEndDate: true,
+          isActive: true,
+        },
+      },
       property: {
         select: {
           id: true,
@@ -1070,52 +1276,38 @@ async function getBacklogContractsByIds(contractIds: string[]) {
   });
 }
 
-export async function createHistoricalBacklogAction(
-  _previousState: HistoricalBacklogFormState,
-  formData: FormData
-): Promise<HistoricalBacklogFormState> {
-  const user = await requireRole("ADMIN");
-  const payload = getHistoricalBacklogPayload(formData);
-  const parseError = getHistoricalBacklogParseError(payload);
+function flattenHistoricalBacklogErrors(
+  errors: HistoricalBacklogFormState["errors"]
+) {
+  return Object.values(errors ?? {}).flatMap((messages) => messages ?? []);
+}
 
-  if (parseError) {
-    return parseError;
-  }
-
-  const validatedFields = historicalBacklogSchema.safeParse(payload);
-
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Fix highlighted backlog fields, then try again.",
-    };
-  }
-
-  const cycleStart = startOfDay(new Date(validatedFields.data.billingPeriodStart));
-  const cycleEnd = endOfDay(new Date(validatedFields.data.billingPeriodEnd));
-  const issueDate = endOfDay(new Date(validatedFields.data.issueDate));
-  const dueDate = endOfDay(new Date(validatedFields.data.dueDate));
+async function saveHistoricalBacklogMonth(params: {
+  userId: string;
+  input: HistoricalBacklogInput;
+  contract: BacklogContractRecord;
+  rowKey?: string;
+  bulk?: boolean;
+}) {
+  const { userId, input, contract, rowKey, bulk } = params;
+  const cycleStart = startOfDay(new Date(input.billingPeriodStart));
+  const cycleEnd = endOfDay(new Date(input.billingPeriodEnd));
+  const issueDate = endOfDay(new Date(input.issueDate));
+  const dueDate = endOfDay(new Date(input.dueDate));
   const cutoffDate = getHistoricalBacklogCutoffDate();
 
   if (cycleStart > cutoffDate) {
     return {
-      errors: {
-        billingPeriodStart: [
-          "Historical backlog months must stay on or before final transition month.",
-        ],
+      ok: false as const,
+      state: {
+        rowKey,
+        errors: {
+          billingPeriodStart: [
+            "Historical backlog months must stay on or before final transition month.",
+          ],
+        },
+        message: "Selected month is outside historical backlog window.",
       },
-      message: "Selected month is outside historical backlog window.",
-    };
-  }
-
-  const [contract] = await getBacklogContractsByIds([validatedFields.data.contractId]);
-
-  if (!contract) {
-    return {
-      errors: {
-        contractId: ["Select valid contract."],
-      },
-      message: "Backlog contract selection invalid.",
     };
   }
 
@@ -1123,18 +1315,46 @@ export async function createHistoricalBacklogAction(
 
   if (!matchedCycle) {
     return {
-      errors: {
-        billingPeriodStart: [
-          "Selected month is no longer available for manual historical encoding.",
-        ],
+      ok: false as const,
+      state: {
+        rowKey,
+        errors: {
+          billingPeriodStart: [
+            "Selected month is no longer available for manual historical encoding.",
+          ],
+        },
+        message: "Backlog month selection out of date.",
       },
-      message: "Backlog month selection out of date.",
     };
   }
 
-  const rentAmount = validatedFields.data.rentAmount
-    ? Number(validatedFields.data.rentAmount)
-    : 0;
+  const rentAmount = input.rentAmount ? Number(input.rentAmount) : 0;
+  const recurringChargeSelection = resolveSelectedBacklogRecurringCharges({
+    contract,
+    cycleStart,
+    cycleEnd,
+    selectedIds: input.recurringChargeIds,
+  });
+
+  if (recurringChargeSelection.invalidIds.length > 0) {
+    return {
+      ok: false as const,
+      state: {
+        rowKey,
+        errors: {
+          recurringChargeIds: [
+            "One or more recurring charge selections are no longer valid for this month.",
+          ],
+        },
+        message: "Recurring charge selection is out of date.",
+      },
+    };
+  }
+
+  const recurringChargeAmount = recurringChargeSelection.selectedCharges.reduce(
+    (sum, charge) => sum + charge.amount,
+    0
+  );
   const autoFreeRentConcessionAmount = getAutoFreeRentConcessionAmount({
     contract,
     cycleStart,
@@ -1148,21 +1368,24 @@ export async function createHistoricalBacklogAction(
 
   if (
     rentAmount <= 0 &&
-    validatedFields.data.utilityReadings.length === 0 &&
-    validatedFields.data.utilityCharges.length === 0 &&
-    validatedFields.data.adjustments.length === 0
+    recurringChargeSelection.selectedCharges.length === 0 &&
+    input.utilityReadings.length === 0 &&
+    input.utilityCharges.length === 0 &&
+    input.adjustments.length === 0
   ) {
     return {
-      errors: {
-        rentAmount: ["Add at least one monetary line before saving."],
+      ok: false as const,
+      state: {
+        rowKey,
+        errors: {
+          rentAmount: ["Add at least one monetary line before saving."],
+        },
+        message: "Backlog month needs at least one billable line.",
       },
-      message: "Backlog month needs at least one billable line.",
     };
   }
 
-  const selectedMeterIds = [
-    ...new Set(validatedFields.data.utilityReadings.map((row) => row.meterId)),
-  ];
+  const selectedMeterIds = [...new Set(input.utilityReadings.map((row) => row.meterId))];
   const allowedMeters = selectedMeterIds.length
     ? await prisma.utilityMeter.findMany({
         where: {
@@ -1213,17 +1436,21 @@ export async function createHistoricalBacklogAction(
     )
   ) {
     return {
-      errors: {
-        utilityReadings: [
-          "Backlog utility readings must use dedicated meters on this contract.",
-        ],
+      ok: false as const,
+      state: {
+        rowKey,
+        errors: {
+          utilityReadings: [
+            "Backlog utility readings must use dedicated meters on this contract.",
+          ],
+        },
+        message: "One or more selected meters invalid.",
       },
-      message: "One or more selected meters invalid.",
     };
   }
 
   const readingValidation = validateHistoricalReadingRows({
-    rows: validatedFields.data.utilityReadings,
+    rows: input.utilityReadings,
     cycleStart,
     cycleEnd,
     contractTenantId: contract.tenantId,
@@ -1233,25 +1460,28 @@ export async function createHistoricalBacklogAction(
 
   if (readingValidation.errors) {
     return {
-      errors: readingValidation.errors,
-      message: "Historical utility readings invalid.",
+      ok: false as const,
+      state: {
+        rowKey,
+        errors: readingValidation.errors,
+        message: "Historical utility readings invalid.",
+      },
     };
   }
 
-  const manualUtilityAmount = validatedFields.data.utilityCharges.reduce(
+  const manualUtilityAmount = input.utilityCharges.reduce(
     (sum, row) => sum + Number(row.amount),
     0
   );
-  const adjustmentLines: BacklogAdjustmentLine[] = validatedFields.data.adjustments.map(
-    (row) => ({
-      itemType: row.itemType,
-      label: row.label,
-      amount: Number(row.amount),
-    })
-  );
+  const adjustmentLines: BacklogAdjustmentLine[] = input.adjustments.map((row) => ({
+    itemType: row.itemType,
+    label: row.label,
+    amount: Number(row.amount),
+  }));
   const totalAmount =
     rentAmount +
     autoAdvanceRentEffects.chargeAmount +
+    recurringChargeAmount +
     manualUtilityAmount +
     readingValidation.normalizedRows.reduce((sum, row) => sum + row.totalAmount, 0) +
     adjustmentLines.reduce((sum, row) => sum + row.amount, 0) -
@@ -1260,12 +1490,16 @@ export async function createHistoricalBacklogAction(
 
   if (totalAmount < 0) {
     return {
-      errors: {
-        adjustments: [
-          "Backlog invoice total cannot go negative after credits and adjustments.",
-        ],
+      ok: false as const,
+      state: {
+        rowKey,
+        errors: {
+          adjustments: [
+            "Backlog invoice total cannot go negative after credits and adjustments.",
+          ],
+        },
+        message: "Backlog invoice total invalid.",
       },
-      message: "Backlog invoice total invalid.",
     };
   }
 
@@ -1273,7 +1507,7 @@ export async function createHistoricalBacklogAction(
     const invoiceId = await prisma.$transaction(async (tx) =>
       createBacklogInvoiceRecord({
         tx,
-        userId: user.id,
+        userId,
         contract,
         cycleStart,
         cycleEnd,
@@ -1281,12 +1515,13 @@ export async function createHistoricalBacklogAction(
         issueDate,
         dueDate,
         rentAmount,
+        recurringCharges: recurringChargeSelection.selectedCharges,
         utilityReadings: readingValidation.normalizedRows,
         subsequentUpdates: readingValidation.subsequentUpdates,
         manualUtilityAmount,
         utilityNote:
-          validatedFields.data.utilityCharges.length > 0
-            ? validatedFields.data.utilityCharges
+          input.utilityCharges.length > 0
+            ? input.utilityCharges
                 .map((row) =>
                   row.label
                     ? `${UTILITY_TYPE_LABELS[row.utilityType]}: ${row.label}`
@@ -1298,25 +1533,80 @@ export async function createHistoricalBacklogAction(
         autoFreeRentConcessionAmount,
         autoAdvanceRentChargeAmount: autoAdvanceRentEffects.chargeAmount,
         autoAdvanceRentCreditAmount: autoAdvanceRentEffects.creditAmount,
-        payment: validatedFields.data.payment,
-        notes: validatedFields.data.notes ?? null,
+        payment: input.payment,
+        notes: input.notes ?? null,
+        bulk,
       })
     );
 
-    revalidateBillingViews();
-    redirect(
-      withToast(`/billing/${invoiceId}`, {
-        intent: "success",
-        title: "Backlog month saved",
-        description: `Saved historical invoice for ${formatBillingCycleLabel(matchedCycle)}.`,
-      })
-    );
-  } catch {
     return {
-      message:
-        "Historical month could not be saved. Check duplicate months or reading dates, then try again.",
+      ok: true as const,
+      invoiceId,
+      cycleLabel: formatBillingCycleLabel(matchedCycle),
+    };
+  } catch (error) {
+    return {
+      ok: false as const,
+      state: {
+        ...getHistoricalBacklogSaveError(error),
+        rowKey,
+      },
     };
   }
+}
+
+export async function createHistoricalBacklogAction(
+  _previousState: HistoricalBacklogFormState,
+  formData: FormData
+): Promise<HistoricalBacklogFormState> {
+  const user = await requireRole("ADMIN");
+  const payload = getHistoricalBacklogPayload(formData);
+  const parseError = getHistoricalBacklogParseError(payload);
+
+  if (parseError) {
+    return parseError;
+  }
+
+  const validatedFields = historicalBacklogSchema.safeParse(payload);
+
+  if (!validatedFields.success) {
+    return {
+      rowKey: payload.rowKey,
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Fix highlighted backlog fields, then try again.",
+    };
+  }
+
+  const [contract] = await getBacklogContractsByIds([validatedFields.data.contractId]);
+
+  if (!contract) {
+    return {
+      rowKey: payload.rowKey,
+      errors: {
+        contractId: ["Select valid contract."],
+      },
+      message: "Backlog contract selection invalid.",
+    };
+  }
+  const result = await saveHistoricalBacklogMonth({
+    userId: user.id,
+    input: validatedFields.data,
+    contract,
+    rowKey: payload.rowKey,
+  });
+
+  if (!result.ok) {
+    return result.state;
+  }
+
+  revalidateBillingViews();
+  redirect(
+    withToast(`/billing/${result.invoiceId}`, {
+      intent: "success",
+      title: "Backlog month saved",
+      description: `Saved historical invoice for ${result.cycleLabel}.`,
+    })
+  );
 }
 
 export async function createHistoricalBacklogBulkAction(
@@ -1380,140 +1670,29 @@ export async function createHistoricalBacklogBulkAction(
       continue;
     }
 
-    const cycleStart = startOfDay(new Date(row.billingPeriodStart));
-    const cycleEnd = endOfDay(new Date(row.billingPeriodEnd));
-    const issueDate = endOfDay(new Date(row.issueDate));
-    const dueDate = endOfDay(new Date(row.dueDate));
-    const cutoffDate = getHistoricalBacklogCutoffDate();
-
-    if (cycleStart > cutoffDate) {
-      rowErrors[row.rowKey] = [
-        "Month is outside historical backlog window.",
-      ];
-      continue;
-    }
-
-    const matchedCycle = resolveHistoricalCycle(contract, cycleStart, cycleEnd);
-
-    if (!matchedCycle) {
-      rowErrors[row.rowKey] = [
-        "Month is no longer available for manual historical encoding.",
-      ];
-      continue;
-    }
-
-    const rentAmount = row.rentAmount ? Number(row.rentAmount) : 0;
-    const manualUtilityAmount = row.manualUtilityAmount
-      ? Number(row.manualUtilityAmount)
-      : 0;
-    const cycleLabel = formatBillingCycleLabel(matchedCycle);
-    const autoFreeRentConcessionAmount = getAutoFreeRentConcessionAmount({
+    const { rowKey, ...monthInput } = row;
+    const result = await saveHistoricalBacklogMonth({
+      userId: user.id,
+      input: monthInput,
       contract,
-      cycleStart,
-      rentAmount,
+      rowKey,
+      bulk: true,
     });
-    const autoAdvanceRentEffects = getAutoAdvanceRentEffects({
-      contract,
-      cycleStart,
-      rentAmount,
+
+    if (!result.ok) {
+      const flattenedErrors = flattenHistoricalBacklogErrors(result.state.errors);
+      rowErrors[row.rowKey] =
+        flattenedErrors.length > 0
+          ? flattenedErrors
+          : [result.state.message ?? "Row could not be saved."];
+      continue;
+    }
+
+    savedRowKeys.push(row.rowKey);
+    savedRows.push({
+      rowKey: row.rowKey,
+      invoiceId: result.invoiceId,
     });
-    const adjustmentLines: BacklogAdjustmentLine[] = [];
-
-    if (row.adjustmentAmount && Number(row.adjustmentAmount) !== 0) {
-      adjustmentLines.push({
-        itemType: "ADJUSTMENT",
-        label: `Bulk adjustment · ${cycleLabel}`,
-        amount: Number(row.adjustmentAmount),
-      });
-    }
-
-    if (row.arrearsAmount && Number(row.arrearsAmount) !== 0) {
-      adjustmentLines.push({
-        itemType: "ARREARS",
-        label: `Prior arrears · ${cycleLabel}`,
-        amount: Number(row.arrearsAmount),
-      });
-    }
-
-    const totalAmount =
-      rentAmount +
-      autoAdvanceRentEffects.chargeAmount +
-      manualUtilityAmount +
-      adjustmentLines.reduce((sum, item) => sum + item.amount, 0) -
-      autoFreeRentConcessionAmount -
-      autoAdvanceRentEffects.creditAmount;
-
-    if (
-      rentAmount <= 0 &&
-      manualUtilityAmount <= 0 &&
-      adjustmentLines.length === 0
-    ) {
-      rowErrors[row.rowKey] = ["Row needs at least one billable amount."];
-      continue;
-    }
-
-    if (totalAmount < 0) {
-      rowErrors[row.rowKey] = [
-        "Invoice total cannot go negative after adjustments and free-rent credits.",
-      ];
-      continue;
-    }
-
-    const requestedPaymentAmount = buildRequestedPaymentAmount(
-      {
-        status: row.paymentStatus,
-        amount: row.paymentAmount,
-        paymentDate: row.paymentDate,
-        referenceNumber: row.referenceNumber,
-        notes: undefined,
-      },
-      totalAmount
-    );
-
-    if (requestedPaymentAmount > totalAmount + 0.001) {
-      rowErrors[row.rowKey] = ["Payment amount cannot exceed invoice total."];
-      continue;
-    }
-
-    try {
-      const invoiceId = await prisma.$transaction(async (tx) =>
-        createBacklogInvoiceRecord({
-          tx,
-          userId: user.id,
-          contract,
-          cycleStart,
-          cycleEnd,
-          cycleLabel,
-          issueDate,
-          dueDate,
-          rentAmount,
-          manualUtilityAmount,
-          utilityNote: row.utilityNote,
-          adjustments: adjustmentLines,
-          autoFreeRentConcessionAmount,
-          autoAdvanceRentChargeAmount: autoAdvanceRentEffects.chargeAmount,
-          autoAdvanceRentCreditAmount: autoAdvanceRentEffects.creditAmount,
-          payment: {
-            status: row.paymentStatus,
-            amount: row.paymentAmount,
-            paymentDate: row.paymentDate,
-            referenceNumber: row.referenceNumber,
-          },
-          notes: row.notes ?? null,
-          readingMissing: row.readingMissing,
-          bulk: true,
-        })
-      );
-      savedRowKeys.push(row.rowKey);
-      savedRows.push({
-        rowKey: row.rowKey,
-        invoiceId,
-      });
-    } catch {
-      rowErrors[row.rowKey] = [
-        "Row could not be saved. Check duplicate invoice month or invalid amounts.",
-      ];
-    }
   }
 
   if (savedRowKeys.length > 0) {

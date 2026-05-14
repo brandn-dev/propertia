@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  ArrowLeft,
   FilePenLine,
   Plus,
   ReceiptText,
@@ -15,12 +16,9 @@ import { buildInvoicePresentationModel, formatTenantName } from "@/lib/billing/i
 import { ensureInvoicePublicAccessCode } from "@/lib/billing/public-access";
 import { getInvoiceForView } from "@/lib/data/billing";
 import { INVOICE_ORIGIN_LABELS } from "@/lib/form-options";
-import { formatCurrency, formatDate, toNumber } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
-import { InvoiceQrCard } from "@/components/billing/invoice-qr-card";
+import { formatDate, toNumber } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 type InvoiceDetailPageProps = {
   params: Promise<{
@@ -44,25 +42,11 @@ export default async function InvoiceDetailPage({
     invoice.publicAccessCode
   );
 
-  const itemsWithBalances = invoice.items.map((item) => {
-    const allocatedAmount = item.allocations.reduce(
-      (sum, allocation) => sum + toNumber(allocation.amountAllocated),
-      0
-    );
-
-    return {
-      ...item,
-      allocatedAmount,
-      remainingAmount: Math.max(0, toNumber(item.amount) - allocatedAmount),
-    };
-  });
-
   const canRecordPayment =
     invoice.status !== "VOID" && toNumber(invoice.balanceDue) > 0;
   const canDeleteInvoice = invoice.payments.length === 0;
   const canEditBacklogInvoice = invoice.origin === "BACKLOG" && canDeleteInvoice;
   const deleteBacklogInvoice = deleteBacklogInvoiceAction.bind(null, invoice.id);
-  const itemLookup = new Map(itemsWithBalances.map((item) => [item.id, item]));
   const presentationModel = buildInvoicePresentationModel(invoice);
   const qrDataUrl = await generateInvoiceQrDataUrl({
     invoiceId: invoice.id,
@@ -77,12 +61,15 @@ export default async function InvoiceDetailPage({
     balanceDue: toNumber(invoice.balanceDue),
   });
   const cycleLabel = presentationModel.title.replace("Invoice for ", "");
-  const showQrCard = false;
-  const showPaymentsCard = true;
 
   return (
     <div className="space-y-6">
       <DashboardPageHero
+        className="rounded-2xl border-border/60 bg-card/70 shadow-sm backdrop-blur"
+        contentClassName="p-4 md:p-4.5"
+        headerClassName="flex-nowrap items-center"
+        actionContainerClassName="max-w-none basis-auto shrink-0"
+        titleClassName="text-xl sm:text-2xl"
         eyebrow="Operations / Billing"
         title={`Invoice for ${cycleLabel}`}
         icon={ReceiptText}
@@ -94,37 +81,51 @@ export default async function InvoiceDetailPage({
           formatDate(invoice.dueDate),
         ]}
         action={
-          <div className="flex flex-wrap gap-2">
-            {canEditBacklogInvoice ? (
-              <>
+          <div className="flex min-w-0 items-center justify-end">
+            <div className="flex shrink-0 items-center justify-center gap-2">
+              {canEditBacklogInvoice ? (
                 <Button
                   render={<Link href={`/billing/${invoice.id}/edit`} />}
                   variant="outline"
-                  className="button-blank rounded-full"
+                  size="icon"
+                  className="button-blank rounded-full shrink-0"
                 >
                   <FilePenLine />
-                  Edit backlog invoice
+                  <span className="sr-only">Edit backlog invoice</span>
                 </Button>
-              </>
-            ) : null}
-            {canDeleteInvoice ? (
-              <form action={deleteBacklogInvoice}>
-                <Button type="submit" variant="destructive" className="rounded-full">
-                  <Trash2 />
-                  Delete invoice
+              ) : null}
+              {canDeleteInvoice ? (
+                <form action={deleteBacklogInvoice} className="contents">
+                  <Button type="submit" variant="destructive" size="icon" className="rounded-full shrink-0">
+                    <Trash2 />
+                    <span className="sr-only">Delete invoice</span>
+                  </Button>
+                </form>
+              ) : null}
+              {canRecordPayment ? (
+                <Button
+                  render={<Link href={`/billing/${invoice.id}/payment`} />}
+                  className="rounded-full"
+                >
+                  <Plus />
+                  Record payment
                 </Button>
-              </form>
-            ) : null}
-            {canRecordPayment ? (
-              <Button render={<Link href={`/billing/${invoice.id}/payment`} />} className="rounded-full">
-                <Plus />
-                Record payment
+              ) : null}
+              <InvoicePdfLauncher
+                action={`/billing/${invoice.id}/pdf/file`}
+                buttonMode="icon"
+                className="w-auto shrink-0"
+              />
+              <Button
+                render={<Link href="/billing" />}
+                variant="outline"
+                size="icon"
+                className="button-blank rounded-full shrink-0"
+              >
+                <ArrowLeft />
+                <span className="sr-only">Back to billing</span>
               </Button>
-            ) : null}
-            <InvoicePdfLauncher action={`/billing/${invoice.id}/pdf/file`} />
-            <Button render={<Link href="/billing" />} variant="outline" className="button-blank rounded-full">
-              Back to billing
-            </Button>
+            </div>
           </div>
         }
       />
@@ -137,103 +138,6 @@ export default async function InvoiceDetailPage({
           publicAccessCode,
         }}
       />
-
-      {showQrCard || showPaymentsCard ? (
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
-          <div className="space-y-4">
-            {showQrCard ? (
-              <InvoiceQrCard
-                invoiceId={invoice.id}
-                invoiceNumber={invoice.invoiceNumber}
-                publicAccessCode={publicAccessCode}
-                tenantName={formatTenantName(invoice.tenant)}
-                propertyName={invoice.contract.property.name}
-                billingPeriodStart={invoice.billingPeriodStart}
-                billingPeriodEnd={invoice.billingPeriodEnd}
-                issueDate={invoice.issueDate}
-                dueDate={invoice.dueDate}
-                totalAmount={toNumber(invoice.totalAmount)}
-                balanceDue={toNumber(invoice.balanceDue)}
-              />
-            ) : null}
-          </div>
-
-          {showPaymentsCard ? (
-            <Card className="rounded-xl border-border/60 bg-card shadow-sm">
-            <CardHeader>
-              <CardTitle>Payments</CardTitle>
-              <CardDescription>
-                Payments are allocated to specific invoice items, so partial rent
-                payments and unpaid utilities remain visible separately.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {invoice.payments.length === 0 ? (
-                <div className="space-y-3">
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    No payments have been recorded yet for this invoice.
-                  </p>
-                  {canRecordPayment ? (
-                    <Button render={<Link href={`/billing/${invoice.id}/payment`} />} className="rounded-full">
-                      <Plus />
-                      Record first payment
-                    </Button>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {invoice.payments.map((payment) => (
-                    <div
-                      key={payment.id}
-                      className="rounded-[1.2rem] border border-border/60 bg-background/60 px-4 py-3 text-sm"
-                    >
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="font-medium">
-                          {formatCurrency(toNumber(payment.amountPaid))}
-                        </span>
-                        <Badge variant="outline">
-                          {payment.status.replaceAll("_", " ")}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-muted-foreground">
-                        {payment.paymentDate
-                          ? `Paid on ${formatDate(payment.paymentDate)}`
-                          : `Due ${formatDate(payment.dueDate)}`}
-                      </p>
-                      {payment.referenceNumber ? (
-                        <p className="mt-1 text-muted-foreground">
-                          Reference: {payment.referenceNumber}
-                        </p>
-                      ) : null}
-                      {payment.allocations.length > 0 ? (
-                        <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
-                          {payment.allocations.map((allocation) => {
-                            const item = itemLookup.get(allocation.invoiceItemId);
-
-                            return (
-                              <p key={`${payment.id}-${allocation.invoiceItemId}`}>
-                                {(item?.description ?? "Invoice item").slice(0, 72)}
-                                {" · "}
-                                {formatCurrency(toNumber(allocation.amountAllocated))}
-                              </p>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                      {payment.notes ? (
-                        <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                          {payment.notes}
-                        </p>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          ) : null}
-        </section>
-      ) : null}
     </div>
   );
 }

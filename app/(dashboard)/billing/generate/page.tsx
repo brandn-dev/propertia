@@ -62,6 +62,14 @@ export default async function GenerateBillingPage() {
     rentAdjustmentCount: contract._count.rentAdjustments,
     property: contract.property,
     tenant: contract.tenant,
+    readings: contract.readings.map((reading) => ({
+      id: reading.id,
+      readingDate: reading.readingDate.toISOString(),
+      consumption: reading.consumption.toString(),
+      ratePerUnit: reading.ratePerUnit.toString(),
+      totalAmount: reading.totalAmount.toString(),
+      meter: reading.meter,
+    })),
   }));
   const eligibleContracts = contractOptions.filter(
     (contract) => contract.pendingCycleLabels.length > 0
@@ -80,7 +88,7 @@ export default async function GenerateBillingPage() {
       <DashboardPageHero
         eyebrow="Operations / Billing"
         title="Generate invoices"
-        description="Issue invoices from contract billing cycles anchored on each payment start date. You can bill completed cycles and the current active cycle, while tenant-dedicated utility readings still pull from the previous completed cycle."
+        description="Issue invoices from contract billing cycles anchored on each payment start date. You can bill completed cycles and the current active cycle, then choose which connected-meter utility readings should attach to each invoice."
         icon={ReceiptText}
         badges={["Cycle-based", "Recurring-charge aware", "Admin only"]}
         action={<ReceiptText className="size-5 text-primary" />}

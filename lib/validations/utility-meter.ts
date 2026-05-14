@@ -29,4 +29,36 @@ export const utilityMeterSchema = z.object({
   }
 });
 
+export const utilityMeterReplacementSchema = z.object({
+  openedAt: z
+    .string()
+    .trim()
+    .min(1, "Replacement date is required.")
+    .refine(
+      (value) => !Number.isNaN(new Date(value).getTime()),
+      "Enter a valid replacement date."
+    ),
+  meterCode: z
+    .string()
+    .trim()
+    .min(2, "Meter code is required.")
+    .max(40, "Meter code must be 40 characters or fewer.")
+    .regex(
+      /^[A-Za-z0-9-_/]+$/,
+      "Meter code can only include letters, numbers, hyphens, underscores, and slashes."
+    )
+    .transform((value) => value.toUpperCase()),
+  openingReading: z
+    .string()
+    .trim()
+    .min(1, "Opening reading is required.")
+    .refine(
+      (value) => !Number.isNaN(Number(value)) && Number(value) >= 0,
+      "Opening reading must be a valid non-negative number."
+    ),
+});
+
 export type UtilityMeterInput = z.infer<typeof utilityMeterSchema>;
+export type UtilityMeterReplacementInput = z.infer<
+  typeof utilityMeterReplacementSchema
+>;

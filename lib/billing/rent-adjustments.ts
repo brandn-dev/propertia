@@ -1,5 +1,3 @@
-import "server-only";
-
 type RentAdjustmentInput = {
   effectiveDate: Date;
   increaseType: "FIXED" | "PERCENTAGE";

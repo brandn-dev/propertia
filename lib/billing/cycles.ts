@@ -5,6 +5,12 @@ export type BillingCycle = {
   end: Date;
 };
 
+export type UtilityBillingWindow = {
+  serviceCycle: BillingCycle;
+  captureStartExclusive: Date;
+  captureEndInclusive: Date;
+};
+
 function startOfDay(date: Date) {
   const value = new Date(date);
   value.setHours(0, 0, 0, 0);
@@ -64,6 +70,36 @@ export function getBillingCycleIndex(anchorDate: Date, cycleStart: Date) {
   }
 
   return -1;
+}
+
+export function getUtilityBillingWindowForCycle(params: {
+  anchorDate: Date;
+  cycleStart: Date;
+  issueDate: Date;
+}): UtilityBillingWindow | null {
+  const cycleIndex = getBillingCycleIndex(params.anchorDate, params.cycleStart);
+
+  if (cycleIndex <= 0) {
+    return null;
+  }
+
+  const serviceCycle = getBillingCycleAtIndex(params.anchorDate, cycleIndex - 1);
+
+  return {
+    serviceCycle,
+    captureStartExclusive: serviceCycle.end,
+    captureEndInclusive: params.issueDate,
+  };
+}
+
+export function isReadingInUtilityBillingWindow(
+  readingDate: Date,
+  window: UtilityBillingWindow
+) {
+  return (
+    readingDate.getTime() > window.captureStartExclusive.getTime() &&
+    readingDate.getTime() <= window.captureEndInclusive.getTime()
+  );
 }
 
 export function findNextCompletedBillingCycles(params: {

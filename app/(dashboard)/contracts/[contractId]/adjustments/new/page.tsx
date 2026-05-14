@@ -5,6 +5,10 @@ import { RentAdjustmentForm } from "@/components/contracts/rent-adjustment-form"
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { requireRole } from "@/lib/auth/user";
+import {
+  formatContractEndDate,
+  isOpenEndedContractEndDate,
+} from "@/lib/contracts/term";
 import { getContractRentAdjustmentOverview } from "@/lib/data/admin";
 import { formatCurrency, formatDate, toDateInputValue, toNumber } from "@/lib/format";
 
@@ -64,7 +68,11 @@ export default async function NewContractAdjustmentPage({
         <DashboardMetricCard
           label="Contract term"
           value={formatDate(contract.startDate)}
-          detail={`Ends ${formatDate(contract.endDate)}. The effective date must stay inside this term.`}
+          detail={
+            isOpenEndedContractEndDate(contract.endDate)
+              ? "No end date set. The effective date can be any date on or after the contract start."
+              : `Ends ${formatContractEndDate(contract.endDate)}. The effective date must stay inside this term.`
+          }
           icon={RotateCcw}
         />
         <DashboardMetricCard

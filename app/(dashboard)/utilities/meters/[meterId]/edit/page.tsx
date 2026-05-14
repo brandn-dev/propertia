@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Gauge, PencilLine, ReceiptText, Split } from "lucide-react";
+import { Gauge, PencilLine, ReceiptText, Repeat2, Split } from "lucide-react";
 import { updateUtilityMeterAction } from "@/app/(dashboard)/utilities/actions";
+import { Button } from "@/components/ui/button";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { UtilityMeterForm } from "@/components/utilities/utility-meter-form";
@@ -62,10 +64,26 @@ export default async function EditUtilityMeterPage({
               : "Dedicated",
           meter.utilityType,
         ]}
-        action={<PencilLine className="size-5 text-primary" />}
+        action={
+          meter.retiredAt ? (
+            <PencilLine className="size-5 text-primary" />
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                render={<Link href={`/utilities/meters/${meter.id}/replace`} />}
+                variant="outline"
+                className="button-blank rounded-full"
+              >
+                <Repeat2 />
+                Replace meter
+              </Button>
+              <PencilLine className="size-5 text-primary" />
+            </div>
+          )
+        }
       />
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <DashboardMetricCard
           label="Recorded readings"
           value={String(meter._count.readings)}
@@ -77,6 +95,16 @@ export default async function EditUtilityMeterPage({
           value={meter.isShared ? "Yes" : "No"}
           detail="Whether this meter later participates in shared allocation."
           icon={Split}
+        />
+        <DashboardMetricCard
+          label="Registry status"
+          value={meter.retiredAt ? "Retired" : "Active"}
+          detail={
+            meter.retiredAt
+              ? "This meter stays in history but should not receive future readings."
+              : "This meter is eligible for ongoing readings unless replaced later."
+          }
+          icon={Gauge}
         />
         <DashboardMetricCard
           label="Linked COSA items"

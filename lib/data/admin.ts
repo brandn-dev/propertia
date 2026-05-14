@@ -318,6 +318,16 @@ export async function getUtilityMeterForEdit(meterId: string) {
       utilityType: true,
       meterCode: true,
       isShared: true,
+      openedAt: true,
+      retiredAt: true,
+      openingReading: true,
+      replacesMeterId: true,
+      replacesMeter: {
+        select: {
+          id: true,
+          meterCode: true,
+        },
+      },
       property: {
         select: {
           name: true,
@@ -337,20 +347,94 @@ export async function getUtilityMeterForEdit(meterId: string) {
         select: {
           readings: true,
           cosas: true,
+          replacementMeters: true,
         },
       },
     },
   });
 }
 
+export async function getUtilityMeterForReplacement(meterId: string) {
+  const meter = await prisma.utilityMeter.findUnique({
+    where: { id: meterId },
+    select: {
+      id: true,
+      propertyId: true,
+      tenantId: true,
+      utilityType: true,
+      meterCode: true,
+      isShared: true,
+      openedAt: true,
+      retiredAt: true,
+      openingReading: true,
+      property: {
+        select: {
+          id: true,
+          name: true,
+          propertyCode: true,
+        },
+      },
+      tenant: {
+        select: {
+          id: true,
+          type: true,
+          firstName: true,
+          lastName: true,
+          businessName: true,
+        },
+      },
+      readings: {
+        take: 1,
+        orderBy: [{ readingDate: "desc" }, { createdAt: "desc" }],
+        select: {
+          readingDate: true,
+          currentReading: true,
+        },
+      },
+    },
+  });
+
+  if (!meter) {
+    return null;
+  }
+
+  return {
+    ...meter,
+    openedAt: meter.openedAt.toISOString(),
+    retiredAt: meter.retiredAt?.toISOString() ?? null,
+    openingReading: meter.openingReading.toString(),
+    readings: meter.readings.map((reading) => ({
+      readingDate: reading.readingDate.toISOString(),
+      currentReading: reading.currentReading.toString(),
+    })),
+  };
+}
+
 export async function getUtilityMeterReadingOptions() {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(todayStart);
+  todayEnd.setHours(23, 59, 59, 999);
+
   const meters = await prisma.utilityMeter.findMany({
+    where: {
+      openedAt: {
+        lte: todayEnd,
+      },
+      OR: [
+        { retiredAt: null },
+        { retiredAt: { gte: todayStart } },
+      ],
+    },
     orderBy: [{ createdAt: "desc" }],
     select: {
       id: true,
       meterCode: true,
       utilityType: true,
       isShared: true,
+      openedAt: true,
+      retiredAt: true,
+      openingReading: true,
       property: {
         select: {
           id: true,
@@ -373,6 +457,7 @@ export async function getUtilityMeterReadingOptions() {
           id: true,
           readingDate: true,
           currentReading: true,
+          ratePerUnit: true,
           invoiceItem: {
             select: {
               id: true,
@@ -385,10 +470,14 @@ export async function getUtilityMeterReadingOptions() {
 
   return meters.map((meter) => ({
     ...meter,
+    openedAt: meter.openedAt.toISOString(),
+    retiredAt: meter.retiredAt?.toISOString() ?? null,
+    openingReading: meter.openingReading.toString(),
     readings: meter.readings.map((reading) => ({
       id: reading.id,
       readingDate: reading.readingDate.toISOString(),
       currentReading: reading.currentReading.toString(),
+      ratePerUnit: reading.ratePerUnit.toString(),
       isBilled: Boolean(reading.invoiceItem),
     })),
   }));
@@ -422,6 +511,9 @@ export async function getMeterReadingForEdit(readingId: string) {
           meterCode: true,
           utilityType: true,
           isShared: true,
+          openedAt: true,
+          retiredAt: true,
+          openingReading: true,
           property: {
             select: {
               id: true,
@@ -444,6 +536,7 @@ export async function getMeterReadingForEdit(readingId: string) {
               id: true,
               readingDate: true,
               currentReading: true,
+              ratePerUnit: true,
               invoiceItem: {
                 select: {
                   id: true,
@@ -476,12 +569,16 @@ export async function getMeterReadingForEdit(readingId: string) {
       meterCode: reading.meter.meterCode,
       utilityType: reading.meter.utilityType,
       isShared: reading.meter.isShared,
+      openedAt: reading.meter.openedAt.toISOString(),
+      retiredAt: reading.meter.retiredAt?.toISOString() ?? null,
+      openingReading: reading.meter.openingReading.toString(),
       property: reading.meter.property,
       tenant: reading.meter.tenant,
       readings: reading.meter.readings.map((entry) => ({
         id: entry.id,
         readingDate: entry.readingDate.toISOString(),
         currentReading: entry.currentReading.toString(),
+        ratePerUnit: entry.ratePerUnit.toString(),
         isBilled: Boolean(entry.invoiceItem),
       })),
     },
@@ -600,6 +697,8 @@ export async function getContractForEdit(contractId: string) {
       advanceRentMonths: true,
       freeRentCycles: true,
       advanceRentApplication: true,
+      advanceRentFirstMonths: true,
+      advanceRentLastMonths: true,
       advanceRent: true,
       securityDeposit: true,
       paymentStartDate: true,

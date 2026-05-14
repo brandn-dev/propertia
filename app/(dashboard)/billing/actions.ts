@@ -18,12 +18,19 @@ import {
   getBillingCycleKey,
   getInvoiceGenerationSelectionKey,
   getBillingMonthKey,
+  getUtilityBillingWindowForCycle,
+  isReadingInUtilityBillingWindow,
 } from "@/lib/billing/cycles";
 import { calculateAdjustedMonthlyRent } from "@/lib/billing/rent-adjustments";
 import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
 import { generateInvoiceAccessCode } from "@/lib/billing/public-access";
 import { calculateCosaAllocations } from "@/lib/billing/cosa";
 import { buildInvoiceNumber } from "@/lib/billing/invoice-number";
+import { UTILITY_TYPE_LABELS } from "@/lib/form-options";
+import {
+  buildAdvanceApplicationCycleIndexes,
+  deriveWholeMonths,
+} from "@/lib/contracts/advance-rent";
 import { getDescendantPropertyIds } from "@/lib/property-tree";
 import { withToast } from "@/lib/toast";
 import { invoiceBrandingTemplateSchema } from "@/lib/validations/invoice-branding-template";
@@ -32,7 +39,7 @@ import { cosaTemplateSchema } from "@/lib/validations/cosa-template";
 import { invoiceGenerationSchema } from "@/lib/validations/invoice-generation";
 import { paymentRecordingSchema } from "@/lib/validations/payment-recording";
 import { recurringChargeSchema } from "@/lib/validations/recurring-charge";
-import { toDateInputValue } from "@/lib/format";
+import { formatDate, toDateInputValue } from "@/lib/format";
 
 export type InvoiceGenerationFormState = {
   message?: string;
@@ -64,6 +71,8 @@ export type RecordPaymentFormState = {
   errors?: Record<string, string[] | undefined>;
 };
 
+const READING_SELECTION_SEPARATOR = "::";
+
 type ParsedPaymentPayload = ReturnType<typeof getPaymentPayload>;
 type ParsedCosaPayload = ReturnType<typeof getCosaPayload>;
 type ParsedCosaTemplatePayload = ReturnType<typeof getCosaTemplatePayload>;
@@ -75,8 +84,32 @@ function getInvoiceGenerationPayload(formData: FormData) {
       .getAll("cycleSelections")
       .map((value) => String(value))
       .filter(Boolean),
+    readingSelections: formData
+      .getAll("readingSelections")
+      .map((value) => String(value))
+      .filter(Boolean),
     issueDate: String(formData.get("issueDate") ?? ""),
     dueDate: String(formData.get("dueDate") ?? ""),
+  };
+}
+
+function buildReadingSelectionKey(cycleSelectionKey: string, readingId: string) {
+  return `${cycleSelectionKey}${READING_SELECTION_SEPARATOR}${readingId}`;
+}
+
+function parseReadingSelectionKey(value: string) {
+  const separatorIndex = value.lastIndexOf(READING_SELECTION_SEPARATOR);
+
+  if (
+    separatorIndex <= 0 ||
+    separatorIndex >= value.length - READING_SELECTION_SEPARATOR.length
+  ) {
+    return null;
+  }
+
+  return {
+    cycleSelectionKey: value.slice(0, separatorIndex),
+    readingId: value.slice(separatorIndex + READING_SELECTION_SEPARATOR.length),
   };
 }
 
@@ -320,6 +353,15 @@ function toMoney(value: number) {
   return value.toFixed(2);
 }
 
+function buildUtilityReadingDescription(params: {
+  utilityType: keyof typeof UTILITY_TYPE_LABELS;
+  meterCode: string;
+  serviceStart: Date;
+  serviceEnd: Date;
+}) {
+  return `${UTILITY_TYPE_LABELS[params.utilityType]} reading · ${params.meterCode} · service ${formatDate(params.serviceStart)} to ${formatDate(params.serviceEnd)}`;
+}
+
 function startOfDay(value: Date) {
   const next = new Date(value);
   next.setHours(0, 0, 0, 0);
@@ -330,17 +372,6 @@ function endOfDay(value: Date) {
   const next = new Date(value);
   next.setHours(23, 59, 59, 999);
   return next;
-}
-
-function deriveWholeMonths(amount: number, baseRent: number) {
-  if (amount <= 0 || baseRent <= 0) {
-    return 0;
-  }
-
-  const ratio = amount / baseRent;
-  const rounded = Math.round(ratio);
-
-  return Math.abs(ratio - rounded) < 0.01 ? rounded : 0;
 }
 
 function getBillingCycleIndex(anchorDate: Date, cycleStart: Date) {
@@ -373,26 +404,6 @@ function getContractCycleCount(anchorDate: Date, contractEndDate: Date) {
   }
 
   return count;
-}
-
-function buildAdvanceApplicationCycleIndexes(params: {
-  totalCycles: number;
-  freeRentCycles: number;
-  advanceRentMonths: number;
-  application: "FIRST_BILLABLE_CYCLES" | "LAST_BILLABLE_CYCLES";
-}) {
-  const { totalCycles, freeRentCycles, advanceRentMonths, application } = params;
-  // Free-rent cycles are always consumed first. Advance-rent credits can only
-  // be assigned to the remaining billable cycles after that concession window.
-  const billableCycleIndexes = Array.from({ length: totalCycles }, (_, index) => index)
-    .filter((index) => index >= freeRentCycles);
-
-  const selectedIndexes =
-    application === "LAST_BILLABLE_CYCLES"
-      ? billableCycleIndexes.slice(-advanceRentMonths)
-      : billableCycleIndexes.slice(0, advanceRentMonths);
-
-  return new Set(selectedIndexes);
 }
 
 async function validateRecurringChargeContract(
@@ -640,6 +651,8 @@ export async function generateInvoicesAction(
       advanceRentMonths: true,
       freeRentCycles: true,
       advanceRentApplication: true,
+      advanceRentFirstMonths: true,
+      advanceRentLastMonths: true,
       advanceRent: true,
       securityDeposit: true,
       paymentStartDate: true,
@@ -674,6 +687,31 @@ export async function generateInvoicesAction(
   }
 
   const selectedCycleKeys = new Set(validatedFields.data.cycleSelections);
+  const submittedReadingSelectionKeys = new Set(
+    validatedFields.data.readingSelections
+  );
+  const selectedReadingIdsByCycle = new Map<string, Set<string>>();
+
+  for (const readingSelection of submittedReadingSelectionKeys) {
+    const parsedSelection = parseReadingSelectionKey(readingSelection);
+
+    if (!parsedSelection) {
+      return {
+        errors: {
+          readingSelections: [
+            "One or more selected utility readings are invalid. Refresh and try again.",
+          ],
+        },
+        message: "Utility reading selection is invalid.",
+      };
+    }
+
+    const readingIds =
+      selectedReadingIdsByCycle.get(parsedSelection.cycleSelectionKey) ??
+      new Set<string>();
+    readingIds.add(parsedSelection.readingId);
+    selectedReadingIdsByCycle.set(parsedSelection.cycleSelectionKey, readingIds);
+  }
 
   const [existingInvoices, recurringCharges, readings, cosaAllocations] =
     await Promise.all([
@@ -793,6 +831,7 @@ export async function generateInvoicesAction(
 
   const operations = [];
   const matchedSelectedCycleKeys = new Set<string>();
+  const matchedSelectedReadingKeys = new Set<string>();
 
   for (const contract of contracts) {
     const missingCycles = filterCyclesWithoutInvoicedMonths(
@@ -823,7 +862,9 @@ export async function generateInvoicesAction(
       totalCycles: totalCycleCount,
       freeRentCycles: contract.freeRentCycles,
       advanceRentMonths,
-      application: contract.advanceRentApplication,
+      advanceRentApplication: contract.advanceRentApplication,
+      advanceRentFirstMonths: contract.advanceRentFirstMonths,
+      advanceRentLastMonths: contract.advanceRentLastMonths,
     });
 
     const contractCharges = recurringCharges.filter(
@@ -852,10 +893,11 @@ export async function generateInvoicesAction(
 
       matchedSelectedCycleKeys.add(selectionKey);
       const cycleIndex = getBillingCycleIndex(contract.paymentStartDate, cycle.start);
-      const previousCycle =
-        cycleIndex > 0
-          ? getBillingCycleAtIndex(contract.paymentStartDate, cycleIndex - 1)
-          : null;
+      const utilityBillingWindow = getUtilityBillingWindowForCycle({
+        anchorDate: contract.paymentStartDate,
+        cycleStart: cycle.start,
+        issueDate,
+      });
 
       const cycleCharges = contractCharges.filter((charge) =>
         cycleOverlapsRange(cycle, charge.effectiveStartDate, charge.effectiveEndDate)
@@ -863,10 +905,20 @@ export async function generateInvoicesAction(
 
       const cycleReadings = contractReadings.filter(
         (reading) =>
-          previousCycle != null &&
-          reading.readingDate >= previousCycle.start &&
-          reading.readingDate <= previousCycle.end
+          utilityBillingWindow != null &&
+          isReadingInUtilityBillingWindow(reading.readingDate, utilityBillingWindow)
       );
+      const selectedReadingIdsForCycle =
+        selectedReadingIdsByCycle.get(selectionKey) ?? new Set<string>();
+      const selectedCycleReadings = cycleReadings.filter((reading) =>
+        selectedReadingIdsForCycle.has(reading.id)
+      );
+
+      for (const reading of selectedCycleReadings) {
+        matchedSelectedReadingKeys.add(
+          buildReadingSelectionKey(selectionKey, reading.id)
+        );
+      }
       const cycleCosaAllocations = contractCosaAllocations.filter(
         (allocation) =>
           allocation.cosa.billingDate >= cycle.start &&
@@ -879,14 +931,12 @@ export async function generateInvoicesAction(
         adjustments: contract.rentAdjustments,
       });
       const cycleLabel = formatBillingCycleLabel(cycle);
-      const utilityCoverageLabel = previousCycle
-        ? `${toDateInputValue(previousCycle.start)} to ${toDateInputValue(previousCycle.end)}`
-        : null;
+      const utilityServiceCycle = utilityBillingWindow?.serviceCycle ?? null;
       const recurringChargeAmount = cycleCharges.reduce(
         (sum, charge) => sum + Number(charge.amount.toString()),
         0
       );
-      const utilityAmount = cycleReadings.reduce(
+      const utilityAmount = selectedCycleReadings.reduce(
         (sum, reading) => sum + Number(reading.totalAmount.toString()),
         0
       );
@@ -962,11 +1012,17 @@ export async function generateInvoicesAction(
                   amount: toMoney(Number(charge.amount.toString())),
                   contractRecurringChargeId: charge.id,
                 })),
-                ...cycleReadings.map((reading) => ({
+                ...selectedCycleReadings.map((reading) => ({
                   itemType: "UTILITY_READING" as const,
-                  description: `${reading.meter.utilityType.replaceAll("_", " ")} reading · ${reading.meter.meterCode} · ${reading.readingDate.toISOString().slice(0, 10)}${
-                    utilityCoverageLabel ? ` · service ${utilityCoverageLabel}` : ""
-                  }`,
+                  description:
+                    utilityServiceCycle != null
+                      ? buildUtilityReadingDescription({
+                          utilityType: reading.meter.utilityType,
+                          meterCode: reading.meter.meterCode,
+                          serviceStart: utilityServiceCycle.start,
+                          serviceEnd: utilityServiceCycle.end,
+                        })
+                      : `${reading.meter.utilityType.replaceAll("_", " ")} reading · ${reading.meter.meterCode} · ${reading.readingDate.toISOString().slice(0, 10)}`,
                   quantity: toMoney(Number(reading.consumption.toString())),
                   unitPrice: toMoney(Number(reading.ratePerUnit.toString())),
                   amount: toMoney(Number(reading.totalAmount.toString())),
@@ -1022,6 +1078,17 @@ export async function generateInvoicesAction(
         ],
       },
       message: "Invoice selection is out of date.",
+    };
+  }
+
+  if (matchedSelectedReadingKeys.size !== submittedReadingSelectionKeys.size) {
+    return {
+      errors: {
+        readingSelections: [
+          "One or more selected utility readings are no longer eligible. Refresh and try again.",
+        ],
+      },
+      message: "Utility reading selection is out of date.",
     };
   }
 

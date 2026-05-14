@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
+import {
+  OPEN_ENDED_CONTRACT_END_DATE_INPUT,
+  getOpenEndedContractEndDate,
+  resolveContractEndDateInput,
+} from "@/lib/contracts/term";
 import { toDateInputValue } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { contractSchema } from "@/lib/validations/contract";
@@ -33,15 +38,22 @@ function revalidateContractViews() {
 function getContractPayload(formData: FormData) {
   const startDate = String(formData.get("startDate") ?? "");
   const paymentStartDate = String(formData.get("paymentStartDate") ?? "").trim();
+  const isOpenEnded = String(formData.get("isOpenEnded") ?? "") === "true";
+  const endDate = resolveContractEndDateInput(
+    String(formData.get("endDate") ?? ""),
+    isOpenEnded
+  );
 
   return {
     propertyId: String(formData.get("propertyId") ?? ""),
     tenantId: String(formData.get("tenantId") ?? ""),
     startDate,
-    endDate: String(formData.get("endDate") ?? ""),
+    endDate,
     paymentStartDate: paymentStartDate || startDate,
     monthlyRent: String(formData.get("monthlyRent") ?? ""),
     advanceRentMonths: String(formData.get("advanceRentMonths") ?? "0"),
+    advanceRentFirstMonths: String(formData.get("advanceRentFirstMonths") ?? "0"),
+    advanceRentLastMonths: String(formData.get("advanceRentLastMonths") ?? "0"),
     securityDepositMonths: String(formData.get("securityDepositMonths") ?? "0"),
     freeRentCycles: String(formData.get("freeRentCycles") ?? "0"),
     advanceRentApplication: String(
@@ -191,10 +203,19 @@ export async function createContractAction(
         propertyId: validatedFields.data.propertyId,
         tenantId: validatedFields.data.tenantId,
         startDate: new Date(validatedFields.data.startDate),
-        endDate: new Date(validatedFields.data.endDate),
+        endDate:
+          validatedFields.data.endDate === OPEN_ENDED_CONTRACT_END_DATE_INPUT
+            ? getOpenEndedContractEndDate()
+            : new Date(validatedFields.data.endDate),
         paymentStartDate: new Date(validatedFields.data.paymentStartDate),
         monthlyRent: validatedFields.data.monthlyRent,
         advanceRentMonths: Number(validatedFields.data.advanceRentMonths || "0"),
+        advanceRentFirstMonths: Number(
+          validatedFields.data.advanceRentFirstMonths || "0"
+        ),
+        advanceRentLastMonths: Number(
+          validatedFields.data.advanceRentLastMonths || "0"
+        ),
         securityDepositMonths: Number(
           validatedFields.data.securityDepositMonths || "0"
         ),
@@ -269,10 +290,19 @@ export async function updateContractAction(
         propertyId: validatedFields.data.propertyId,
         tenantId: validatedFields.data.tenantId,
         startDate: new Date(validatedFields.data.startDate),
-        endDate: new Date(validatedFields.data.endDate),
+        endDate:
+          validatedFields.data.endDate === OPEN_ENDED_CONTRACT_END_DATE_INPUT
+            ? getOpenEndedContractEndDate()
+            : new Date(validatedFields.data.endDate),
         paymentStartDate: new Date(validatedFields.data.paymentStartDate),
         monthlyRent: validatedFields.data.monthlyRent,
         advanceRentMonths: Number(validatedFields.data.advanceRentMonths || "0"),
+        advanceRentFirstMonths: Number(
+          validatedFields.data.advanceRentFirstMonths || "0"
+        ),
+        advanceRentLastMonths: Number(
+          validatedFields.data.advanceRentLastMonths || "0"
+        ),
         securityDepositMonths: Number(
           validatedFields.data.securityDepositMonths || "0"
         ),

@@ -92,112 +92,10 @@ export const backlogAdjustmentRowSchema = z.object({
     .refine((value) => Number(value) !== 0, "Adjustment amount cannot be zero."),
 });
 
-export const backlogBulkRowSchema = z
-  .object({
-    rowKey: z.string().trim().min(1, "Row key is required."),
-    contractId: z.string().trim().min(1, "Contract is required."),
-    billingPeriodStart: z
-      .string()
-      .trim()
-      .min(1, "Billing period start is required.")
-      .refine(isValidDate, "Enter a valid billing period start."),
-    billingPeriodEnd: z
-      .string()
-      .trim()
-      .min(1, "Billing period end is required.")
-      .refine(isValidDate, "Enter a valid billing period end."),
-    issueDate: z
-      .string()
-      .trim()
-      .min(1, "Issue date is required.")
-      .refine(isValidDate, "Enter a valid issue date."),
-    dueDate: z
-      .string()
-      .trim()
-      .min(1, "Due date is required.")
-      .refine(isValidDate, "Enter a valid due date."),
-    rentAmount: z
-      .string()
-      .trim()
-      .transform((value) => value || undefined)
-      .refine(
-        (value) => !value || isNonNegativeNumber(value),
-        "Rent amount must be a valid non-negative number."
-      ),
-    manualUtilityAmount: z
-      .string()
-      .trim()
-      .transform((value) => value || undefined)
-      .refine(
-        (value) => !value || isNonNegativeNumber(value),
-        "Manual utility amount must be a valid non-negative number."
-      ),
-    utilityNote: z
-      .string()
-      .trim()
-      .max(200, "Utility note must be 200 characters or fewer.")
-      .transform((value) => value || undefined),
-    adjustmentAmount: z
-      .string()
-      .trim()
-      .transform((value) => value || undefined)
-      .refine(
-        (value) => !value || isMoneyNumber(value),
-        "Adjustment amount must be a valid number."
-      ),
-    arrearsAmount: z
-      .string()
-      .trim()
-      .transform((value) => value || undefined)
-      .refine(
-        (value) => !value || isMoneyNumber(value),
-        "Arrears amount must be a valid number."
-      ),
-    paymentStatus: z.enum(BACKLOG_PAYMENT_STATUSES),
-    paymentAmount: z
-      .string()
-      .trim()
-      .transform((value) => value || undefined)
-      .refine(
-        (value) => !value || isNonNegativeNumber(value),
-        "Payment amount must be a valid non-negative number."
-      ),
-    paymentDate: z
-      .string()
-      .trim()
-      .transform((value) => value || undefined)
-      .refine((value) => !value || isValidDate(value), "Enter a valid payment date."),
-    referenceNumber: z
-      .string()
-      .trim()
-      .max(120, "Reference number must be 120 characters or fewer.")
-      .transform((value) => value || undefined),
-    notes: z
-      .string()
-      .trim()
-      .max(1000, "Notes must be 1000 characters or fewer.")
-      .transform((value) => value || undefined),
-    readingMissing: z.boolean(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.paymentStatus !== "UNPAID" && !value.paymentDate) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["paymentDate"],
-        message: "Payment date is required when payment status is not unpaid.",
-      });
-    }
-
-    if (value.paymentStatus === "PARTIAL" && !value.paymentAmount) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["paymentAmount"],
-        message: "Partial payment amount is required.",
-      });
-    }
-  });
-
-export const backlogBulkRowsSchema = z.array(backlogBulkRowSchema);
+const recurringChargeSelectionSchema = z
+  .string()
+  .trim()
+  .min(1, "Recurring charge selection is invalid.");
 
 export const backlogPaymentSnapshotSchema = z
   .object({
@@ -270,6 +168,7 @@ export const historicalBacklogSchema = z.object({
     .trim()
     .min(1, "Due date is required.")
     .refine(isValidDate, "Enter a valid due date."),
+  recurringChargeIds: z.array(recurringChargeSelectionSchema),
   rentAmount: z
     .string()
     .trim()
@@ -288,6 +187,12 @@ export const historicalBacklogSchema = z.object({
     .max(1000, "Notes must be 1000 characters or fewer.")
     .transform((value) => value || undefined),
 });
+
+export const backlogBulkRowSchema = historicalBacklogSchema.extend({
+  rowKey: z.string().trim().min(1, "Row key is required."),
+});
+
+export const backlogBulkRowsSchema = z.array(backlogBulkRowSchema);
 
 export type HistoricalBacklogInput = z.infer<typeof historicalBacklogSchema>;
 export type HistoricalBacklogBulkRowInput = z.infer<typeof backlogBulkRowSchema>;

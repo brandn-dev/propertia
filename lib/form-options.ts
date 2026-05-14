@@ -30,6 +30,7 @@ export const CONTRACT_STATUSES = [
 export const ADVANCE_RENT_APPLICATIONS = [
   "FIRST_BILLABLE_CYCLES",
   "LAST_BILLABLE_CYCLES",
+  "SPLIT_FIRST_AND_LAST_CYCLES",
 ] as const;
 export const INCREASE_TYPES = ["FIXED", "PERCENTAGE"] as const;
 export const RENT_CALCULATION_TYPES = ["SIMPLE", "COMPOUND"] as const;
@@ -97,6 +98,8 @@ export const CONTRACT_STATUS_LABELS = {
 export const ADVANCE_RENT_APPLICATION_LABELS = {
   FIRST_BILLABLE_CYCLES: "Apply to first billable cycles after free rent",
   LAST_BILLABLE_CYCLES: "Apply to last billable cycles",
+  SPLIT_FIRST_AND_LAST_CYCLES:
+    "Split between first and last billable cycles",
 } as const;
 
 export const INCREASE_TYPE_LABELS = {

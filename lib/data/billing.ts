@@ -52,7 +52,7 @@ export type RecurringChargeOverviewItem =
   }>;
 
 export async function getInvoiceGenerationContractOptions() {
-  return prisma.contract.findMany({
+  const contracts = await prisma.contract.findMany({
     where: {
       status: "ACTIVE",
     },
@@ -64,6 +64,7 @@ export async function getInvoiceGenerationContractOptions() {
       paymentStartDate: true,
       property: {
         select: {
+          id: true,
           name: true,
           propertyCode: true,
         },
@@ -89,6 +90,48 @@ export async function getInvoiceGenerationContractOptions() {
       },
     },
   });
+
+  const contractScopeFilters = contracts.map((contract) => ({
+    propertyId: contract.property.id,
+    tenantId: contract.tenantId,
+  }));
+
+  const readings = contractScopeFilters.length
+    ? await prisma.meterReading.findMany({
+        where: {
+          invoiceItem: null,
+          meter: {
+            isShared: false,
+            OR: contractScopeFilters,
+          },
+        },
+        orderBy: [{ readingDate: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          tenantId: true,
+          readingDate: true,
+          consumption: true,
+          ratePerUnit: true,
+          totalAmount: true,
+          meter: {
+            select: {
+              propertyId: true,
+              meterCode: true,
+              utilityType: true,
+            },
+          },
+        },
+      })
+    : [];
+
+  return contracts.map((contract) => ({
+    ...contract,
+    readings: readings.filter(
+      (reading) =>
+        reading.tenantId === contract.tenantId &&
+        reading.meter.propertyId === contract.property.id
+    ),
+  }));
 }
 
 export async function getInvoiceBrandingTemplatesOverview() {
@@ -202,7 +245,19 @@ export async function getHistoricalBacklogContractOptions() {
       freeRentCycles: true,
       advanceRentMonths: true,
       advanceRentApplication: true,
+      advanceRentFirstMonths: true,
+      advanceRentLastMonths: true,
       advanceRent: true,
+      rentAdjustments: {
+        orderBy: [{ effectiveDate: "asc" }],
+        select: {
+          effectiveDate: true,
+          increaseType: true,
+          increaseValue: true,
+          calculationType: true,
+          basedOn: true,
+        },
+      },
       property: {
         select: {
           id: true,
@@ -215,6 +270,18 @@ export async function getHistoricalBacklogContractOptions() {
           firstName: true,
           lastName: true,
           businessName: true,
+        },
+      },
+      recurringCharges: {
+        orderBy: [{ effectiveStartDate: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          chargeType: true,
+          label: true,
+          amount: true,
+          effectiveStartDate: true,
+          effectiveEndDate: true,
+          isActive: true,
         },
       },
       invoices: {
@@ -249,9 +316,37 @@ export async function getHistoricalBacklogContractOptions() {
           tenantId: true,
           meterCode: true,
           utilityType: true,
+          openingReading: true,
         },
       })
     : [];
+
+  const meterIds = meters.map((meter) => meter.id);
+  const meterReadings = meterIds.length
+    ? await prisma.meterReading.findMany({
+        where: {
+          meterId: {
+            in: meterIds,
+          },
+        },
+        orderBy: [{ readingDate: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          meterId: true,
+          readingDate: true,
+          currentReading: true,
+          ratePerUnit: true,
+        },
+      })
+    : [];
+
+  const readingsByMeterId = new Map<string, typeof meterReadings>();
+
+  for (const reading of meterReadings) {
+    const entries = readingsByMeterId.get(reading.meterId) ?? [];
+    entries.push(reading);
+    readingsByMeterId.set(reading.meterId, entries);
+  }
 
   const metersByContractScope = new Map<string, typeof meters>();
 
@@ -299,11 +394,39 @@ export async function getHistoricalBacklogContractOptions() {
         freeRentCycles: contract.freeRentCycles,
         advanceRentMonths: contract.advanceRentMonths,
         advanceRentApplication: contract.advanceRentApplication,
+        advanceRentFirstMonths: contract.advanceRentFirstMonths,
+        advanceRentLastMonths: contract.advanceRentLastMonths,
         advanceRent: contract.advanceRent.toString(),
+        rentAdjustments: contract.rentAdjustments.map((adjustment) => ({
+          effectiveDate: adjustment.effectiveDate.toISOString(),
+          increaseType: adjustment.increaseType,
+          increaseValue: adjustment.increaseValue.toString(),
+          calculationType: adjustment.calculationType,
+          basedOn: adjustment.basedOn,
+        })),
         property: contract.property,
         tenant: contract.tenant,
-        meters:
-          metersByContractScope.get(`${contract.property.id}:${contract.tenantId}`) ?? [],
+        recurringCharges: contract.recurringCharges.map((charge) => ({
+          id: charge.id,
+          chargeType: charge.chargeType,
+          label: charge.label,
+          amount: charge.amount.toString(),
+          effectiveStartDate: charge.effectiveStartDate.toISOString(),
+          effectiveEndDate: charge.effectiveEndDate?.toISOString() ?? null,
+          isActive: charge.isActive,
+        })),
+        meters: (
+          metersByContractScope.get(`${contract.property.id}:${contract.tenantId}`) ?? []
+        ).map((meter) => ({
+          ...meter,
+          openingReading: meter.openingReading.toString(),
+          readings: (readingsByMeterId.get(meter.id) ?? []).map((reading) => ({
+            id: reading.id,
+            readingDate: reading.readingDate.toISOString(),
+            currentReading: reading.currentReading.toString(),
+            ratePerUnit: reading.ratePerUnit.toString(),
+          })),
+        })),
         pendingBacklogCycles: pendingBacklogCycles.map((cycle) => ({
           key: getBillingCycleKey(cycle.start, cycle.end),
           start: cycle.start.toISOString(),
@@ -904,11 +1027,34 @@ export async function getInvoiceForView(invoiceId: string) {
             select: {
               id: true,
               percentage: true,
+              unitCount: true,
+              computedAmount: true,
               cosa: {
                 select: {
                   id: true,
                   description: true,
                   billingDate: true,
+                  totalAmount: true,
+                  meter: {
+                    select: {
+                      id: true,
+                      meterCode: true,
+                      utilityType: true,
+                    },
+                  },
+                  meterReading: {
+                    select: {
+                      id: true,
+                      readingDate: true,
+                      meter: {
+                        select: {
+                          id: true,
+                          meterCode: true,
+                          utilityType: true,
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -1033,9 +1179,58 @@ export async function getInvoiceForPublicView(invoiceId: string) {
               chargeType: true,
             },
           },
+          meterReading: {
+            select: {
+              id: true,
+              readingDate: true,
+              previousReading: true,
+              currentReading: true,
+              ratePerUnit: true,
+              consumption: true,
+              totalAmount: true,
+              meter: {
+                select: {
+                  id: true,
+                  meterCode: true,
+                  utilityType: true,
+                },
+              },
+            },
+          },
           cosaAllocation: {
             select: {
               id: true,
+              percentage: true,
+              unitCount: true,
+              computedAmount: true,
+              cosa: {
+                select: {
+                  id: true,
+                  description: true,
+                  billingDate: true,
+                  totalAmount: true,
+                  meter: {
+                    select: {
+                      id: true,
+                      meterCode: true,
+                      utilityType: true,
+                    },
+                  },
+                  meterReading: {
+                    select: {
+                      id: true,
+                      readingDate: true,
+                      meter: {
+                        select: {
+                          id: true,
+                          meterCode: true,
+                          utilityType: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
           },
         },

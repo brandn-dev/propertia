@@ -11,6 +11,7 @@ import {
   TimerReset,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth/user";
+import { formatContractEndDate } from "@/lib/contracts/term";
 import { getContractsOverview } from "@/lib/data/dashboard";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
@@ -152,7 +153,7 @@ export default async function ContractsPage() {
                     </TableCell>
                     <TableCell>{formatTenantName(contract.tenant)}</TableCell>
                     <TableCell>{formatDate(contract.startDate)}</TableCell>
-                    <TableCell>{formatDate(contract.endDate)}</TableCell>
+                    <TableCell>{formatContractEndDate(contract.endDate)}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{contract.status.replaceAll("_", " ")}</Badge>
                     </TableCell>

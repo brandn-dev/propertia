@@ -1,6 +1,8 @@
 import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
 import { RECURRING_CHARGE_TYPE_LABELS } from "@/lib/form-options";
 import { formatDate, toNumber } from "@/lib/format";
+import { UTILITY_TYPE_LABELS } from "@/lib/form-options";
+import { getUtilityUnitLabel } from "@/lib/utility-units";
 
 const ITEM_TYPE_LABELS = {
   RENT: "Rent",
@@ -76,6 +78,46 @@ type InternalInvoiceShape = {
       label: string;
       chargeType: keyof typeof RECURRING_CHARGE_TYPE_LABELS;
     } | null;
+    meterReading?: {
+      id: string;
+      readingDate: Date;
+      previousReading: { toNumber(): number } | number;
+      currentReading: { toNumber(): number } | number;
+      ratePerUnit: { toNumber(): number } | number;
+      consumption: { toNumber(): number } | number;
+      totalAmount: { toNumber(): number } | number;
+      meter: {
+        id: string;
+        meterCode: string;
+        utilityType: keyof typeof UTILITY_TYPE_LABELS;
+      };
+    } | null;
+    cosaAllocation?: {
+      id: string;
+      percentage: { toNumber(): number } | number;
+      unitCount: number | null;
+      computedAmount: { toNumber(): number } | number;
+      cosa: {
+        id: string;
+        description: string;
+        billingDate: Date;
+        totalAmount: { toNumber(): number } | number;
+        meter?: {
+          id: string;
+          meterCode: string;
+          utilityType: keyof typeof UTILITY_TYPE_LABELS;
+        } | null;
+        meterReading?: {
+          id: string;
+          readingDate: Date;
+          meter: {
+            id: string;
+            meterCode: string;
+            utilityType: keyof typeof UTILITY_TYPE_LABELS;
+          };
+        } | null;
+      };
+    } | null;
     allocations?: Array<{
       id: string;
       amountAllocated: { toNumber(): number } | number;
@@ -149,6 +191,46 @@ type PublicInvoiceShape = {
       label: string;
       chargeType: keyof typeof RECURRING_CHARGE_TYPE_LABELS;
     } | null;
+    meterReading?: {
+      id: string;
+      readingDate: Date;
+      previousReading: { toNumber(): number } | number;
+      currentReading: { toNumber(): number } | number;
+      ratePerUnit: { toNumber(): number } | number;
+      consumption: { toNumber(): number } | number;
+      totalAmount: { toNumber(): number } | number;
+      meter: {
+        id: string;
+        meterCode: string;
+        utilityType: keyof typeof UTILITY_TYPE_LABELS;
+      };
+    } | null;
+    cosaAllocation?: {
+      id: string;
+      percentage: { toNumber(): number } | number;
+      unitCount: number | null;
+      computedAmount: { toNumber(): number } | number;
+      cosa: {
+        id: string;
+        description: string;
+        billingDate: Date;
+        totalAmount: { toNumber(): number } | number;
+        meter?: {
+          id: string;
+          meterCode: string;
+          utilityType: keyof typeof UTILITY_TYPE_LABELS;
+        } | null;
+        meterReading?: {
+          id: string;
+          readingDate: Date;
+          meter: {
+            id: string;
+            meterCode: string;
+            utilityType: keyof typeof UTILITY_TYPE_LABELS;
+          };
+        } | null;
+      };
+    } | null;
   }>;
 };
 
@@ -197,9 +279,11 @@ export type InvoicePresentationModel = {
   };
   items: Array<{
     id: string;
+    itemType: string;
     typeLabel: string;
     description: string;
     quantity: number;
+    quantityDisplay?: string;
     unitPrice: number;
     amount: number;
     allocatedAmount?: number;
@@ -212,6 +296,35 @@ export type InvoicePresentationModel = {
     statusLabel: string;
     referenceNumber: string | null;
   }>;
+  breakdowns: {
+    hasSecondPage: boolean;
+    utilityReadings: Array<{
+      itemId: string;
+      utilityType: keyof typeof UTILITY_TYPE_LABELS;
+      utilityTypeLabel: string;
+      meterCode: string;
+      readingDateLabel: string;
+      previousReading: number;
+      currentReading: number;
+      consumption: number;
+      ratePerUnit: number;
+      totalAmount: number;
+      consumptionLabel: string;
+      rateLabel: string;
+    }>;
+    cosaAllocations: Array<{
+      itemId: string;
+      description: string;
+      billingDateLabel: string;
+      sourceTotalAmount: number;
+      allocatedAmount: number;
+      percentage: number | null;
+      unitCount: number | null;
+      sourceUtilityTypeLabel: string | null;
+      sourceMeterCode: string | null;
+      sourceReadingDateLabel: string | null;
+    }>;
+  };
 };
 
 export function formatTenantName(tenant: TenantShape) {
@@ -220,6 +333,13 @@ export function formatTenantName(tenant: TenantShape) {
     [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") ||
     "Tenant"
   );
+}
+
+function formatInvoiceQuantity(value: number) {
+  return new Intl.NumberFormat("en-PH", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 export function buildInvoicePresentationModel(
@@ -246,6 +366,12 @@ export function buildInvoicePresentationModel(
     const recurringChargeLabel = item.contractRecurringCharge?.chargeType
       ? RECURRING_CHARGE_TYPE_LABELS[item.contractRecurringCharge.chargeType]
       : item.contractRecurringCharge?.label;
+    const quantityDisplay =
+      item.itemType === "UTILITY_READING" && item.meterReading
+        ? `${formatInvoiceQuantity(toNumber(item.quantity))} ${getUtilityUnitLabel(item.meterReading.meter.utilityType)}`
+        : item.quantity != null
+          ? formatInvoiceQuantity(toNumber(item.quantity))
+          : undefined;
     const typeLabel = item.itemType === "RECURRING_CHARGE" && recurringChargeLabel
       ? recurringChargeLabel
       : ITEM_TYPE_LABELS[item.itemType];
@@ -253,18 +379,78 @@ export function buildInvoicePresentationModel(
       ? `Rent payment: ${formatDate(invoice.billingPeriodStart)} to ${formatDate(invoice.billingPeriodEnd)}`
       : item.itemType === "RECURRING_CHARGE" && recurringChargeLabel
         ? `${recurringChargeLabel}: ${formatDate(invoice.billingPeriodStart)} to ${formatDate(invoice.billingPeriodEnd)}`
+        : item.itemType === "UTILITY_READING" && item.description
+          ? item.description
         : item.description;
 
     return {
       id: item.id,
+      itemType: item.itemType,
       typeLabel,
       description,
       quantity: toNumber(item.quantity),
+      quantityDisplay,
       unitPrice: toNumber(item.unitPrice),
       amount,
       allocatedAmount,
       remainingAmount: Math.max(0, amount - allocatedAmount),
     };
+  });
+
+  const utilityReadings = invoice.items.flatMap((item) => {
+    if (!item.meterReading) {
+      return [];
+    }
+
+    const utilityType = item.meterReading.meter.utilityType;
+    const unitLabel = getUtilityUnitLabel(utilityType);
+
+    return [
+      {
+        itemId: item.id,
+        utilityType,
+        utilityTypeLabel: UTILITY_TYPE_LABELS[utilityType],
+        meterCode: item.meterReading.meter.meterCode,
+        readingDateLabel: formatDate(item.meterReading.readingDate),
+        previousReading: toNumber(item.meterReading.previousReading),
+        currentReading: toNumber(item.meterReading.currentReading),
+        consumption: toNumber(item.meterReading.consumption),
+        ratePerUnit: toNumber(item.meterReading.ratePerUnit),
+        totalAmount: toNumber(item.meterReading.totalAmount),
+        consumptionLabel: `${toNumber(item.meterReading.consumption)} ${unitLabel}`,
+        rateLabel: `₱${toNumber(item.meterReading.ratePerUnit).toLocaleString("en-PH")} / ${unitLabel}`,
+      },
+    ];
+  });
+
+  const cosaAllocations = invoice.items.flatMap((item) => {
+    if (!item.cosaAllocation) {
+      return [];
+    }
+
+    const sourceMeter =
+      item.cosaAllocation.cosa.meterReading?.meter ?? item.cosaAllocation.cosa.meter ?? null;
+
+    return [
+      {
+        itemId: item.id,
+        description: item.cosaAllocation.cosa.description,
+        billingDateLabel: formatDate(item.cosaAllocation.cosa.billingDate),
+        sourceTotalAmount: toNumber(item.cosaAllocation.cosa.totalAmount),
+        allocatedAmount: toNumber(item.cosaAllocation.computedAmount),
+        percentage: item.cosaAllocation.percentage == null
+          ? null
+          : toNumber(item.cosaAllocation.percentage),
+        unitCount: item.cosaAllocation.unitCount ?? null,
+        sourceUtilityTypeLabel: sourceMeter
+          ? UTILITY_TYPE_LABELS[sourceMeter.utilityType]
+          : null,
+        sourceMeterCode: sourceMeter?.meterCode ?? null,
+        sourceReadingDateLabel: item.cosaAllocation.cosa.meterReading
+          ? formatDate(item.cosaAllocation.cosa.meterReading.readingDate)
+          : null,
+      },
+    ];
   });
 
   const payments = "payments" in invoice
@@ -327,6 +513,11 @@ export function buildInvoicePresentationModel(
     },
     items,
     payments,
+    breakdowns: {
+      hasSecondPage: utilityReadings.length > 0 || cosaAllocations.length > 0,
+      utilityReadings,
+      cosaAllocations,
+    },
   };
 }
 
@@ -378,6 +569,7 @@ export function buildInvoicePreviewModel(): InvoicePresentationModel {
     items: [
       {
         id: "item-rent",
+        itemType: "RENT",
         typeLabel: "Rent",
         description: "Monthly rent · 1F - B2 · May 2026",
         quantity: 1,
@@ -388,6 +580,7 @@ export function buildInvoicePreviewModel(): InvoicePresentationModel {
       },
       {
         id: "item-charge",
+        itemType: "RECURRING_CHARGE",
         typeLabel: "Internet",
         description: "Internet: May 1, 2026 to May 31, 2026",
         quantity: 1,
@@ -398,6 +591,7 @@ export function buildInvoicePreviewModel(): InvoicePresentationModel {
       },
       {
         id: "item-utility",
+        itemType: "UTILITY_READING",
         typeLabel: "Utility reading",
         description: "Water reading · WTR-01 · service Apr 1, 2026 to Apr 30, 2026",
         quantity: 40,
@@ -408,6 +602,7 @@ export function buildInvoicePreviewModel(): InvoicePresentationModel {
       },
       {
         id: "item-cosa",
+        itemType: "COSA",
         typeLabel: "COSA",
         description: "Security guard share · May 2026",
         quantity: 1,
@@ -426,5 +621,10 @@ export function buildInvoicePreviewModel(): InvoicePresentationModel {
         referenceNumber: "GCASH-8891",
       },
     ],
+    breakdowns: {
+      hasSecondPage: false,
+      utilityReadings: [],
+      cosaAllocations: [],
+    },
   };
 }

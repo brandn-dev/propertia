@@ -10,6 +10,7 @@ export const invoiceGenerationSchema = z
     cycleSelections: z
       .array(z.string().trim().min(1))
       .min(1, "Select at least one invoice to generate."),
+    readingSelections: z.array(z.string().trim().min(1)),
     issueDate: z
       .string()
       .trim()

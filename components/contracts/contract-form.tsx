@@ -4,6 +4,11 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, LoaderCircle, Save } from "lucide-react";
 import type { ContractFormState } from "@/app/(dashboard)/contracts/actions";
+import type { AdvanceRentApplication } from "@/lib/contracts/advance-rent";
+import {
+  getContractEndDateInputValue,
+  isOpenEndedContractEndDate,
+} from "@/lib/contracts/term";
 import {
   ADVANCE_RENT_APPLICATION_LABELS,
   ADVANCE_RENT_APPLICATIONS,
@@ -48,6 +53,8 @@ type ContractFormProps = {
     paymentStartDate: string;
     monthlyRent: string;
     advanceRentMonths: string;
+    advanceRentFirstMonths: string;
+    advanceRentLastMonths: string;
     securityDepositMonths: string;
     freeRentCycles: string;
     advanceRentApplication: (typeof ADVANCE_RENT_APPLICATIONS)[number];
@@ -90,6 +97,8 @@ export function ContractForm({
     paymentStartDate: "",
     monthlyRent: "",
     advanceRentMonths: "0",
+    advanceRentFirstMonths: "0",
+    advanceRentLastMonths: "0",
     securityDepositMonths: "0",
     freeRentCycles: "0",
     advanceRentApplication: "FIRST_BILLABLE_CYCLES",
@@ -103,7 +112,12 @@ export function ContractForm({
     Boolean(initialValues.paymentStartDate) &&
     Boolean(initialValues.startDate) &&
     initialValues.paymentStartDate !== initialValues.startDate;
+  const hasInitialOpenEndedTerm = isOpenEndedContractEndDate(initialValues.endDate);
   const [startDate, setStartDate] = useState(initialValues.startDate);
+  const [endDate, setEndDate] = useState(
+    getContractEndDateInputValue(initialValues.endDate)
+  );
+  const [isOpenEnded, setIsOpenEnded] = useState(hasInitialOpenEndedTerm);
   const [isBillingCycleOverride, setIsBillingCycleOverride] = useState(
     hasInitialBillingCycleOverride
   );
@@ -114,6 +128,14 @@ export function ContractForm({
   const [advanceRentMonths, setAdvanceRentMonths] = useState(
     initialValues.advanceRentMonths
   );
+  const [advanceRentApplication, setAdvanceRentApplication] =
+    useState<AdvanceRentApplication>(initialValues.advanceRentApplication);
+  const [advanceRentFirstMonths, setAdvanceRentFirstMonths] = useState(
+    initialValues.advanceRentFirstMonths
+  );
+  const [advanceRentLastMonths, setAdvanceRentLastMonths] = useState(
+    initialValues.advanceRentLastMonths
+  );
   const [securityDepositMonths, setSecurityDepositMonths] = useState(
     initialValues.securityDepositMonths
   );
@@ -122,10 +144,30 @@ export function ContractForm({
   const advanceRentPreview = monthlyRentValue * Number(advanceRentMonths || "0");
   const securityDepositPreview =
     monthlyRentValue * Number(securityDepositMonths || "0");
+  const splitAdvanceRentAssignedMonths =
+    Number(advanceRentFirstMonths || "0") + Number(advanceRentLastMonths || "0");
+  const splitAdvanceRentMonthDelta =
+    Number(advanceRentMonths || "0") - splitAdvanceRentAssignedMonths;
 
   const resolvedBillingCycleStartDate = isBillingCycleOverride
     ? billingCycleStartDate
     : startDate;
+
+  function syncAdvanceRentPlacement(
+    nextMonths: string,
+    application: AdvanceRentApplication
+  ) {
+    if (application === "LAST_BILLABLE_CYCLES") {
+      setAdvanceRentFirstMonths("0");
+      setAdvanceRentLastMonths(nextMonths || "0");
+      return;
+    }
+
+    if (application === "FIRST_BILLABLE_CYCLES") {
+      setAdvanceRentFirstMonths(nextMonths || "0");
+      setAdvanceRentLastMonths("0");
+    }
+  }
 
   function handleStartDateChange(value: string) {
     setStartDate(value);
@@ -145,12 +187,53 @@ export function ContractForm({
     }
   }
 
+  function handleAdvanceRentMonthsChange(value: string) {
+    setAdvanceRentMonths(value);
+
+    if (advanceRentApplication !== "SPLIT_FIRST_AND_LAST_CYCLES") {
+      syncAdvanceRentPlacement(value, advanceRentApplication);
+    }
+  }
+
+  function handleAdvanceRentApplicationChange(nextValue: AdvanceRentApplication) {
+    setAdvanceRentApplication(nextValue);
+
+    if (nextValue === "SPLIT_FIRST_AND_LAST_CYCLES") {
+      if (
+        Number(advanceRentFirstMonths || "0") === 0 &&
+        Number(advanceRentLastMonths || "0") === 0 &&
+        Number(advanceRentMonths || "0") > 0
+      ) {
+        setAdvanceRentFirstMonths(advanceRentMonths || "0");
+      }
+
+      return;
+    }
+
+    syncAdvanceRentPlacement(advanceRentMonths, nextValue);
+  }
+
   return (
     <form action={action} className="space-y-6">
       <input
         type="hidden"
+        name="isOpenEnded"
+        value={isOpenEnded ? "true" : "false"}
+      />
+      <input
+        type="hidden"
         name="paymentStartDate"
         value={resolvedBillingCycleStartDate}
+      />
+      <input
+        type="hidden"
+        name="advanceRentFirstMonths"
+        value={advanceRentFirstMonths}
+      />
+      <input
+        type="hidden"
+        name="advanceRentLastMonths"
+        value={advanceRentLastMonths}
       />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="border-blank space-y-6 rounded-xl p-6">
@@ -204,15 +287,40 @@ export function ContractForm({
               <FieldError message={state.errors?.startDate?.[0]} />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="endDate">End date</Label>
-              <Input
-                id="endDate"
-                name="endDate"
-                type="date"
-                defaultValue={initialValues.endDate}
-                className="field-blank h-11"
-              />
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <Label htmlFor="endDate">End date</Label>
+                <label
+                  htmlFor="isOpenEnded"
+                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                >
+                  <input
+                    id="isOpenEnded"
+                    type="checkbox"
+                    checked={isOpenEnded}
+                    onChange={(event) => setIsOpenEnded(event.target.checked)}
+                    className="size-4 rounded border border-input bg-transparent accent-primary"
+                  />
+                  Month-to-month
+                </label>
+              </div>
+              {isOpenEnded ? (
+                <div className="field-blank flex h-11 items-center rounded-lg px-3 text-sm text-muted-foreground">
+                  No end date
+                </div>
+              ) : (
+                <Input
+                  id="endDate"
+                  name="endDate"
+                  type="date"
+                  value={endDate}
+                  onChange={(event) => setEndDate(event.target.value)}
+                  className="field-blank h-11"
+                />
+              )}
+              <p className="text-xs text-muted-foreground">
+                Leave this open for month-to-month contracts.
+              </p>
               <FieldError message={state.errors?.endDate?.[0]} />
             </div>
 
@@ -308,7 +416,7 @@ export function ContractForm({
                 min="0"
                 step="1"
                 value={advanceRentMonths}
-                onChange={(event) => setAdvanceRentMonths(event.target.value)}
+                onChange={(event) => handleAdvanceRentMonthsChange(event.target.value)}
                 placeholder="0"
                 className="field-blank h-11"
               />
@@ -362,7 +470,12 @@ export function ContractForm({
               <select
                 id="advanceRentApplication"
                 name="advanceRentApplication"
-                defaultValue={initialValues.advanceRentApplication}
+                value={advanceRentApplication}
+                onChange={(event) =>
+                  handleAdvanceRentApplicationChange(
+                    event.target.value as AdvanceRentApplication
+                  )
+                }
                 className={selectClassName}
               >
                 {ADVANCE_RENT_APPLICATIONS.map((option) => (
@@ -377,6 +490,60 @@ export function ContractForm({
                 the free-rent cycles have been consumed.
               </p>
             </div>
+
+            {advanceRentApplication === "SPLIT_FIRST_AND_LAST_CYCLES" ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="advanceRentFirstMonths">
+                    Apply to first billable cycles
+                  </Label>
+                  <Input
+                    id="advanceRentFirstMonths"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={advanceRentFirstMonths}
+                    onChange={(event) =>
+                      setAdvanceRentFirstMonths(event.target.value)
+                    }
+                    placeholder="0"
+                    className="field-blank h-11"
+                  />
+                  <FieldError
+                    message={state.errors?.advanceRentFirstMonths?.[0]}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="advanceRentLastMonths">
+                    Apply to last billable cycles
+                  </Label>
+                  <Input
+                    id="advanceRentLastMonths"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={advanceRentLastMonths}
+                    onChange={(event) =>
+                      setAdvanceRentLastMonths(event.target.value)
+                    }
+                    placeholder="0"
+                    className="field-blank h-11"
+                  />
+                  <FieldError
+                    message={state.errors?.advanceRentLastMonths?.[0]}
+                  />
+                </div>
+
+                <div className="md:col-span-2 rounded-[1.1rem] border border-border/60 bg-muted/35 px-4 py-3 text-xs text-muted-foreground">
+                  {splitAdvanceRentMonthDelta === 0
+                    ? `All ${splitAdvanceRentAssignedMonths} advance-rent months are assigned.`
+                    : splitAdvanceRentMonthDelta > 0
+                      ? `${splitAdvanceRentMonthDelta} advance-rent month(s) still need placement.`
+                      : `${Math.abs(splitAdvanceRentMonthDelta)} month(s) exceed the total advance-rent months.`}
+                </div>
+              </>
+            ) : null}
 
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="notes">Notes</Label>

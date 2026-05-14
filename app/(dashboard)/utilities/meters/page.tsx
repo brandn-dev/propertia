@@ -111,6 +111,7 @@ export default async function UtilityMetersPage() {
                   <TableHead>Assignment</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Shared</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Readings</TableHead>
                   {user.role === "ADMIN" ? (
                     <TableHead className="text-right">Action</TableHead>
@@ -143,6 +144,11 @@ export default async function UtilityMetersPage() {
                     <TableCell>
                       <Badge variant={meter.isShared ? "secondary" : "outline"}>
                         {meter.isShared ? "Shared" : "Dedicated"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={meter.retiredAt ? "outline" : "secondary"}>
+                        {meter.retiredAt ? "Retired" : "Active"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">

@@ -23,7 +23,7 @@ type InvoiceDocumentProps = {
 };
 
 const PAPER_CLASS =
-  "invoice-print-surface font-sans rounded-[2rem] border border-[#dbe5ef] bg-white text-[#0f172a] shadow-[0_30px_80px_-36px_rgba(15,23,42,0.28)] print:rounded-none print:border-0 print:bg-white print:shadow-none";
+  "invoice-print-surface font-sans rounded-[1.2rem] border border-[#dbe5ef] bg-white text-[#0f172a] shadow-[0_30px_80px_-36px_rgba(15,23,42,0.28)] print:rounded-none print:border-0 print:bg-white print:shadow-none";
 const LABEL_CLASS =
   "text-[0.62rem] uppercase tracking-[0.24em] text-[color:var(--invoice-label-color)]";
 const DIVIDER_CLASS = "border-[#dbe5ef]";
@@ -45,6 +45,9 @@ export function InvoiceDocument({
   const paperPreset = getInvoicePaperSizePreset(paperSize);
   const compactPaper = paperPreset.compact;
   const paperLayout = layoutMode === "paper";
+  const responsiveLayout = !paperLayout;
+  const mobileReceiptLayout = responsiveLayout;
+  const hasBreakdownPage = model.breakdowns.hasSecondPage;
   const paymentSummaryVisible = model.payments.length > 0;
   const headerMetaItems = [
     { label: "Issued", value: model.issueDateLabel },
@@ -55,94 +58,72 @@ export function InvoiceDocument({
     maxWidth: paperPreset.previewWidth,
   } satisfies CSSProperties;
   const articleStyle = {
-    minHeight: paperPreset.previewMinHeight,
+    minHeight: paperLayout ? paperPreset.previewMinHeight : undefined,
+    "--invoice-preview-min-height": paperPreset.previewMinHeight,
     "--invoice-accent-color": model.branding.accentColor,
     "--invoice-label-color": model.branding.labelColor,
     "--invoice-value-color": model.branding.valueColor,
     "--invoice-muted-color": model.branding.mutedColor,
     "--invoice-panel-background": model.branding.panelBackground,
   } as CSSProperties;
-  const titleScaleClass = paperLayout
-    ? model.branding.titleScale === "COMPACT"
-      ? compactPaper
-        ? "whitespace-nowrap text-[1.72rem]"
-        : "whitespace-nowrap text-[1.92rem]"
-      : model.branding.titleScale === "PROMINENT"
-        ? compactPaper
-          ? "whitespace-nowrap text-[2.04rem]"
-          : "whitespace-nowrap text-[2.28rem]"
-        : compactPaper
-          ? "whitespace-nowrap text-[1.9rem]"
-          : "whitespace-nowrap text-[2.12rem]"
-    : model.branding.titleScale === "COMPACT"
-      ? compactPaper
-        ? "max-w-2xl break-words text-[1.8rem] md:text-[1.92rem]"
-        : "max-w-2xl break-words text-[1.9rem] md:text-[2rem]"
-      : model.branding.titleScale === "PROMINENT"
-        ? compactPaper
-          ? "max-w-2xl break-words text-[2rem] md:text-[2.12rem]"
-          : "max-w-2xl break-words text-[2.12rem] md:text-[2.28rem]"
-        : compactPaper
-          ? "max-w-2xl break-words text-[1.9rem] md:text-[2.02rem]"
-          : "max-w-2xl break-words text-[2rem] md:text-[2.12rem]";
-  const contentInsetClass = paperLayout ? "pl-3 pr-8" : "px-3";
+  const contentInsetClass = paperLayout
+    ? "pl-3 pr-8"
+    : "px-4 sm:px-5 md:pl-3 md:pr-8";
+  const sectionStackClass = paperLayout ? "space-y-5" : "space-y-4 md:space-y-5";
+  const headerSectionClass = paperLayout
+    ? "space-y-5 pb-3"
+    : "space-y-3 pb-1.5 md:space-y-3 md:pb-1.5";
+  const headerBrandStackClass = paperLayout ? "space-y-2.5" : "space-y-1 md:space-y-1.25";
+  const headerTitleStackClass = "space-y-1";
+  const headerDividerClass = paperLayout ? "border-t pt-2" : "border-t pt-1.5 md:pt-2";
   const brandNameBaseSize = 1.15;
   const brandSubtitleBaseSize = 0.72;
   const tenantNameBaseSize = compactPaper ? 1.82 : 2.08;
-  const titleBaseSize = paperLayout
-    ? model.branding.titleScale === "COMPACT"
-      ? compactPaper
-        ? 1.72
-        : 1.92
-      : model.branding.titleScale === "PROMINENT"
-        ? compactPaper
-          ? 2.04
-          : 2.28
-        : compactPaper
-          ? 1.9
-          : 2.12
-    : model.branding.titleScale === "COMPACT"
-      ? compactPaper
-        ? 1.92
-        : 2
-      : model.branding.titleScale === "PROMINENT"
-        ? compactPaper
-          ? 2.12
-          : 2.28
-        : compactPaper
-          ? 2.02
-          : 2.12;
+  const articleClassName = cn(
+    PAPER_CLASS,
+    paperLayout ? `invoice-paper--${paperPreset.value}` : "",
+    frameless ? "rounded-none border-0 bg-white shadow-none" : "",
+    responsiveLayout
+      ? "px-0 py-4 sm:px-0 sm:py-5 md:min-h-[var(--invoice-preview-min-height)] md:px-8 md:py-8"
+      : compactPaper
+        ? "px-5 py-5 md:px-6 md:py-6"
+        : "px-6 py-6 md:px-8 md:py-8"
+  );
 
   return (
     <div
-      className={cn("mx-auto w-full", renderMode === "editor-preview" ? "min-w-[720px]" : "")}
+      className={cn(
+        "mx-auto w-full",
+        renderMode === "editor-preview" ? "min-w-[720px]" : "",
+        responsiveLayout ? "max-w-5xl" : ""
+      )}
       style={shellStyle}
     >
       <article
-        className={cn(
-          PAPER_CLASS,
-          `invoice-paper--${paperPreset.value}`,
-          frameless ? "rounded-none border-0 bg-white shadow-none" : "",
-          compactPaper ? "px-5 py-5 md:px-6 md:py-6" : "px-6 py-6 md:px-8 md:py-8"
-        )}
+        className={articleClassName}
         style={articleStyle}
       >
-        <div className="space-y-5">
-          <section className={cn("space-y-5 pb-3", contentInsetClass)}>
+        <div className={sectionStackClass}>
+          <section
+            className={cn(
+              headerSectionClass,
+              contentInsetClass
+            )}
+          >
             <div
               className={cn(
                 paperLayout
                   ? renderMode === "editor-preview"
                     ? compactPaper
-                      ? "grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-8 items-start"
-                      : "grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-10 items-start"
+                      ? "grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-8 items-end"
+                      : "grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-10 items-end"
                     : compactPaper
-                      ? "grid grid-cols-[minmax(0,1fr)_17rem] gap-8 items-start"
-                      : "grid grid-cols-[minmax(0,1fr)_20rem] gap-10 items-start"
-                  : "flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between"
+                      ? "grid grid-cols-[minmax(0,1fr)_17rem] gap-8 items-end"
+                      : "grid grid-cols-[minmax(0,1fr)_20rem] gap-10 items-end"
+                  : "grid gap-5 md:grid-cols-[minmax(0,1fr)_20rem] md:items-end md:gap-8"
               )}
             >
-              <div className="min-w-0 space-y-4">
+                <div className={cn("min-w-0", headerBrandStackClass)}>
                 <PropertiaLogo
                   size="md"
                   showWordmark
@@ -169,54 +150,47 @@ export function InvoiceDocument({
                   }}
                 />
 
-                <div className="min-w-0 space-y-1.5">
-                  <div className="space-y-0.5">
-                    <p className={LABEL_CLASS}>Bill to</p>
-                    <p
-                      className={cn(
-                        "break-words leading-none tracking-[-0.055em] text-[color:var(--invoice-value-color)]",
-                        compactPaper ? "text-[1.6rem] md:text-[1.82rem]" : "text-[1.88rem] md:text-[2.08rem]"
-                      )}
-                      style={{
-                        fontWeight: model.branding.tenantNameWeight,
-                        fontSize: scaleRem(
-                          tenantNameBaseSize,
-                          model.branding.tenantNameSizePercent
-                        ),
-                      }}
-                    >
-                      {model.tenantName}
-                    </p>
-                  </div>
+                <div className={cn("min-w-0", headerTitleStackClass)}>
+                  <p className={cn("text-[0.72rem] font-medium tracking-[0.08em]", MUTED_CLASS)}>
+                    {model.title}
+                  </p>
 
-                  <h1
+                  <p className={LABEL_CLASS}>Bill to</p>
+
+                  <p
                     className={cn(
-                      "leading-[0.97] tracking-[-0.075em] text-[color:var(--invoice-value-color)]",
-                      titleScaleClass
+                      "break-words leading-none tracking-[-0.055em] text-[color:var(--invoice-value-color)]",
+                      compactPaper ? "text-[1.5rem] md:text-[1.82rem]" : "text-[1.6rem] md:text-[2.08rem]"
                     )}
                     style={{
-                      fontWeight: model.branding.titleWeight,
+                      fontWeight: model.branding.tenantNameWeight,
                       fontSize: scaleRem(
-                        titleBaseSize,
-                        model.branding.titleSizePercent
+                        tenantNameBaseSize,
+                        model.branding.tenantNameSizePercent
                       ),
                     }}
                   >
-                    {model.title}
-                  </h1>
+                    {model.tenantName}
+                  </p>
                 </div>
               </div>
 
               <div
                 className={cn(
-                  "flex min-w-0 flex-col gap-3",
-                  paperLayout && renderMode !== "editor-preview" ? "pr-8" : "",
-                  paperLayout ? "items-end" : "lg:items-end"
+                  "min-w-0 gap-3",
+                  paperLayout
+                    ? cn(
+                        "flex flex-col items-end",
+                        renderMode !== "editor-preview" ? "pr-8" : ""
+                      )
+                    : "grid grid-cols-2 gap-3 md:flex md:flex-col md:items-end"
                 )}
                 style={
-                  paperLayout && renderMode === "editor-preview"
-                    ? undefined
-                    : { minWidth: paperPreset.metaMinWidth }
+                  paperLayout
+                    ? renderMode === "editor-preview"
+                      ? undefined
+                      : { minWidth: paperPreset.metaMinWidth }
+                    : undefined
                 }
               >
                 {headerMetaItems.map((item) => (
@@ -224,13 +198,15 @@ export function InvoiceDocument({
                     key={item.label}
                     className={cn(
                       "w-full pb-2.5 last:pb-0",
-                      paperLayout ? "text-right" : "lg:text-right",
+                      paperLayout
+                        ? "text-right"
+                        : "px-0 py-1.5 text-left last:col-span-2 md:w-full md:px-0 md:py-0 md:text-right",
                     )}
                   >
                     <p className={LABEL_CLASS}>{item.label}</p>
                     <p
                       className={cn(
-                        "mt-1.5 break-words text-xs font-semibold leading-tight tracking-[-0.03em] md:text-sm",
+                        "mt-1 break-words text-[0.95rem] font-semibold leading-tight tracking-[-0.03em] md:text-sm",
                         VALUE_CLASS
                       )}
                     >
@@ -242,94 +218,309 @@ export function InvoiceDocument({
             </div>
           </section>
 
-          <section className={cn("space-y-4", contentInsetClass)}>
-            <div className={cn("border-t pt-2", DIVIDER_CLASS)}>
-              <div className="overflow-x-auto">
-              <table className="w-full table-fixed border-collapse">
-                <colgroup>
-                  <col style={{ width: compactPaper ? "18%" : "16%" }} />
-                  <col style={{ width: compactPaper ? "38%" : "42%" }} />
-                  <col style={{ width: "10%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: compactPaper ? "20%" : "18%" }} />
-                </colgroup>
-                <thead>
-                  <tr className={cn("border-b text-left", DIVIDER_CLASS)}>
-                    <th className={cn("py-4 pr-4 font-medium", LABEL_CLASS)}>Type</th>
-                    <th className={cn("py-4 pr-4 font-medium", LABEL_CLASS)}>Description</th>
-                    <th className={cn("py-4 pr-4 text-right font-medium", LABEL_CLASS)}>Qty</th>
-                    <th className={cn("py-4 pr-4 text-right font-medium", LABEL_CLASS)}>Unit</th>
-                    <th className={cn("py-4 text-right font-medium", LABEL_CLASS)}>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {model.items.map((item, index) => (
-                    <tr
-                      key={item.id}
-                      className={index < model.items.length - 1 ? cn("border-b", DIVIDER_CLASS) : ""}
-                    >
-                      <td
-                        className={cn(
-                          "py-4 pr-4 align-top text-[0.72rem] font-semibold uppercase tracking-[0.22em]",
-                          ACCENT_CLASS
-                        )}
+          <section className={cn("space-y-4", contentInsetClass, mobileReceiptLayout ? "pt-1" : "")}>
+            <div className={cn(headerDividerClass, DIVIDER_CLASS)}>
+              {paperLayout ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full table-fixed border-collapse">
+                    <colgroup>
+                      <col style={{ width: compactPaper ? "18%" : "16%" }} />
+                      <col style={{ width: compactPaper ? "38%" : "42%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: compactPaper ? "20%" : "18%" }} />
+                    </colgroup>
+                    <thead>
+                      <tr className={cn("border-b text-left", DIVIDER_CLASS)}>
+                        <th className={cn("py-2.5 pr-4 font-medium", LABEL_CLASS)}>Type</th>
+                        <th className={cn("py-2.5 pr-4 font-medium", LABEL_CLASS)}>Description</th>
+                        <th className={cn("py-2.5 pr-4 text-right font-medium", LABEL_CLASS)}>Usage / Qty</th>
+                        <th className={cn("py-2.5 pr-4 text-right font-medium", LABEL_CLASS)}>Unit</th>
+                        <th className={cn("py-2.5 text-right font-medium", LABEL_CLASS)}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {model.items.map((item, index) => (
+                        <tr
+                          key={item.id}
+                          className={index < model.items.length - 1 ? cn("border-b", DIVIDER_CLASS) : ""}
+                        >
+                          <td
+                            className={cn(
+                              "py-2.5 pr-4 align-top text-[0.72rem] font-semibold uppercase tracking-[0.22em]",
+                              ACCENT_CLASS
+                            )}
+                          >
+                            {item.typeLabel}
+                          </td>
+                          <td
+                            className={cn(
+                              "py-2.5 pr-4 align-top break-words font-medium text-[#0f172a]",
+                              item.itemType === "UTILITY_READING" || item.itemType === "COSA"
+                                ? "text-[0.9rem] leading-[1.35]"
+                                : "text-sm leading-[1.45]"
+                            )}
+                          >
+                            {item.description}
+                          </td>
+                          <td
+                            className={cn(
+                              "py-2.5 pr-4 text-right align-top whitespace-nowrap",
+                              item.itemType === "UTILITY_READING" || item.itemType === "COSA"
+                                ? "text-[0.88rem]"
+                                : "text-sm",
+                              MUTED_CLASS
+                            )}
+                          >
+                            {item.quantityDisplay ?? item.quantity.toFixed(2)}
+                          </td>
+                          <td
+                            className={cn(
+                              "py-2.5 pr-4 text-right align-top",
+                              item.itemType === "UTILITY_READING" || item.itemType === "COSA"
+                                ? "text-[0.88rem]"
+                                : "text-sm",
+                              MUTED_CLASS
+                            )}
+                          >
+                            {formatInvoiceMoney(item.unitPrice)}
+                          </td>
+                          <td
+                            className={cn(
+                              "py-2.5 text-right align-top font-semibold",
+                              item.itemType === "UTILITY_READING" || item.itemType === "COSA"
+                                ? "text-[0.9rem]"
+                                : "text-sm",
+                              VALUE_CLASS
+                            )}
+                          >
+                            {formatInvoiceMoney(item.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="space-y-3 md:space-y-0">
+                  <div className="hidden md:block">
+                    <div className="overflow-x-auto">
+                      <table className="w-full table-fixed border-collapse">
+                        <colgroup>
+                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "42%" }} />
+                          <col style={{ width: "10%" }} />
+                          <col style={{ width: "14%" }} />
+                          <col style={{ width: "18%" }} />
+                        </colgroup>
+                        <thead>
+                          <tr className={cn("border-b text-left", DIVIDER_CLASS)}>
+                            <th className={cn("py-2.5 pr-4 font-medium", LABEL_CLASS)}>Type</th>
+                            <th className={cn("py-2.5 pr-4 font-medium", LABEL_CLASS)}>Description</th>
+                            <th className={cn("py-2.5 pr-4 text-right font-medium", LABEL_CLASS)}>Usage / Qty</th>
+                            <th className={cn("py-2.5 pr-4 text-right font-medium", LABEL_CLASS)}>Unit</th>
+                            <th className={cn("py-2.5 text-right font-medium", LABEL_CLASS)}>Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {model.items.map((item, index) => (
+                            <tr
+                              key={item.id}
+                              className={index < model.items.length - 1 ? cn("border-b", DIVIDER_CLASS) : ""}
+                            >
+                              <td
+                                className={cn(
+                                  "py-2.5 pr-4 align-top text-[0.72rem] font-semibold uppercase tracking-[0.22em]",
+                                  ACCENT_CLASS
+                                )}
+                              >
+                                {item.typeLabel}
+                              </td>
+                              <td
+                                className={cn(
+                                  "py-2.5 pr-4 align-top break-words font-medium",
+                                  item.itemType === "UTILITY_READING" || item.itemType === "COSA"
+                                    ? "text-[0.9rem] leading-[1.35]"
+                                    : "text-sm leading-[1.45]",
+                                  VALUE_CLASS
+                                )}
+                              >
+                                {item.description}
+                              </td>
+                              <td
+                                className={cn(
+                                  "py-2.5 pr-4 text-right align-top whitespace-nowrap",
+                                  item.itemType === "UTILITY_READING" || item.itemType === "COSA"
+                                    ? "text-[0.88rem]"
+                                    : "text-sm",
+                                  MUTED_CLASS
+                                )}
+                              >
+                                {item.quantityDisplay ?? item.quantity.toFixed(2)}
+                              </td>
+                              <td
+                                className={cn(
+                                  "py-2.5 pr-4 text-right align-top",
+                                  item.itemType === "UTILITY_READING" || item.itemType === "COSA"
+                                    ? "text-[0.88rem]"
+                                    : "text-sm",
+                                  MUTED_CLASS
+                                )}
+                              >
+                                {formatInvoiceMoney(item.unitPrice)}
+                              </td>
+                              <td
+                                className={cn(
+                                  "py-2.5 text-right align-top font-semibold",
+                                  item.itemType === "UTILITY_READING" || item.itemType === "COSA"
+                                    ? "text-[0.9rem]"
+                                    : "text-sm",
+                                  VALUE_CLASS
+                                )}
+                              >
+                                {formatInvoiceMoney(item.amount)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5 md:hidden">
+                    {model.items.map((item) => (
+                      <article
+                        key={item.id}
+                        className={cn("border-b border-border/60 pb-3 last:border-b-0 last:pb-0")}
                       >
-                        {item.typeLabel}
-                      </td>
-                      <td className="py-4 pr-4 align-top break-words text-sm leading-[1.45] font-medium text-[#0f172a]">
-                      
-                        {item.description}
-                      </td>
-                      <td className={cn("py-4 pr-4 text-right align-top text-sm", MUTED_CLASS)}>
-                        {item.quantity.toFixed(2)}
-                      </td>
-                      <td className={cn("py-4 pr-4 text-right align-top text-sm", MUTED_CLASS)}>
-                        {formatInvoiceMoney(item.unitPrice)}
-                      </td>
-                      <td className={cn("py-4 text-right align-top text-sm font-semibold", VALUE_CLASS)}>
-                        {formatInvoiceMoney(item.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
+                        <div className="flex items-start justify-between gap-4">
+                          <p
+                            className={cn(
+                              "text-[0.68rem] font-semibold uppercase tracking-[0.22em]",
+                              ACCENT_CLASS
+                            )}
+                          >
+                            {item.typeLabel}
+                          </p>
+                          <p className={cn("text-[0.95rem] font-semibold text-right", VALUE_CLASS)}>
+                            {formatInvoiceMoney(item.amount)}
+                          </p>
+                        </div>
+                        <p
+                          className={cn(
+                            "mt-2 break-words font-medium",
+                            item.itemType === "UTILITY_READING" || item.itemType === "COSA"
+                              ? "text-[0.9rem] leading-[1.45]"
+                              : "text-[0.95rem] leading-6",
+                            VALUE_CLASS
+                          )}
+                        >
+                          {item.description}
+                        </p>
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <MetricStack
+                            label={item.itemType === "UTILITY_READING" ? "Usage" : "Qty"}
+                            value={item.quantityDisplay ?? item.quantity.toFixed(2)}
+                          />
+                          <MetricStack label="Unit" value={formatInvoiceMoney(item.unitPrice)} align="right" />
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div
-              className={cn(
-                "grid items-stretch gap-6 border-t pt-3",
-                paperLayout
-                  ? "grid-cols-2"
-                  : "xl:grid-cols-[minmax(0,1fr)_19rem]",
-                DIVIDER_CLASS,
-              )}
-            >
-              <div className="min-w-0 space-y-8">
-                {accessBlock &&
-                (renderMode === "internal" || renderMode === "print") ? (
-                  <section className={cn("h-full space-y-2", PANEL_CLASS)}>
-                    <p className={LABEL_CLASS}>Invoice access</p>
-                    <div className="flex flex-col items-start gap-2">
-                      <Image
-                        src={accessBlock.qrDataUrl}
-                        alt={`QR code for invoice ${model.invoiceNumber}`}
-                        width={112}
-                        height={112}
-                        unoptimized
-                        className="size-[112px]"
-                      />
-                      <div className="space-y-0.5">
-                        <p className="text-[0.56rem] uppercase tracking-[0.2em] text-[#94a3b8]">
-                          Invoice password
-                        </p>
-                        <p className="break-all font-mono text-[0.7rem] font-medium tracking-[0.2em] text-[#64748b]">
-                          {accessBlock.publicAccessCode}
-                        </p>
+            {paperLayout ? (
+              <div
+                className={cn(
+                  "grid grid-cols-2 gap-6 border-t pt-3",
+                  DIVIDER_CLASS,
+                )}
+              >
+                <div className="min-w-0 space-y-8">
+                  {accessBlock &&
+                  (renderMode === "internal" || renderMode === "print") ? (
+                    <section className="space-y-2">
+                      <p className={LABEL_CLASS}>Invoice access</p>
+                      <div className="flex flex-col items-start gap-2">
+                        <Image
+                          src={accessBlock.qrDataUrl}
+                          alt={`QR code for invoice ${model.invoiceNumber}`}
+                          width={112}
+                          height={112}
+                          unoptimized
+                          className="size-[112px]"
+                        />
+                        <div className="space-y-0.5">
+                          <p className={cn("text-[0.56rem] uppercase tracking-[0.2em]", LABEL_CLASS)}>
+                            Invoice password
+                          </p>
+                          <p className={cn("break-all font-mono text-[0.7rem] font-medium tracking-[0.2em]", MUTED_CLASS)}>
+                            {accessBlock.publicAccessCode}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </section>
-                ) : null}
+                    </section>
+                  ) : null}
+
+                  {model.notes ? (
+                    <section className="space-y-3">
+                      <p className={LABEL_CLASS}>Notes</p>
+                      <p className={cn("max-w-3xl whitespace-pre-wrap break-words text-sm leading-7", MUTED_CLASS)}>
+                        {model.notes}
+                      </p>
+                    </section>
+                  ) : null}
+
+                  {paymentSummaryVisible ? (
+                    <section className="space-y-4 pt-2">
+                      <p className={LABEL_CLASS}>Payment history</p>
+                      <PaymentSummary model={model} />
+                    </section>
+                  ) : null}
+                </div>
+
+                <InvoiceTotalsPanel model={model} />
+              </div>
+            ) : (
+              <div className={cn("space-y-4 border-t pt-3", DIVIDER_CLASS)}>
+                <div
+                  className={cn(
+                    "flex flex-col gap-3",
+                    accessBlock
+                      ? "md:grid md:grid-cols-[max-content_minmax(0,1fr)] md:items-start md:gap-4"
+                      : "md:flex md:items-end"
+                  )}
+                >
+                  {accessBlock && renderMode === "internal" ? (
+                    <section className="space-y-2 md:w-fit">
+                      <p className={LABEL_CLASS}>Invoice access</p>
+                      <div className="flex flex-col items-start gap-2">
+                        <Image
+                          src={accessBlock.qrDataUrl}
+                          alt={`QR code for invoice ${model.invoiceNumber}`}
+                          width={112}
+                          height={112}
+                          unoptimized
+                          className="size-[112px]"
+                        />
+                        <div className="space-y-0.5">
+                          <p className={cn("text-[0.56rem] uppercase tracking-[0.2em]", LABEL_CLASS)}>
+                            Invoice password
+                          </p>
+                          <p className={cn("break-all font-mono text-[0.7rem] font-medium tracking-[0.2em]", MUTED_CLASS)}>
+                            {accessBlock.publicAccessCode}
+                          </p>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  <div className={cn("min-w-0", !accessBlock && "md:w-[min(100%,34rem)] md:ml-auto")}>
+                    <InvoiceTotalsPanel model={model} />
+                  </div>
+                </div>
 
                 {model.notes ? (
                   <section className="space-y-3">
@@ -341,20 +532,52 @@ export function InvoiceDocument({
                 ) : null}
 
                 {paymentSummaryVisible ? (
-                  <section className="space-y-4 pt-2">
+                  <section className="space-y-4 pt-1">
                     <p className={LABEL_CLASS}>Payment history</p>
                     <PaymentSummary model={model} />
                   </section>
                 ) : null}
               </div>
-
-              <InvoiceTotalsPanel model={model} />
-            </div>
+            )}
 
             <InvoiceReceiptFooter paperLayout={paperLayout} />
           </section>
         </div>
       </article>
+
+      {hasBreakdownPage ? (
+        <article
+          className={cn(articleClassName, "mt-6 print:mt-0")}
+          style={
+            paperLayout
+              ? ({
+                  ...articleStyle,
+                  breakBefore: "page",
+                  pageBreakBefore: "always",
+                } as CSSProperties)
+              : articleStyle
+          }
+        >
+          <div className={paperLayout ? "space-y-4" : "space-y-4"}>
+            <section className={cn("space-y-4", contentInsetClass)}>
+              <div className="space-y-1">
+                <p className={LABEL_CLASS}>Page 2</p>
+                <h2 className={cn("text-[1.05rem] font-semibold tracking-[-0.04em]", VALUE_CLASS)}>
+                  Breakdown details
+                </h2>
+              </div>
+
+              {model.breakdowns.utilityReadings.length > 0 ? (
+                <UtilityBreakdownSection model={model} paperLayout={paperLayout} />
+              ) : null}
+
+              {model.breakdowns.cosaAllocations.length > 0 ? (
+                <CosaBreakdownSection model={model} paperLayout={paperLayout} />
+              ) : null}
+            </section>
+          </div>
+        </article>
+      ) : null}
 
       {afterDocument ? <div className="mt-6">{afterDocument}</div> : null}
     </div>
@@ -364,11 +587,24 @@ export function InvoiceDocument({
 function PaymentSummary({ model }: { model: InvoicePresentationModel }) {
   return (
     <div className="space-y-4">
-      <div className={cn("flex items-center justify-between gap-4 border-b pb-3", DIVIDER_CLASS)}>
-        <span className="text-sm text-[#64748b]">Collected</span>
-        <span className="font-semibold text-[#020617]">
-          {formatInvoiceMoney(model.totals.collectedAmount)}
-        </span>
+      <div className={cn("space-y-2 border-b pb-3", DIVIDER_CLASS)}>
+        <div className="flex items-center justify-between gap-4">
+          <span className={cn("text-sm", MUTED_CLASS)}>Collected</span>
+          <span className={cn("font-semibold", VALUE_CLASS)}>
+            {formatInvoiceMoney(model.totals.collectedAmount)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className={cn("text-sm", MUTED_CLASS)}>Balance</span>
+          <span
+            className={cn(
+              "font-semibold",
+              model.totals.balanceDue > 0 ? ACCENT_CLASS : VALUE_CLASS
+            )}
+          >
+            {formatInvoiceMoney(model.totals.balanceDue)}
+          </span>
+        </div>
       </div>
 
       {model.payments.map((payment) => (
@@ -380,15 +616,15 @@ function PaymentSummary({ model }: { model: InvoicePresentationModel }) {
           )}
         >
           <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="font-medium text-[#020617]">{payment.paymentDateLabel}</span>
-            <span className="text-xs uppercase tracking-[0.18em] text-[#64748b] md:hidden">
+            <span className={cn("font-medium", VALUE_CLASS)}>{payment.paymentDateLabel}</span>
+            <span className={cn("text-xs uppercase tracking-[0.18em] md:hidden", MUTED_CLASS)}>
               {payment.statusLabel}
             </span>
           </div>
-          <div className="text-sm text-[#475569] md:text-right">
+          <div className={cn("text-sm md:text-right", MUTED_CLASS)}>
             {formatInvoiceMoney(payment.amountPaid)}
           </div>
-          <div className="flex items-center justify-between gap-3 text-xs text-[#64748b] md:justify-end">
+          <div className={cn("flex items-center justify-between gap-3 text-xs md:justify-end", MUTED_CLASS)}>
             <span>{payment.statusLabel}</span>
             <span>{payment.referenceNumber ?? "No reference"}</span>
           </div>
@@ -398,23 +634,38 @@ function PaymentSummary({ model }: { model: InvoicePresentationModel }) {
   );
 }
 
-function InvoiceTotalsPanel({ model }: { model: InvoicePresentationModel }) {
+function InvoiceTotalsPanel({
+  model,
+}: {
+  model: InvoicePresentationModel;
+}) {
   return (
-    <section className={cn("h-full min-w-0 space-y-4", PANEL_CLASS)}>
+    <section
+      className={cn(
+        "min-w-0 self-start space-y-3 rounded-[1.1rem]",
+        PANEL_CLASS,
+        "h-auto"
+      )}
+    >
       <p className={LABEL_CLASS}>Invoice summary</p>
-      <div className="space-y-3 pt-1 text-sm">
+      <div className="space-y-2.5 pt-1 text-[0.95rem]">
         <SummaryRow label="Issue date" value={model.issueDateLabel} />
         <SummaryRow label="Rent subtotal" value={formatInvoiceMoney(model.totals.subtotal)} />
         <SummaryRow
           label="Additional charges"
           value={formatInvoiceMoney(model.totals.additionalCharges)}
         />
-        <SummaryRow label="Discount" value={formatInvoiceMoney(model.totals.discount)} />
         <div className={cn("border-t pt-3", DIVIDER_CLASS)}>
           <SummaryRow
             label="Grand total"
             value={formatInvoiceMoney(model.totals.totalAmount)}
             strong
+          />
+          <SummaryRow
+            label="Balance due"
+            value={formatInvoiceMoney(model.totals.balanceDue)}
+            strong
+            valueClassName={model.totals.balanceDue > 0 ? ACCENT_CLASS : undefined}
           />
         </div>
       </div>
@@ -423,12 +674,16 @@ function InvoiceTotalsPanel({ model }: { model: InvoicePresentationModel }) {
 }
 
 function InvoiceReceiptFooter({ paperLayout }: { paperLayout: boolean }) {
+  if (!paperLayout) {
+    return null;
+  }
+
   return (
     <footer className={cn("space-y-3 border-t pt-4", DIVIDER_CLASS)}>
       <div
         className={cn(
           "grid gap-x-6 gap-y-3 text-[0.72rem] text-[#475569]",
-          paperLayout ? "grid-cols-3" : "md:grid-cols-3"
+          paperLayout ? "grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-3"
         )}
       >
         <FooterField label="Received by" />
@@ -442,10 +697,176 @@ function InvoiceReceiptFooter({ paperLayout }: { paperLayout: boolean }) {
   );
 }
 
+function UtilityBreakdownSection({
+  model,
+  paperLayout,
+}: {
+  model: InvoicePresentationModel;
+  paperLayout: boolean;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="space-y-0.5">
+        <p className={LABEL_CLASS}>Utility breakdown</p>
+      </div>
+
+      <div className={cn("border-t pt-2", DIVIDER_CLASS)}>
+        <div className={cn(paperLayout ? "block overflow-x-auto" : "hidden overflow-x-auto md:block")}>
+          <table className="w-full table-fixed border-collapse">
+            <colgroup>
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "18%" }} />
+            </colgroup>
+            <thead>
+              <tr className={cn("border-b text-left", DIVIDER_CLASS)}>
+                <th className={cn("py-2 pr-2 font-medium", LABEL_CLASS)}>Utility</th>
+                <th className={cn("py-2 pr-2 text-right font-medium", LABEL_CLASS)}>Previous</th>
+                <th className={cn("py-2 pr-2 text-right font-medium", LABEL_CLASS)}>Current</th>
+                <th className={cn("py-2 pr-2 text-right font-medium", LABEL_CLASS)}>Consumption</th>
+                <th className={cn("py-2 pr-2 text-right font-medium", LABEL_CLASS)}>Rate</th>
+                <th className={cn("py-2 text-right font-medium", LABEL_CLASS)}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {model.breakdowns.utilityReadings.map((row, index) => (
+                <tr
+                  key={row.itemId}
+                  className={index < model.breakdowns.utilityReadings.length - 1 ? cn("border-b", DIVIDER_CLASS) : ""}
+                >
+                  <td className={cn("py-2.5 pr-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em]", ACCENT_CLASS)}>
+                    {row.utilityTypeLabel}
+                  </td>
+                  <td className={cn("py-2.5 pr-2 text-right text-sm", MUTED_CLASS)}>{formatBreakdownNumber(row.previousReading)}</td>
+                  <td className={cn("py-2.5 pr-2 text-right text-sm", MUTED_CLASS)}>{formatBreakdownNumber(row.currentReading)}</td>
+                  <td className={cn("py-2.5 pr-2 text-right text-sm", MUTED_CLASS)}>{row.consumptionLabel}</td>
+                  <td className={cn("py-2.5 pr-2 text-right text-sm", MUTED_CLASS)}>{row.rateLabel}</td>
+                  <td className={cn("py-2.5 text-right text-sm font-semibold", VALUE_CLASS)}>{formatInvoiceMoney(row.totalAmount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className={cn("space-y-2.5", paperLayout ? "hidden" : "md:hidden")}>
+          {model.breakdowns.utilityReadings.map((row) => (
+            <article key={row.itemId} className={cn("border-b pb-2.5 last:border-b-0 last:pb-0", DIVIDER_CLASS)}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <p className={cn("text-[0.68rem] font-semibold uppercase tracking-[0.18em]", ACCENT_CLASS)}>
+                    {row.utilityTypeLabel}
+                  </p>
+                </div>
+                <p className={cn("text-sm font-semibold text-right", VALUE_CLASS)}>
+                  {formatInvoiceMoney(row.totalAmount)}
+                </p>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2.5">
+                <MetricStack label="Previous" value={formatBreakdownNumber(row.previousReading)} />
+                <MetricStack label="Current" value={formatBreakdownNumber(row.currentReading)} align="right" />
+                <MetricStack label="Consumption" value={row.consumptionLabel} />
+                <MetricStack label="Rate" value={row.rateLabel} align="right" />
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CosaBreakdownSection({
+  model,
+  paperLayout,
+}: {
+  model: InvoicePresentationModel;
+  paperLayout: boolean;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="space-y-0.5">
+        <p className={LABEL_CLASS}>COSA breakdown</p>
+      </div>
+
+      <div className={cn(paperLayout ? "block overflow-x-auto" : "hidden overflow-x-auto md:block")}>
+        <table className="w-full table-fixed border-collapse">
+          <colgroup>
+            <col style={{ width: "28%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "22%" }} />
+            <col style={{ width: "18%" }} />
+            <col style={{ width: "18%" }} />
+          </colgroup>
+          <thead>
+            <tr className={cn("border-b text-left", DIVIDER_CLASS)}>
+              <th className={cn("py-2 pr-3 font-medium", LABEL_CLASS)}>Description</th>
+              <th className={cn("py-2 pr-3 font-medium", LABEL_CLASS)}>Billing date</th>
+              <th className={cn("py-2 pr-3 font-medium", LABEL_CLASS)}>Source</th>
+              <th className={cn("py-2 pr-3 text-right font-medium", LABEL_CLASS)}>Share</th>
+              <th className={cn("py-2 text-right font-medium", LABEL_CLASS)}>Allocated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {model.breakdowns.cosaAllocations.map((row, index) => (
+              <tr
+                key={row.itemId}
+                className={index < model.breakdowns.cosaAllocations.length - 1 ? cn("border-b", DIVIDER_CLASS) : ""}
+              >
+                <td className={cn("py-2.5 pr-3 text-sm font-medium", VALUE_CLASS)}>{row.description}</td>
+                <td className={cn("py-2.5 pr-3 text-sm", MUTED_CLASS)}>{row.billingDateLabel}</td>
+                <td className={cn("py-2.5 pr-3 text-sm", MUTED_CLASS)}>
+                  <div className="space-y-0.5">
+                    <p>{formatInvoiceMoney(row.sourceTotalAmount)}</p>
+                    {row.sourceUtilityTypeLabel || row.sourceMeterCode || row.sourceReadingDateLabel ? (
+                      <p className="text-xs">
+                        {formatCosaSourceLabel(row)}
+                      </p>
+                    ) : null}
+                  </div>
+                </td>
+                <td className={cn("py-2.5 pr-3 text-right text-sm", MUTED_CLASS)}>{formatCosaShare(row)}</td>
+                <td className={cn("py-2.5 text-right text-sm font-semibold", VALUE_CLASS)}>
+                  {formatInvoiceMoney(row.allocatedAmount)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className={cn("space-y-2.5", paperLayout ? "hidden" : "md:hidden")}>
+        {model.breakdowns.cosaAllocations.map((row) => (
+          <article key={row.itemId} className={cn("border-b pb-2.5 last:border-b-0 last:pb-0", DIVIDER_CLASS)}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <p className={cn("text-sm font-semibold", VALUE_CLASS)}>{row.description}</p>
+                <p className={cn("text-xs", MUTED_CLASS)}>{row.billingDateLabel}</p>
+              </div>
+              <p className={cn("text-sm font-semibold text-right", VALUE_CLASS)}>
+                {formatInvoiceMoney(row.allocatedAmount)}
+              </p>
+            </div>
+            <div className="mt-2 grid grid-cols-1 gap-2.5">
+              <MetricStack label="Source total" value={formatInvoiceMoney(row.sourceTotalAmount)} />
+              <MetricStack label="Share" value={formatCosaShare(row)} />
+              {formatCosaSourceLabel(row) ? (
+                <MetricStack label="Source" value={formatCosaSourceLabel(row)} />
+              ) : null}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function FooterField({ label }: { label: string }) {
   return (
     <div className="grid gap-1">
-      <p className="text-[0.62rem] uppercase tracking-[0.2em] text-[#64748b]">{label}</p>
+      <p className={LABEL_CLASS}>{label}</p>
       <div className={cn("h-5 border-b", DIVIDER_CLASS)} />
     </div>
   );
@@ -458,8 +879,8 @@ function CheckBox() {
 function FooterModeField() {
   return (
     <div className="grid gap-1">
-      <p className="text-[0.62rem] uppercase tracking-[0.2em] text-[#64748b]">Mode</p>
-      <div className="flex flex-wrap items-center gap-5 pt-1 text-[0.68rem] text-[#475569]">
+      <p className={LABEL_CLASS}>Mode</p>
+      <div className={cn("flex flex-wrap items-center gap-5 pt-1 text-[0.68rem]", MUTED_CLASS)}>
         <div className="flex items-center gap-2">
           <CheckBox />
           <span>Cash</span>
@@ -469,6 +890,23 @@ function FooterModeField() {
           <span>Cheque</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MetricStack({
+  label,
+  value,
+  align = "left",
+}: {
+  label: string;
+  value: string;
+  align?: "left" | "right";
+}) {
+  return (
+    <div className={cn("space-y-1", align === "right" ? "text-right" : "")}>
+      <p className={LABEL_CLASS}>{label}</p>
+      <p className={cn("text-sm font-medium", VALUE_CLASS)}>{value}</p>
     </div>
   );
 }
@@ -496,13 +934,13 @@ function SummaryRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className={cn("text-[#64748b]", strong ? "font-medium text-[#334155]" : "")}>
+      <span className={cn(MUTED_CLASS, strong ? "font-medium" : "")}>
         {label}
       </span>
       <span
         className={cn(
           "shrink-0",
-          strong ? "font-semibold text-[#020617]" : "font-medium text-[#334155]",
+          strong ? cn("font-semibold", VALUE_CLASS) : cn("font-medium", VALUE_CLASS),
           valueClassName
         )}
       >
@@ -510,6 +948,36 @@ function SummaryRow({
       </span>
     </div>
   );
+}
+
+function formatBreakdownNumber(value: number) {
+  return new Intl.NumberFormat("en-PH", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatCosaShare(
+  row: InvoicePresentationModel["breakdowns"]["cosaAllocations"][number]
+) {
+  const parts = [];
+
+  if (row.percentage != null) {
+    parts.push(`${formatBreakdownNumber(row.percentage)}%`);
+  }
+
+  if (row.unitCount != null) {
+    parts.push(`${row.unitCount} unit${row.unitCount === 1 ? "" : "s"}`);
+  }
+
+  return parts.join(" · ") || "Allocated";
+}
+
+function formatCosaSourceLabel(
+  row: InvoicePresentationModel["breakdowns"]["cosaAllocations"][number]
+) {
+  const parts = [row.sourceUtilityTypeLabel, row.sourceMeterCode, row.sourceReadingDateLabel].filter(Boolean);
+  return parts.join(" · ");
 }
 
 function scaleRem(baseRem: number, percent: number) {

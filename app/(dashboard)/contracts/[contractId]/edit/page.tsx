@@ -12,6 +12,11 @@ import { ContractForm } from "@/components/contracts/contract-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import {
+  deriveWholeMonths,
+  resolveAdvanceRentPlacement,
+} from "@/lib/contracts/advance-rent";
+import { getContractEndDateInputValue } from "@/lib/contracts/term";
+import {
   getContractForEdit,
   getContractPropertyOptions,
   getContractTenantOptions,
@@ -38,20 +43,6 @@ function formatTenantLabel(tenant: {
   );
 }
 
-function deriveMonthsFromAmount(amount: string, monthlyRent: string) {
-  const amountValue = Number(amount);
-  const monthlyRentValue = Number(monthlyRent);
-
-  if (!amountValue || !monthlyRentValue) {
-    return "0";
-  }
-
-  const ratio = amountValue / monthlyRentValue;
-  const rounded = Math.round(ratio);
-
-  return Math.abs(ratio - rounded) < 0.01 ? String(rounded) : "0";
-}
-
 export default async function EditContractPage({
   params,
 }: EditContractPageProps) {
@@ -69,6 +60,19 @@ export default async function EditContractPage({
   ]);
 
   const action = updateContractAction.bind(null, contract.id);
+  const resolvedAdvanceRentMonths =
+    contract.advanceRentMonths > 0
+      ? contract.advanceRentMonths
+      : deriveWholeMonths(
+          Number(contract.advanceRent.toString()),
+          Number(contract.monthlyRent.toString())
+        );
+  const resolvedAdvanceRentPlacement = resolveAdvanceRentPlacement({
+    advanceRentMonths: resolvedAdvanceRentMonths,
+    advanceRentApplication: contract.advanceRentApplication,
+    advanceRentFirstMonths: contract.advanceRentFirstMonths,
+    advanceRentLastMonths: contract.advanceRentLastMonths,
+  });
 
   return (
     <div className="space-y-6">
@@ -139,22 +143,24 @@ export default async function EditContractPage({
           propertyId: contract.propertyId,
           tenantId: contract.tenantId,
           startDate: toDateInputValue(contract.startDate),
-          endDate: toDateInputValue(contract.endDate),
+          endDate: getContractEndDateInputValue(contract.endDate),
           paymentStartDate: toDateInputValue(contract.paymentStartDate),
           monthlyRent: contract.monthlyRent.toString(),
-          advanceRentMonths:
-            contract.advanceRentMonths > 0
-              ? String(contract.advanceRentMonths)
-              : deriveMonthsFromAmount(
-                  contract.advanceRent.toString(),
-                  contract.monthlyRent.toString()
-                ),
+          advanceRentMonths: String(resolvedAdvanceRentMonths),
+          advanceRentFirstMonths: String(
+            resolvedAdvanceRentPlacement.firstMonths
+          ),
+          advanceRentLastMonths: String(
+            resolvedAdvanceRentPlacement.lastMonths
+          ),
           securityDepositMonths:
             contract.securityDepositMonths > 0
               ? String(contract.securityDepositMonths)
-              : deriveMonthsFromAmount(
-                  contract.securityDeposit.toString(),
-                  contract.monthlyRent.toString()
+              : String(
+                  deriveWholeMonths(
+                    Number(contract.securityDeposit.toString()),
+                    Number(contract.monthlyRent.toString())
+                  )
                 ),
           freeRentCycles: String(contract.freeRentCycles),
           advanceRentApplication: contract.advanceRentApplication,
