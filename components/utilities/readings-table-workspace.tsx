@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 import { Copy, ExternalLink, PencilLine } from "lucide-react";
+import { deleteMeterReadingAction } from "@/app/(dashboard)/utilities/actions";
 import { METER_READING_ORIGIN_LABELS, UTILITY_TYPE_LABELS } from "@/lib/form-options";
 import { formatCompactNumber, formatCurrency, formatDate } from "@/lib/format";
 import { formatUtilityQuantity } from "@/lib/utility-units";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DeleteReadingButton } from "@/components/utilities/delete-reading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -113,6 +115,10 @@ function buildExportRows(rows: ReadingRow[]) {
   );
 
   return [header, ...body].join("\n");
+}
+
+function getDeleteReadingMessage(reading: ReadingRow) {
+  return `Delete ${reading.meter.meterCode} reading from ${formatDate(reading.readingDate)}? Later unbilled readings on this meter will be recalculated.`;
 }
 
 export function ReadingsTableWorkspace({
@@ -606,15 +612,25 @@ export function ReadingsTableWorkspace({
                     </Button>
                   </div>
                 ) : reading.canEdit ? (
-                  <Button
-                    render={<Link href={`/utilities/readings/${reading.id}/edit`} />}
-                    variant="outline"
-                    size="sm"
-                    className="button-blank rounded-full"
-                  >
-                    <PencilLine />
-                    Edit
-                  </Button>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      render={<Link href={`/utilities/readings/${reading.id}/edit`} />}
+                      variant="outline"
+                      size="sm"
+                      className="button-blank rounded-full"
+                    >
+                      <PencilLine />
+                      Edit
+                    </Button>
+                    <DeleteReadingButton
+                      action={deleteMeterReadingAction.bind(null, reading.id)}
+                      confirmMessage={getDeleteReadingMessage(reading)}
+                      className="rounded-full"
+                      label="Delete"
+                      size="sm"
+                      title="Delete reading"
+                    />
+                  </div>
                 ) : (
                   <Badge variant="outline">Locked</Badge>
                 )}

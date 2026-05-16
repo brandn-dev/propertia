@@ -14,7 +14,7 @@ import {
   RECURRING_CHARGE_TYPE_LABELS,
   UTILITY_TYPE_LABELS,
 } from "@/lib/form-options";
-import { toDateInputValue } from "@/lib/format";
+import { APP_TIME_ZONE, toDateInputValue } from "@/lib/format";
 
 export type HistoricalBacklogContractOption = {
   id: string;
@@ -214,6 +214,7 @@ export function getDefaultDueDate(cycleEnd: string) {
 
 export function formatMonthLabel(value: Date) {
   return new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIME_ZONE,
     month: "long",
     year: "numeric",
   }).format(value);

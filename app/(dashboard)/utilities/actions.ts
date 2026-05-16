@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
 import { prisma } from "@/lib/prisma";
+import { withToast } from "@/lib/toast";
 import { meterReadingSchema } from "@/lib/validations/meter-reading";
 import {
   utilityMeterReplacementSchema,
@@ -796,4 +797,159 @@ export async function updateMeterReadingAction(
 
   revalidateUtilityViews();
   redirect("/utilities/readings");
+}
+
+export async function deleteMeterReadingAction(readingId: string) {
+  await requireRole(["ADMIN", "METER_READER"]);
+
+  const existingReading = await prisma.meterReading.findUnique({
+    where: { id: readingId },
+    select: {
+      id: true,
+      meterId: true,
+      readingDate: true,
+      invoiceItem: {
+        select: {
+          id: true,
+        },
+      },
+      meter: {
+        select: {
+          meterCode: true,
+          openingReading: true,
+        },
+      },
+    },
+  });
+
+  if (!existingReading) {
+    redirect(
+      withToast("/utilities/readings", {
+        intent: "error",
+        title: "Reading missing",
+        description: "Reading could not be found.",
+      })
+    );
+  }
+
+  if (existingReading.invoiceItem) {
+    redirect(
+      withToast("/utilities/readings", {
+        intent: "error",
+        title: "Delete blocked",
+        description: "Billed readings cannot be deleted.",
+      })
+    );
+  }
+
+  const siblingReadings = await prisma.meterReading.findMany({
+    where: {
+      meterId: existingReading.meterId,
+      id: {
+        not: readingId,
+      },
+    },
+    orderBy: [{ readingDate: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      readingDate: true,
+      currentReading: true,
+      ratePerUnit: true,
+      invoiceItem: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  const laterBilledReading = siblingReadings.find(
+    (reading) =>
+      reading.readingDate.getTime() > existingReading.readingDate.getTime() &&
+      Boolean(reading.invoiceItem)
+  );
+
+  if (laterBilledReading) {
+    redirect(
+      withToast("/utilities/readings", {
+        intent: "error",
+        title: "Delete blocked",
+        description:
+          "This reading cannot be deleted because a later billed reading on the same meter depends on it.",
+      })
+    );
+  }
+
+  const previousReading = findPreviousReading(
+    siblingReadings,
+    existingReading.readingDate
+  );
+  const subsequentReadings = siblingReadings.filter(
+    (reading) =>
+      reading.readingDate.getTime() > existingReading.readingDate.getTime()
+  );
+
+  let runningPreviousValue = previousReading
+    ? Number(previousReading.currentReading.toString())
+    : Number(existingReading.meter.openingReading.toString());
+
+  const subsequentUpdates = [];
+
+  for (const reading of subsequentReadings) {
+    const nextCurrentValue = Number(reading.currentReading.toString());
+
+    if (nextCurrentValue < runningPreviousValue) {
+      redirect(
+        withToast("/utilities/readings", {
+          intent: "error",
+          title: "Delete blocked",
+          description:
+            "Deleting this reading would break a later reading's chronology.",
+        })
+      );
+    }
+
+    const nextConsumption = nextCurrentValue - runningPreviousValue;
+    const nextRatePerUnit = Number(reading.ratePerUnit.toString());
+
+    subsequentUpdates.push(
+      prisma.meterReading.update({
+        where: { id: reading.id },
+        data: {
+          previousReading: toFixedDecimal(runningPreviousValue),
+          consumption: toFixedDecimal(nextConsumption),
+          totalAmount: toFixedDecimal(nextConsumption * nextRatePerUnit),
+        },
+      })
+    );
+
+    runningPreviousValue = nextCurrentValue;
+  }
+
+  try {
+    await prisma.$transaction([
+      prisma.meterReading.delete({
+        where: { id: readingId },
+      }),
+      ...subsequentUpdates,
+    ]);
+  } catch {
+    redirect(
+      withToast("/utilities/readings", {
+        intent: "error",
+        title: "Delete failed",
+        description: "Reading could not be deleted.",
+      })
+    );
+  }
+
+  revalidateUtilityViews();
+  revalidatePath(`/utilities/readings/${readingId}/edit`);
+  redirect(
+    withToast("/utilities/readings", {
+      intent: "success",
+      title: "Reading deleted",
+      description: `Deleted reading on ${existingReading.meter.meterCode}.`,
+    })
+  );
 }

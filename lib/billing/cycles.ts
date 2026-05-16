@@ -11,7 +11,7 @@ export type BillingCycle = {
 
 export type UtilityBillingWindow = {
   serviceCycle: BillingCycle;
-  captureStartExclusive: Date;
+  captureStartInclusive: Date;
   captureEndInclusive: Date;
 };
 
@@ -91,8 +91,8 @@ export function getUtilityBillingWindowForCycle(params: {
 
   return {
     serviceCycle,
-    captureStartExclusive: serviceCycle.end,
-    captureEndInclusive: params.issueDate,
+    captureStartInclusive: serviceCycle.start,
+    captureEndInclusive: serviceCycle.end,
   };
 }
 
@@ -101,7 +101,7 @@ export function isReadingInUtilityBillingWindow(
   window: UtilityBillingWindow
 ) {
   return (
-    readingDate.getTime() > window.captureStartExclusive.getTime() &&
+    readingDate.getTime() >= window.captureStartInclusive.getTime() &&
     readingDate.getTime() <= window.captureEndInclusive.getTime()
   );
 }

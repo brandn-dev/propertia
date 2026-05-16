@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, Gauge, PencilLine, Rows4 } from "lucide-react";
-import { updateMeterReadingAction } from "@/app/(dashboard)/utilities/actions";
+import {
+  deleteMeterReadingAction,
+  updateMeterReadingAction,
+} from "@/app/(dashboard)/utilities/actions";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
+import { DeleteReadingButton } from "@/components/utilities/delete-reading-button";
 import { MeterReadingForm } from "@/components/utilities/meter-reading-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +34,7 @@ export default async function EditMeterReadingPage({
   }
 
   const action = updateMeterReadingAction.bind(null, reading.id);
+  const deleteAction = deleteMeterReadingAction.bind(null, reading.id);
 
   if (!reading.canEdit) {
     return (
@@ -89,7 +94,18 @@ export default async function EditMeterReadingPage({
         description="Correct a utility reading before it is billed. The system recalculates previous reading, usage, charge, and any later unbilled readings on the same meter."
         icon={PencilLine}
         badges={["Unbilled only", "Chronology-safe", "Meter-reader enabled"]}
-        action={<PencilLine className="size-5 text-primary" />}
+        action={
+          <div className="flex items-center gap-2">
+            <DeleteReadingButton
+              action={deleteAction}
+              confirmMessage={`Delete ${reading.meter.meterCode} reading from ${formatDate(reading.readingDate)}? Later unbilled readings on this meter will be recalculated.`}
+              className="rounded-full"
+              label="Delete reading"
+              title="Delete reading"
+            />
+            <PencilLine className="size-5 text-primary" />
+          </div>
+        }
       />
 
       <section className="grid gap-4 md:grid-cols-3">

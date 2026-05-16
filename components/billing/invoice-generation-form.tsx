@@ -16,6 +16,7 @@ import {
 } from "@/lib/billing/cycles";
 import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
 import { UTILITY_TYPE_LABELS } from "@/lib/form-options";
+import { formatLongDate } from "@/lib/format";
 import { getUtilityUnitLabel } from "@/lib/utility-units";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -125,14 +126,6 @@ function formatTenantName(
   );
 }
 
-function formatFullDate(value: Date | string) {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
-}
-
 function formatMoney(value: number) {
   return `₱${new Intl.NumberFormat("en-PH", {
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
@@ -216,10 +209,10 @@ export function InvoiceGenerationForm({
                   selectionKey: `${cycleSelectionKey}::${reading.id}`,
                   meterCode: reading.meter.meterCode,
                   utilityTypeLabel: UTILITY_TYPE_LABELS[reading.meter.utilityType],
-                  readingDateLabel: formatFullDate(reading.readingDate),
-                  serviceCoverageLabel: `${formatFullDate(
+                  readingDateLabel: formatLongDate(reading.readingDate),
+                  serviceCoverageLabel: `${formatLongDate(
                     utilityBillingWindow.serviceCycle.start
-                  )} to ${formatFullDate(utilityBillingWindow.serviceCycle.end)}`,
+                  )} to ${formatLongDate(utilityBillingWindow.serviceCycle.end)}`,
                   consumptionLabel: `${Number(reading.consumption)} ${getUtilityUnitLabel(reading.meter.utilityType)}`,
                   rateLabel: `${formatMoney(Number(reading.ratePerUnit))} / ${getUtilityUnitLabel(reading.meter.utilityType)}`,
                   amountLabel: formatMoney(Number(reading.totalAmount)),

@@ -73,6 +73,25 @@ export function formatDate(value: Date | string | null) {
   }).format(date);
 }
 
+export function formatLongDate(value: Date | string | null) {
+  if (!value) {
+    return "Not set";
+  }
+
+  const date = normalizeDate(value);
+
+  if (!date) {
+    return "Not set";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIME_ZONE,
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
 export function toDateInputValue(value: Date | string | null | undefined) {
   if (!value) {
     return "";
