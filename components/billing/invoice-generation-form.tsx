@@ -21,6 +21,7 @@ import { getUtilityUnitLabel } from "@/lib/utility-units";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 
 const selectClassName =
@@ -139,6 +140,7 @@ export function InvoiceGenerationForm({
   initialValues,
 }: InvoiceGenerationFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
+  useActionRedirect(state.redirectTo);
   useActionToast({
     message: state.message,
     title: "Invoice generation blocked",

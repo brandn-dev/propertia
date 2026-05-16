@@ -8,6 +8,7 @@ import { UTILITY_TYPES, UTILITY_TYPE_LABELS } from "@/lib/form-options";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 const selectClassName =
   "select-blank";
@@ -72,6 +73,7 @@ export function UtilityMeterForm({
   },
 }: UtilityMeterFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
+  useActionRedirect(state.redirectTo);
   const [selectedPropertyId, setSelectedPropertyId] = useState(initialValues.propertyId);
   const [isShared, setIsShared] = useState(initialValues.isShared);
   const [selectedTenantId, setSelectedTenantId] = useState(initialValues.tenantId);

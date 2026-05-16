@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 import { formatCurrency } from "@/lib/format";
 
@@ -27,6 +28,7 @@ type PaymentFormProps = {
     referenceNumber: string;
     notes: string;
   };
+  backHref?: string | null;
   items: {
     id: string;
     itemType:
@@ -66,9 +68,11 @@ export function PaymentForm({
   invoiceBalance,
   dueDateLabel,
   initialValues,
+  backHref = "../",
   items,
 }: PaymentFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
+  useActionRedirect(state.redirectTo);
   useActionToast({
     message: state.message,
     title: "Payment not recorded",
@@ -303,15 +307,17 @@ export function PaymentForm({
                 {pending ? <LoaderCircle className="animate-spin" /> : <Save />}
                 Record payment
               </Button>
-              <Button
-                render={<Link href="../" />}
-                variant="outline"
-                size="lg"
-                className="button-blank h-11 rounded-xl"
-              >
-                <ArrowLeft />
-                Back to invoice
-              </Button>
+              {backHref ? (
+                <Button
+                  render={<Link href={backHref} />}
+                  variant="outline"
+                  size="lg"
+                  className="button-blank h-11 rounded-xl"
+                >
+                  <ArrowLeft />
+                  Back to invoice
+                </Button>
+              ) : null}
             </div>
           </div>
         </aside>

@@ -81,7 +81,9 @@ export async function loginAction(
   }
 
   revalidatePath("/");
-  redirect("/dashboard");
+  return {
+    redirectTo: "/dashboard",
+  };
 }
 
 export async function logoutAction() {

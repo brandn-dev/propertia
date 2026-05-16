@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { requireRole } from "@/lib/auth/user";
 import {
@@ -46,6 +45,7 @@ export type HistoricalBacklogFormState = {
   errors?: Record<string, string[] | undefined>;
   rowKey?: string;
   refreshRequired?: boolean;
+  redirectTo?: string;
 };
 
 export type HistoricalBacklogBulkFormState = {
@@ -1619,13 +1619,13 @@ export async function createHistoricalBacklogAction(
   }
 
   revalidateBillingViews();
-  redirect(
-    withToast(`/billing/${result.invoiceId}`, {
+  return {
+    redirectTo: withToast(`/billing/${result.invoiceId}`, {
       intent: "success",
       title: "Backlog month saved",
       description: `Saved historical invoice for ${result.cycleLabel}.`,
-    })
-  );
+    }),
+  };
 }
 
 export async function createHistoricalBacklogBulkAction(

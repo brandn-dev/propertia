@@ -11,6 +11,7 @@ import { getDescendantPropertyIds } from "@/lib/property-tree";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 const initialState: CosaTemplateFormState = {};
 
@@ -150,6 +151,7 @@ export function CosaTemplateForm({
   },
 }: CosaTemplateFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
+  useActionRedirect(state.redirectTo);
   const [propertyId, setPropertyId] = useState(initialValues.propertyId);
   const [meterId, setMeterId] = useState(initialValues.meterId);
   const [defaultAmount, setDefaultAmount] = useState(

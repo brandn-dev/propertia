@@ -14,11 +14,13 @@ import {
 export type UtilityMeterFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 export type MeterReadingFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 function revalidateUtilityViews() {
@@ -243,7 +245,9 @@ export async function createUtilityMeterAction(
   }
 
   revalidateUtilityViews();
-  redirect("/utilities/meters");
+  return {
+    redirectTo: "/utilities/meters",
+  };
 }
 
 export async function updateUtilityMeterAction(
@@ -336,7 +340,9 @@ export async function updateUtilityMeterAction(
   }
 
   revalidateUtilityViews();
-  redirect("/utilities/meters");
+  return {
+    redirectTo: "/utilities/meters",
+  };
 }
 
 export async function replaceUtilityMeterAction(
@@ -440,7 +446,9 @@ export async function replaceUtilityMeterAction(
   }
 
   revalidateUtilityViews();
-  redirect("/utilities/meters");
+  return {
+    redirectTo: "/utilities/meters",
+  };
 }
 
 export async function createMeterReadingAction(
@@ -566,7 +574,9 @@ export async function createMeterReadingAction(
   }
 
   revalidateUtilityViews();
-  redirect("/utilities/readings");
+  return {
+    redirectTo: "/utilities/readings",
+  };
 }
 
 export async function updateMeterReadingAction(
@@ -796,7 +806,9 @@ export async function updateMeterReadingAction(
   }
 
   revalidateUtilityViews();
-  redirect("/utilities/readings");
+  return {
+    redirectTo: "/utilities/readings",
+  };
 }
 
 export async function deleteMeterReadingAction(readingId: string) {

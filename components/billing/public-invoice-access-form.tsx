@@ -6,6 +6,7 @@ import type { PublicInvoiceAccessFormState } from "@/lib/validations/public-invo
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 type PublicInvoiceAccessFormProps = {
   invoiceNumber: string;
@@ -20,6 +21,7 @@ export function PublicInvoiceAccessForm({
   action,
 }: PublicInvoiceAccessFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
+  useActionRedirect(state.redirectTo);
 
   return (
     <form action={formAction} className="space-y-5">

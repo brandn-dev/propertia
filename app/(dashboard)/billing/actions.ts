@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
 import {
   getInvoiceTemplateLogoFileError,
@@ -44,31 +43,37 @@ import { formatDate, toDateInputValue } from "@/lib/format";
 export type InvoiceGenerationFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 export type RecurringChargeFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 export type CosaFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 export type CosaTemplateFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 export type InvoiceBrandingTemplateFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 export type RecordPaymentFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 const READING_SELECTION_SEPARATOR = "::";
@@ -1109,13 +1114,13 @@ export async function generateInvoicesAction(
   }
 
   revalidateBillingViews();
-  redirect(
-    withToast("/billing", {
+  return {
+    redirectTo: withToast("/billing", {
       intent: "success",
       title: "Invoices generated",
       description: `Generated ${operations.length} invoice cycle(s).`,
-    })
-  );
+    }),
+  };
 }
 
 export async function createCosaAction(
@@ -1259,7 +1264,9 @@ export async function createCosaAction(
   }
 
   revalidateBillingViews();
-  redirect("/billing/cosa");
+  return {
+    redirectTo: "/billing/cosa",
+  };
 }
 
 export async function updateCosaAction(
@@ -1439,7 +1446,9 @@ export async function updateCosaAction(
   }
 
   revalidateBillingViews();
-  redirect("/billing/cosa");
+  return {
+    redirectTo: "/billing/cosa",
+  };
 }
 
 export async function createCosaTemplateAction(
@@ -1532,7 +1541,9 @@ export async function createCosaTemplateAction(
   }
 
   revalidateBillingViews();
-  redirect("/billing/cosa/templates");
+  return {
+    redirectTo: "/billing/cosa/templates",
+  };
 }
 
 export async function updateCosaTemplateAction(
@@ -1649,7 +1660,9 @@ export async function updateCosaTemplateAction(
   }
 
   revalidateBillingViews();
-  redirect("/billing/cosa/templates");
+  return {
+    redirectTo: "/billing/cosa/templates",
+  };
 }
 
 export async function createInvoiceBrandingTemplateAction(
@@ -1758,7 +1771,9 @@ export async function createInvoiceBrandingTemplateAction(
   }
 
   revalidateBillingViews();
-  redirect("/billing/invoice-templates");
+  return {
+    redirectTo: "/billing/invoice-templates",
+  };
 }
 
 export async function updateInvoiceBrandingTemplateAction(
@@ -1912,7 +1927,9 @@ export async function updateInvoiceBrandingTemplateAction(
   }
 
   revalidateBillingViews();
-  redirect("/billing/invoice-templates");
+  return {
+    redirectTo: "/billing/invoice-templates",
+  };
 }
 
 export async function createRecurringChargeAction(
@@ -1964,7 +1981,9 @@ export async function createRecurringChargeAction(
   }
 
   revalidateBillingViews();
-  redirect("/billing/charges");
+  return {
+    redirectTo: "/billing/charges",
+  };
 }
 
 export async function updateRecurringChargeAction(
@@ -2033,7 +2052,9 @@ export async function updateRecurringChargeAction(
   }
 
   revalidateBillingViews();
-  redirect("/billing/charges");
+  return {
+    redirectTo: "/billing/charges",
+  };
 }
 
 export async function recordPaymentAction(
@@ -2194,11 +2215,11 @@ export async function recordPaymentAction(
   }
 
   revalidateBillingViews();
-  redirect(
-    withToast(`/billing/${invoice.id}`, {
+  return {
+    redirectTo: withToast(`/billing/${invoice.id}`, {
       intent: "success",
       title: "Payment recorded",
       description: `Recorded payment for ${invoice.invoiceNumber}.`,
-    })
-  );
+    }),
+  };
 }

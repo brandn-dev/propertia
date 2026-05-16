@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 const selectClassName =
   "select-blank";
@@ -82,6 +83,7 @@ export function RecurringChargeForm({
   },
 }: RecurringChargeFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
+  useActionRedirect(state.redirectTo);
   const canSubmit = contractOptions.length > 0;
 
   return (

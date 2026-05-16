@@ -23,5 +23,6 @@ export type LoginActionState =
         password?: string[];
       };
       message?: string;
+      redirectTo?: string;
     }
   | undefined;

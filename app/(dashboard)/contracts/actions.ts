@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
 import {
   OPEN_ENDED_CONTRACT_END_DATE_INPUT,
@@ -17,16 +16,19 @@ import { rentScheduleSchema } from "@/lib/validations/rent-schedule";
 export type ContractFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 export type RentAdjustmentFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 export type RentScheduleFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 function revalidateContractViews() {
@@ -240,7 +242,9 @@ export async function createContractAction(
   }
 
   revalidateContractViews();
-  redirect("/contracts");
+  return {
+    redirectTo: "/contracts",
+  };
 }
 
 export async function updateContractAction(
@@ -327,7 +331,9 @@ export async function updateContractAction(
   }
 
   revalidateContractViews();
-  redirect("/contracts");
+  return {
+    redirectTo: "/contracts",
+  };
 }
 
 export async function createRentAdjustmentAction(
@@ -398,7 +404,9 @@ export async function createRentAdjustmentAction(
   revalidateContractViews();
   revalidatePath(`/contracts/${contractId}/edit`);
   revalidatePath(`/contracts/${contractId}/adjustments`);
-  redirect(`/contracts/${contractId}/adjustments`);
+  return {
+    redirectTo: `/contracts/${contractId}/adjustments`,
+  };
 }
 
 export async function saveRentScheduleAction(
@@ -537,7 +545,9 @@ export async function saveRentScheduleAction(
   revalidateContractViews();
   revalidatePath(`/contracts/${contractId}/edit`);
   revalidatePath(`/contracts/${contractId}/adjustments`);
-  redirect(`/contracts/${contractId}/adjustments`);
+  return {
+    redirectTo: `/contracts/${contractId}/adjustments`,
+  };
 }
 
 export async function updateRentAdjustmentAction(
@@ -626,5 +636,7 @@ export async function updateRentAdjustmentAction(
   revalidateContractViews();
   revalidatePath(`/contracts/${contractId}/edit`);
   revalidatePath(`/contracts/${contractId}/adjustments`);
-  redirect(`/contracts/${contractId}/adjustments`);
+  return {
+    redirectTo: `/contracts/${contractId}/adjustments`,
+  };
 }

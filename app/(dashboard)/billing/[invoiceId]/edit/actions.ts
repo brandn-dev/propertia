@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
 import {
   formatBillingCycleLabel,
@@ -20,6 +19,7 @@ import { withToast } from "@/lib/toast";
 export type BacklogInvoiceEditFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
 };
 
 type ParsedEditableItem = {
@@ -1300,11 +1300,11 @@ export async function updateBacklogInvoiceAction(
   }
 
   revalidateBillingViews(invoiceId);
-  redirect(
-    withToast(`/billing/${invoiceId}`, {
+  return {
+    redirectTo: withToast(`/billing/${invoiceId}`, {
       intent: "success",
       title: "Backlog invoice updated",
       description: "Saved invoice changes and recalculated automatic lines.",
-    })
-  );
+    }),
+  };
 }

@@ -3,7 +3,6 @@
 import type { Prisma } from "@prisma/client";
 import type { ZodError } from "zod";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
 import { prisma } from "@/lib/prisma";
 import { tenantSchema, type TenantInput } from "@/lib/validations/tenant";
@@ -12,6 +11,7 @@ export type TenantFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
   personErrors?: Array<Record<string, string[] | undefined> | undefined>;
+  redirectTo?: string;
 };
 
 type ParsedPerson = {
@@ -255,7 +255,9 @@ export async function createTenantAction(
   }
 
   revalidateTenantViews();
-  redirect("/tenants");
+  return {
+    redirectTo: "/tenants",
+  };
 }
 
 export async function updateTenantAction(
@@ -317,5 +319,7 @@ export async function updateTenantAction(
   }
 
   revalidateTenantViews();
-  redirect("/tenants");
+  return {
+    redirectTo: "/tenants",
+  };
 }

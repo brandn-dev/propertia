@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ColorPickerField } from "@/components/ui/color-picker-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { buildInvoicePreviewModel } from "@/lib/billing/invoice-presenter";
 import {
   INVOICE_FONT_WEIGHTS,
@@ -107,6 +108,7 @@ export function InvoiceBrandingTemplateForm({
   },
 }: InvoiceBrandingTemplateFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
+  useActionRedirect(state.redirectTo);
   const [brandName, setBrandName] = useState(initialValues.brandName);
   const [brandSubtitle, setBrandSubtitle] = useState(initialValues.brandSubtitle);
   const [invoiceTitlePrefix, setInvoiceTitlePrefix] = useState(

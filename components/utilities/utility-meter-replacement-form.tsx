@@ -9,6 +9,7 @@ import { UTILITY_TYPE_LABELS } from "@/lib/form-options";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 const initialState: UtilityMeterFormState = {};
 
@@ -62,6 +63,7 @@ export function UtilityMeterReplacementForm({
   meter,
 }: UtilityMeterReplacementFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
+  useActionRedirect(state.redirectTo);
   const latestReading = meter.readings[0] ?? null;
   const defaultOpenedAt = latestReading
     ? toDateInputValue(latestReading.readingDate)

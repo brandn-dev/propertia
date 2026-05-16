@@ -3,11 +3,12 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   FilePenLine,
-  Plus,
   ReceiptText,
   Trash2,
 } from "lucide-react";
+import { recordPaymentAction } from "@/app/(dashboard)/billing/actions";
 import { deleteBacklogInvoiceAction } from "@/app/(dashboard)/billing/[invoiceId]/actions";
+import { RecordPaymentSheet } from "@/components/billing/record-payment-sheet";
 import { requireRole } from "@/lib/auth/user";
 import { InvoiceDocument } from "@/components/billing/invoice-document";
 import { InvoicePdfLauncher } from "@/components/billing/invoice-pdf-launcher";
@@ -16,7 +17,7 @@ import { buildInvoicePresentationModel, formatTenantName } from "@/lib/billing/i
 import { ensureInvoicePublicAccessCode } from "@/lib/billing/public-access";
 import { getInvoiceForView } from "@/lib/data/billing";
 import { INVOICE_ORIGIN_LABELS } from "@/lib/form-options";
-import { formatDate, toNumber } from "@/lib/format";
+import { formatDate, toDateInputValue, toNumber } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 
@@ -47,6 +48,7 @@ export default async function InvoiceDetailPage({
   const canDeleteInvoice = invoice.payments.length === 0;
   const canEditBacklogInvoice = invoice.origin === "BACKLOG" && canDeleteInvoice;
   const deleteBacklogInvoice = deleteBacklogInvoiceAction.bind(null, invoice.id);
+  const paymentAction = recordPaymentAction.bind(null, invoice.id);
   const presentationModel = buildInvoicePresentationModel(invoice);
   const qrDataUrl = await generateInvoiceQrDataUrl({
     invoiceId: invoice.id,
@@ -103,13 +105,41 @@ export default async function InvoiceDetailPage({
                 </form>
               ) : null}
               {canRecordPayment ? (
-                <Button
-                  render={<Link href={`/billing/${invoice.id}/payment`} />}
-                  className="rounded-full"
-                >
-                  <Plus />
-                  Record payment
-                </Button>
+                <RecordPaymentSheet
+                  formAction={paymentAction}
+                  cycleLabel={cycleLabel}
+                  tenantLabel={formatTenantName(invoice.tenant)}
+                  propertyLabel={invoice.contract.property.name}
+                  invoiceNumber={invoice.invoiceNumber}
+                  invoiceBalance={toNumber(invoice.balanceDue)}
+                  dueDateLabel={formatDate(invoice.dueDate)}
+                  initialValues={{
+                    paymentDate: toDateInputValue(new Date()),
+                    referenceNumber: "",
+                    notes: "",
+                  }}
+                  items={invoice.items
+                    .map((item) => {
+                      const allocatedAmount = item.allocations.reduce(
+                        (sum, allocation) => sum + toNumber(allocation.amountAllocated),
+                        0
+                      );
+                      const remainingAmount = Math.max(
+                        0,
+                        toNumber(item.amount) - allocatedAmount
+                      );
+
+                      return {
+                        id: item.id,
+                        itemType: item.itemType,
+                        description: item.description,
+                        amount: toNumber(item.amount),
+                        allocatedAmount,
+                        remainingAmount,
+                      };
+                    })
+                    .filter((item) => item.remainingAmount > 0)}
+                />
               ) : null}
               <InvoicePdfLauncher
                 action={`/billing/${invoice.id}/pdf/file`}
