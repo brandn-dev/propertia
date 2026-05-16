@@ -204,12 +204,12 @@ export function addDays(value: string, days: number) {
   return toDateInputValue(date);
 }
 
-export function getDefaultIssueDate(cycleEnd: string) {
-  return toDateInputValue(new Date(cycleEnd));
+export function getDefaultIssueDate(cycleStart: string) {
+  return toDateInputValue(new Date(cycleStart));
 }
 
-export function getDefaultDueDate(cycleEnd: string) {
-  return addDays(toDateInputValue(new Date(cycleEnd)), 7);
+export function getDefaultDueDate(issueDate: string) {
+  return addDays(issueDate, 7);
 }
 
 export function formatMonthLabel(value: Date) {
@@ -231,6 +231,13 @@ export function getUtilityServiceWindow(cycleStartValue: string) {
     label: formatMonthLabel(serviceStart),
     rangeLabel: `${toDateInputValue(serviceStart)} to ${toDateInputValue(serviceEnd)}`,
   };
+}
+
+export function getDefaultUtilityReadingDate(cycleStartValue: string) {
+  const cycleStart = new Date(cycleStartValue);
+  cycleStart.setDate(cycleStart.getDate() - 1);
+  cycleStart.setHours(12, 0, 0, 0);
+  return toDateInputValue(cycleStart);
 }
 
 export function getResolvedRentAmount(
@@ -408,6 +415,8 @@ export function createHistoricalBacklogMonthDraft(
   contract: HistoricalBacklogContractOption,
   cycle: HistoricalBacklogCycleOption
 ): HistoricalBacklogMonthDraft {
+  const issueDate = getDefaultIssueDate(cycle.start);
+
   return {
     rowKey: buildBacklogMonthRowKey(contract.id, cycle.key),
     tenantId: contract.tenantId,
@@ -417,8 +426,8 @@ export function createHistoricalBacklogMonthDraft(
     billingMonthLabel: cycle.label,
     billingPeriodStart: toDateInputValue(new Date(cycle.start)),
     billingPeriodEnd: toDateInputValue(new Date(cycle.end)),
-    issueDate: getDefaultIssueDate(cycle.end),
-    dueDate: getDefaultDueDate(cycle.end),
+    issueDate,
+    dueDate: getDefaultDueDate(issueDate),
     rentAmount: getResolvedRentAmount(contract, cycle),
     recurringCharges: getApplicableRecurringChargeRows(contract, cycle),
     utilityReadings: [],
@@ -459,7 +468,7 @@ export function createUtilityReadingDraft(
   return {
     id: buildLocalId(),
     meterId: contract?.meters[0]?.id ?? "",
-    readingDate: cycle ? toDateInputValue(new Date(cycle.end)) : "",
+    readingDate: cycle ? getDefaultUtilityReadingDate(cycle.start) : "",
     previousReading: "",
     currentReading: "",
     ratePerUnit: "",
@@ -757,12 +766,20 @@ export function getContractDraftValidationMap(
       }
 
       const readingDate = new Date(row.readingDate);
-      const cycleStart = new Date(draft.billingPeriodStart);
-      const cycleEnd = new Date(draft.billingPeriodEnd);
+      const issueDate = new Date(draft.issueDate);
+      const utilityServiceWindow = getUtilityServiceWindow(draft.billingPeriodStart);
+      const [serviceStartValue, serviceEndValue] =
+        utilityServiceWindow.rangeLabel.split(" to ");
+      const serviceStart = new Date(serviceStartValue);
+      const serviceEnd = new Date(serviceEndValue);
 
-      if (readingDate < cycleStart || readingDate > cycleEnd) {
+      if (
+        readingDate < serviceStart ||
+        readingDate > serviceEnd ||
+        readingDate >= issueDate
+      ) {
         issues.push(
-          `Reading date for ${meter.meterCode} must stay inside backlog month.`
+          `Reading date for ${meter.meterCode} must stay inside utility service month before issue date.`
         );
       }
 

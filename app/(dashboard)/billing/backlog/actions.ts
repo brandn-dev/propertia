@@ -16,6 +16,9 @@ import {
   getBillingCycleIndex,
   getBillingCycleKey,
   getBillingMonthKey,
+  getUtilityBillingWindowForCycle,
+  isReadingInUtilityBillingWindow,
+  type UtilityBillingWindow,
   cycleOverlapsRange,
 } from "@/lib/billing/cycles";
 import { buildInvoiceNumber } from "@/lib/billing/invoice-number";
@@ -679,8 +682,8 @@ function composeBacklogInvoiceNotes(params: {
 
 function validateHistoricalReadingRows(params: {
   rows: ParsedHistoricalBacklogPayload["utilityReadings"];
-  cycleStart: Date;
-  cycleEnd: Date;
+  issueDateStart: Date;
+  utilityBillingWindow: UtilityBillingWindow | null;
   contractTenantId: string;
   allowedMeters: Array<{
     id: string;
@@ -704,8 +707,8 @@ function validateHistoricalReadingRows(params: {
 }) {
   const {
     rows,
-    cycleStart,
-    cycleEnd,
+    issueDateStart,
+    utilityBillingWindow,
     contractTenantId,
     allowedMeters,
     existingReadings,
@@ -783,11 +786,15 @@ function validateHistoricalReadingRows(params: {
 
       payloadReadingKeys.add(payloadKey);
 
-      if (readingDate < cycleStart || readingDate > cycleEnd) {
+      if (
+        !utilityBillingWindow ||
+        !isReadingInUtilityBillingWindow(readingDate, utilityBillingWindow) ||
+        readingDate.getTime() >= issueDateStart.getTime()
+      ) {
         return {
           errors: {
             utilityReadings: [
-              `Reading dates for ${meter.meterCode} must stay inside selected backlog month.`,
+              `Reading dates for ${meter.meterCode} must stay inside utility service month before issue date.`,
             ],
           },
         };
@@ -1294,6 +1301,7 @@ async function saveHistoricalBacklogMonth(params: {
   const { userId, input, contract, rowKey, bulk } = params;
   const cycleStart = startOfDay(new Date(input.billingPeriodStart));
   const cycleEnd = endOfDay(new Date(input.billingPeriodEnd));
+  const issueDateStart = startOfDay(new Date(input.issueDate));
   const issueDate = endOfDay(new Date(input.issueDate));
   const dueDate = endOfDay(new Date(input.dueDate));
   const cutoffDate = getHistoricalBacklogCutoffDate();
@@ -1431,6 +1439,11 @@ async function saveHistoricalBacklogMonth(params: {
         },
       })
     : [];
+  const utilityBillingWindow = getUtilityBillingWindowForCycle({
+    anchorDate: contract.paymentStartDate,
+    cycleStart,
+    issueDate,
+  });
 
   if (
     allowedMeters.some(
@@ -1456,8 +1469,8 @@ async function saveHistoricalBacklogMonth(params: {
 
   const readingValidation = validateHistoricalReadingRows({
     rows: input.utilityReadings,
-    cycleStart,
-    cycleEnd,
+    issueDateStart,
+    utilityBillingWindow,
     contractTenantId: contract.tenantId,
     allowedMeters,
     existingReadings,

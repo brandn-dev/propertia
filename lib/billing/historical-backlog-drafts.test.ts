@@ -61,7 +61,7 @@ function createContractFixture(
         readings: [
           {
             id: "persisted-1",
-            readingDate: "2024-03-31T00:00:00.000Z",
+            readingDate: "2024-03-30T00:00:00.000Z",
             currentReading: "25",
             ratePerUnit: "12.50",
           },
@@ -176,4 +176,15 @@ test("bulk row schema accepts nested month draft payload", () => {
   });
 
   assert.equal(parsed.success, true);
+});
+
+test("backlog draft defaults issue date to cycle start and reading date to prior service end", () => {
+  const contract = createContractFixture();
+  const may = contract.pendingBacklogCycles[1]!;
+  const draft = createHistoricalBacklogMonthDraft(contract, may);
+  const reading = createUtilityReadingDraft(contract, may);
+
+  assert.equal(draft.issueDate, "2024-05-01");
+  assert.equal(draft.dueDate, "2024-05-08");
+  assert.equal(reading.readingDate, "2024-04-30");
 });
