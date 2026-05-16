@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, CircleDollarSign, LoaderCircle, Save } from "lucide-react";
 import type { HistoricalBacklogFormState } from "@/app/(dashboard)/billing/backlog/actions";
 import { HistoricalBacklogMonthEditor } from "@/components/billing/historical-backlog-month-editor";
@@ -71,6 +72,7 @@ export function HistoricalBacklogForm({
   const [state, action, pending] = useActionState(formAction, initialState);
   const [submitLocked, setSubmitLocked] = useState(false);
   const [drafts, setDrafts] = useState<HistoricalBacklogDraftMap>({});
+  const router = useRouter();
   useActionToast({
     message: state.message,
     title: "Backlog month blocked",
@@ -85,6 +87,17 @@ export function HistoricalBacklogForm({
       return () => window.clearTimeout(timer);
     }
   }, [pending, state]);
+  useEffect(() => {
+    if (!state.refreshRequired) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      router.refresh();
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [router, state.refreshRequired]);
 
   const tenantOptions = useMemo(
     () => getTenantOptions(contractOptions),

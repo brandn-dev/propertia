@@ -42,6 +42,7 @@ export type HistoricalBacklogFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
   rowKey?: string;
+  refreshRequired?: boolean;
 };
 
 export type HistoricalBacklogBulkFormState = {
@@ -52,6 +53,7 @@ export type HistoricalBacklogBulkFormState = {
     rowKey: string;
     invoiceId: string;
   }>;
+  refreshRequired?: boolean;
 };
 
 type ParsedHistoricalBacklogPayload = ReturnType<typeof getHistoricalBacklogPayload>;
@@ -1301,6 +1303,7 @@ async function saveHistoricalBacklogMonth(params: {
       ok: false as const,
       state: {
         rowKey,
+        refreshRequired: true,
         errors: {
           billingPeriodStart: [
             "Historical backlog months must stay on or before final transition month.",
@@ -1318,6 +1321,7 @@ async function saveHistoricalBacklogMonth(params: {
       ok: false as const,
       state: {
         rowKey,
+        refreshRequired: true,
         errors: {
           billingPeriodStart: [
             "Selected month is no longer available for manual historical encoding.",
@@ -1341,6 +1345,7 @@ async function saveHistoricalBacklogMonth(params: {
       ok: false as const,
       state: {
         rowKey,
+        refreshRequired: true,
         errors: {
           recurringChargeIds: [
             "One or more recurring charge selections are no longer valid for this month.",
@@ -1582,6 +1587,7 @@ export async function createHistoricalBacklogAction(
   if (!contract) {
     return {
       rowKey: payload.rowKey,
+      refreshRequired: true,
       errors: {
         contractId: ["Select valid contract."],
       },
@@ -1645,6 +1651,7 @@ export async function createHistoricalBacklogBulkAction(
   const rowErrors: Record<string, string[]> = {};
   const savedRowKeys: string[] = [];
   const savedRows: HistoricalBacklogBulkFormState["savedRows"] = [];
+  let refreshRequired = false;
 
   for (const rawRow of payload.rows) {
     const parsedRow = backlogBulkRowSchema.safeParse(rawRow);
@@ -1667,6 +1674,7 @@ export async function createHistoricalBacklogBulkAction(
       rowErrors[row.rowKey] = [
         "Contract is no longer valid for historical backlog entry.",
       ];
+      refreshRequired = true;
       continue;
     }
 
@@ -1680,6 +1688,7 @@ export async function createHistoricalBacklogBulkAction(
     });
 
     if (!result.ok) {
+      refreshRequired ||= Boolean(result.state.refreshRequired);
       const flattenedErrors = flattenHistoricalBacklogErrors(result.state.errors);
       rowErrors[row.rowKey] =
         flattenedErrors.length > 0
@@ -1705,6 +1714,7 @@ export async function createHistoricalBacklogBulkAction(
     savedRowKeys,
     savedRows,
     rowErrors,
+    refreshRequired,
     message:
       savedRowKeys.length > 0
         ? failedCount > 0

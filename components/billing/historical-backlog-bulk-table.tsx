@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   Check,
@@ -68,6 +69,7 @@ export function HistoricalBacklogBulkTable({
   const [pending, startTransition] = useTransition();
   const [submitLocked, setSubmitLocked] = useState(false);
   const [drafts, setDrafts] = useState<HistoricalBacklogDraftMap>({});
+  const router = useRouter();
   const tenantOptions = useMemo(
     () => getTenantOptions(contractOptions),
     [contractOptions]
@@ -126,6 +128,17 @@ export function HistoricalBacklogBulkTable({
       return () => window.clearTimeout(timer);
     }
   }, [pending, state]);
+  useEffect(() => {
+    if (!state.refreshRequired) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      router.refresh();
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [router, state.refreshRequired]);
   const selectedMonthKeySet = useMemo(
     () => buildSelectedKeySet(selectedMonthKeys),
     [selectedMonthKeys]
