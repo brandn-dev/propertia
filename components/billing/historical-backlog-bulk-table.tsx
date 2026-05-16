@@ -191,7 +191,13 @@ export function HistoricalBacklogBulkTable({
               cycle,
             });
 
-            return draft ? serializeMonthDraft(draft) : null;
+            return draft && cycle
+              ? {
+                  ...serializeMonthDraft(draft),
+                  billingPeriodStart: cycle.start,
+                  billingPeriodEnd: cycle.end,
+                }
+              : null;
           })
       )
       .filter(Boolean)

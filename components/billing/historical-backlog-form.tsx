@@ -194,13 +194,13 @@ export function HistoricalBacklogForm({
       <input
         type="hidden"
         name="billingPeriodStart"
-        value={serializedDraft?.billingPeriodStart ?? ""}
+        value={currentCycle?.start ?? ""}
         readOnly
       />
       <input
         type="hidden"
         name="billingPeriodEnd"
-        value={serializedDraft?.billingPeriodEnd ?? ""}
+        value={currentCycle?.end ?? ""}
         readOnly
       />
       <input
