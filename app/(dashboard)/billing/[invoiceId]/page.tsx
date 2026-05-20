@@ -38,11 +38,6 @@ export default async function InvoiceDetailPage({
     notFound();
   }
 
-  const publicAccessCode = await ensureInvoicePublicAccessCode(
-    invoice.id,
-    invoice.publicAccessCode
-  );
-
   const canRecordPayment =
     invoice.status !== "VOID" && toNumber(invoice.balanceDue) > 0;
   const canDeleteInvoice = invoice.payments.length === 0;
@@ -50,18 +45,42 @@ export default async function InvoiceDetailPage({
   const deleteBacklogInvoice = deleteBacklogInvoiceAction.bind(null, invoice.id);
   const paymentAction = recordPaymentAction.bind(null, invoice.id);
   const presentationModel = buildInvoicePresentationModel(invoice);
-  const qrDataUrl = await generateInvoiceQrDataUrl({
-    invoiceId: invoice.id,
-    invoiceNumber: invoice.invoiceNumber,
-    tenantName: formatTenantName(invoice.tenant),
-    propertyName: invoice.contract.property.name,
-    billingPeriodStart: invoice.billingPeriodStart,
-    billingPeriodEnd: invoice.billingPeriodEnd,
-    issueDate: invoice.issueDate,
-    dueDate: invoice.dueDate,
-    totalAmount: toNumber(invoice.totalAmount),
-    balanceDue: toNumber(invoice.balanceDue),
-  });
+  let accessBlock:
+    | {
+        qrDataUrl: string;
+        publicAccessCode: string;
+      }
+    | undefined;
+
+  try {
+    const publicAccessCode = await ensureInvoicePublicAccessCode(
+      invoice.id,
+      invoice.publicAccessCode
+    );
+    const qrDataUrl = await generateInvoiceQrDataUrl({
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      tenantName: formatTenantName(invoice.tenant),
+      propertyName: invoice.contract.property.name,
+      billingPeriodStart: invoice.billingPeriodStart,
+      billingPeriodEnd: invoice.billingPeriodEnd,
+      issueDate: invoice.issueDate,
+      dueDate: invoice.dueDate,
+      totalAmount: toNumber(invoice.totalAmount),
+      balanceDue: toNumber(invoice.balanceDue),
+    });
+
+    accessBlock = {
+      qrDataUrl,
+      publicAccessCode,
+    };
+  } catch (error) {
+    console.error("Failed to prepare invoice access block", {
+      invoiceId: invoice.id,
+      error,
+    });
+  }
+
   const cycleLabel = presentationModel.title.replace("Invoice for ", "");
 
   return (
@@ -163,10 +182,7 @@ export default async function InvoiceDetailPage({
       <InvoiceDocument
         model={presentationModel}
         renderMode="internal"
-        accessBlock={{
-          qrDataUrl,
-          publicAccessCode,
-        }}
+        accessBlock={accessBlock}
       />
     </div>
   );
