@@ -1,5 +1,6 @@
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { renderInvoiceBestPdfBuffer, buildInvoicePdfFilename } from "@/lib/billing/invoice-pdf";
+import { buildInvoicePdfDebugHeaders } from "@/lib/billing/invoice-pdf-debug";
 import { parseInvoicePaperSize } from "@/lib/billing/invoice-pdf-options";
 import { generateInvoiceQrDataUrl } from "@/lib/billing/invoice-qr";
 import { buildInvoicePresentationModel } from "@/lib/billing/invoice-presenter";
@@ -16,7 +17,7 @@ export async function GET(
   request: Request,
   { params }: InvoicePdfFileRouteProps
 ) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_BILLING");
   const { invoiceId } = await params;
   const invoice = await getInvoiceForView(invoiceId);
 
@@ -47,9 +48,10 @@ export async function GET(
     totalAmount: Number(invoice.totalAmount.toString()),
     balanceDue: Number(invoice.balanceDue.toString()),
   });
-  const pdfBuffer = await renderInvoiceBestPdfBuffer({
+  const { buffer: pdfBuffer, renderer } = await renderInvoiceBestPdfBuffer({
     requestUrl: request.url,
     invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
     model,
     options: {
       variant: "internal",
@@ -68,6 +70,11 @@ export async function GET(
       "Content-Type": "application/pdf",
       "Content-Disposition": `${shouldDownload ? "attachment" : "inline"}; filename="${filename}"`,
       "Cache-Control": "private, no-store",
+      ...buildInvoicePdfDebugHeaders({
+        invoiceId: invoice.id,
+        issueDate: invoice.issueDate,
+        renderer,
+      }),
     },
   });
 }

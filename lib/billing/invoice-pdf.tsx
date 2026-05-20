@@ -1,5 +1,9 @@
 import { renderToBuffer } from "@react-pdf/renderer";
 import { InvoicePdfDocument } from "@/components/billing/invoice-pdf-document";
+import {
+  getConfiguredInvoicePdfRenderMode,
+  getInvoicePdfRenderMode,
+} from "@/lib/billing/invoice-pdf-config";
 import type { InvoicePresentationModel } from "@/lib/billing/invoice-presenter";
 import type { InvoicePaperSize } from "@/lib/billing/invoice-pdf-options";
 import { createInvoicePdfRenderToken, type InvoicePdfRenderVariant } from "@/lib/billing/invoice-pdf-token";
@@ -8,7 +12,7 @@ import {
   DEFAULT_INVOICE_PAPER_SIZE,
 } from "@/lib/billing/invoice-pdf-options";
 import { renderHtmlInvoicePdfBuffer as renderChromeInvoicePdfBuffer } from "@/lib/billing/invoice-pdf-browser";
-import { renderHtmlInvoicePdfBuffer } from "@/lib/billing/invoice-pdf-weasyprint";
+import { renderHtmlInvoicePdfBufferWithGotenberg } from "@/lib/billing/invoice-pdf-gotenberg";
 
 export function buildInvoicePdfFilename(invoiceNumber: string) {
   const safeInvoiceNumber = invoiceNumber
@@ -52,11 +56,13 @@ export function buildInvoiceHtmlPdfUrl({
 export async function renderInvoiceBestPdfBuffer({
   requestUrl,
   invoiceId,
+  invoiceNumber,
   model,
   options,
 }: {
   requestUrl: string;
   invoiceId: string;
+  invoiceNumber: string;
   model: InvoicePresentationModel;
   options: {
     variant: InvoicePdfRenderVariant;
@@ -66,42 +72,64 @@ export async function renderInvoiceBestPdfBuffer({
       publicAccessCode: string;
     };
   };
-}) {
+}): Promise<{
+  buffer: Buffer;
+  renderer: "gotenberg" | "chromium" | "react-pdf";
+  htmlUrl: string;
+}> {
   const url = buildInvoiceHtmlPdfUrl({
     requestUrl,
     invoiceId,
     variant: options.variant,
     paperSize: options.paperSize,
   });
+  const configuredMode = getConfiguredInvoicePdfRenderMode();
+  const rendererMode = getInvoicePdfRenderMode();
 
-  try {
-    return await renderHtmlInvoicePdfBuffer(url);
-  } catch (error) {
-    console.error("WeasyPrint render failed, falling back to Chrome HTML PDF render.", error, {
-      invoiceId,
-      variant: options.variant,
-      paperSize: options.paperSize,
-      itemCount: model.items.length,
-    });
+  if (rendererMode === "gotenberg") {
+    return {
+      buffer: await renderHtmlInvoicePdfBufferWithGotenberg({
+        url,
+        paperSize: options.paperSize ?? DEFAULT_INVOICE_PAPER_SIZE,
+        invoiceNumber,
+      }),
+      renderer: "gotenberg",
+      htmlUrl: url,
+    };
+  }
+
+  if (rendererMode === "chromium") {
     try {
-      return await renderChromeInvoicePdfBuffer(url);
-    } catch (chromeError) {
-      console.error("Chrome HTML PDF render failed, falling back to React PDF render.", chromeError, {
+      return {
+        buffer: await renderChromeInvoicePdfBuffer(url),
+        renderer: "chromium",
+        htmlUrl: url,
+      };
+    } catch (error) {
+      if (configuredMode || process.env.NODE_ENV === "production") {
+        throw error;
+      }
+
+      console.error("Chrome HTML PDF render failed, falling back to React PDF render.", error, {
         invoiceId,
         variant: options.variant,
         paperSize: options.paperSize,
         itemCount: model.items.length,
       });
-
-      return renderReactInvoicePdfBuffer({
-        requestUrl,
-        model,
-        variant: options.variant,
-        paperSize: options.paperSize,
-        accessBlock: options.accessBlock,
-      });
     }
   }
+
+  return {
+    buffer: await renderReactInvoicePdfBuffer({
+      requestUrl,
+      model,
+      variant: options.variant,
+      paperSize: options.paperSize,
+      accessBlock: options.accessBlock,
+    }),
+    renderer: "react-pdf",
+    htmlUrl: url,
+  };
 }
 
 async function renderReactInvoicePdfBuffer({

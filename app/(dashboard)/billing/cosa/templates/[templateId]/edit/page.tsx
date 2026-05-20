@@ -9,7 +9,7 @@ import { updateCosaTemplateAction } from "@/app/(dashboard)/billing/actions";
 import { CosaTemplateForm } from "@/components/billing/cosa-template-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   getCosaContractOptions,
   getCosaPropertyOptions,
@@ -26,7 +26,7 @@ export default async function EditBillingCosaTemplatePage({
     templateId: string;
   }>;
 }) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_COSA");
   const { templateId } = await params;
   const template = await getCosaTemplateForEdit(templateId);
 

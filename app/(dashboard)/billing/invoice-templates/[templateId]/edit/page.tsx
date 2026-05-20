@@ -4,7 +4,7 @@ import { updateInvoiceBrandingTemplateAction } from "@/app/(dashboard)/billing/a
 import { InvoiceBrandingTemplateForm } from "@/components/billing/invoice-branding-template-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { getPropertyParentOptions } from "@/lib/data/admin";
 import { getInvoiceBrandingTemplateForEdit } from "@/lib/data/billing";
 
@@ -17,7 +17,7 @@ type EditInvoiceBrandingTemplatePageProps = {
 export default async function EditInvoiceBrandingTemplatePage({
   params,
 }: EditInvoiceBrandingTemplatePageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_INVOICE_TEMPLATES");
   const { templateId } = await params;
   const [template, propertyOptions] = await Promise.all([
     getInvoiceBrandingTemplateForEdit(templateId),

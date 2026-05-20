@@ -5,6 +5,7 @@ import {
   PropertyOwnershipType,
   PropertyStatus,
   TenantType,
+  UserCapability,
   UserRole,
   UtilityType,
 } from "@prisma/client";
@@ -26,11 +27,13 @@ async function upsertUser({
   displayName,
   password,
   role,
+  capabilities = [],
 }: {
   username: string;
   displayName: string;
   password: string;
   role: UserRole;
+  capabilities?: UserCapability[];
 }) {
   const normalizedUsername = username.trim().toLowerCase();
   const credentials = await hashPassword(password);
@@ -40,6 +43,7 @@ async function upsertUser({
     update: {
       displayName,
       role,
+      capabilities,
       isActive: true,
       passwordHash: credentials.hash,
       passwordSalt: credentials.salt,
@@ -48,6 +52,7 @@ async function upsertUser({
       username: normalizedUsername,
       displayName,
       role,
+      capabilities,
       isActive: true,
       passwordHash: credentials.hash,
       passwordSalt: credentials.salt,
@@ -322,7 +327,13 @@ async function main() {
     username: process.env.METER_READER_USERNAME ?? "meter.reader",
     displayName: process.env.METER_READER_DISPLAY_NAME ?? "Utility Reader",
     password: requireEnv("METER_READER_PASSWORD"),
-    role: UserRole.METER_READER,
+    role: UserRole.STAFF,
+    capabilities: [
+      UserCapability.VIEW_DASHBOARD,
+      UserCapability.MANAGE_UTILITIES,
+      UserCapability.MANAGE_METERS,
+      UserCapability.RECORD_READINGS,
+    ],
   });
 
   await seedSamplePortfolio();

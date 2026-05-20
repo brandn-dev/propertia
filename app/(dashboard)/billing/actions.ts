@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   getInvoiceTemplateLogoFileError,
   removeInvoiceTemplateLogoFile,
@@ -620,7 +620,7 @@ export async function generateInvoicesAction(
   _previousState: InvoiceGenerationFormState,
   formData: FormData
 ): Promise<InvoiceGenerationFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_BILLING");
 
   const validatedFields = invoiceGenerationSchema.safeParse(
     getInvoiceGenerationPayload(formData)
@@ -1127,7 +1127,7 @@ export async function createCosaAction(
   _previousState: CosaFormState,
   formData: FormData
 ): Promise<CosaFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_COSA");
 
   const payload = getCosaPayload(formData);
   const parseError = getCosaParseError(payload);
@@ -1274,7 +1274,7 @@ export async function updateCosaAction(
   _previousState: CosaFormState,
   formData: FormData
 ): Promise<CosaFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_COSA");
 
   const existingCosa = await prisma.cOSA.findUnique({
     where: { id: cosaId },
@@ -1455,7 +1455,7 @@ export async function createCosaTemplateAction(
   _previousState: CosaTemplateFormState,
   formData: FormData
 ): Promise<CosaTemplateFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_COSA");
 
   const payload = getCosaTemplatePayload(formData);
   const parseError = getCosaTemplateParseError(payload);
@@ -1551,7 +1551,7 @@ export async function updateCosaTemplateAction(
   _previousState: CosaTemplateFormState,
   formData: FormData
 ): Promise<CosaTemplateFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_COSA");
 
   const existingTemplate = await prisma.cosaTemplate.findUnique({
     where: { id: templateId },
@@ -1669,7 +1669,7 @@ export async function createInvoiceBrandingTemplateAction(
   _previousState: InvoiceBrandingTemplateFormState,
   formData: FormData
 ): Promise<InvoiceBrandingTemplateFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_INVOICE_TEMPLATES");
 
   const payload = getInvoiceBrandingTemplatePayload(formData);
   const validatedFields = invoiceBrandingTemplateSchema.safeParse(payload);
@@ -1781,7 +1781,7 @@ export async function updateInvoiceBrandingTemplateAction(
   _previousState: InvoiceBrandingTemplateFormState,
   formData: FormData
 ): Promise<InvoiceBrandingTemplateFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_INVOICE_TEMPLATES");
 
   const existingTemplate = await prisma.invoiceBrandingTemplate.findUnique({
     where: { id: templateId },
@@ -1936,7 +1936,7 @@ export async function createRecurringChargeAction(
   _previousState: RecurringChargeFormState,
   formData: FormData
 ): Promise<RecurringChargeFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CHARGES");
 
   const validatedFields = recurringChargeSchema.safeParse(
     getRecurringChargePayload(formData)
@@ -1991,7 +1991,7 @@ export async function updateRecurringChargeAction(
   _previousState: RecurringChargeFormState,
   formData: FormData
 ): Promise<RecurringChargeFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CHARGES");
 
   const existingCharge = await prisma.contractRecurringCharge.findUnique({
     where: { id: chargeId },
@@ -2062,7 +2062,7 @@ export async function recordPaymentAction(
   _previousState: RecordPaymentFormState,
   formData: FormData
 ): Promise<RecordPaymentFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_BILLING");
 
   const payload = getPaymentPayload(formData);
   const parseError = getPaymentParseError(payload);

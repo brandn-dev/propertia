@@ -9,7 +9,7 @@ import { updateCosaAction } from "@/app/(dashboard)/billing/actions";
 import { CosaForm } from "@/components/billing/cosa-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   getCosaContractOptions,
   getCosaForEdit,
@@ -26,7 +26,7 @@ export default async function EditBillingCosaPage({
     cosaId: string;
   }>;
 }) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_COSA");
   const { cosaId } = await params;
   const cosa = await getCosaForEdit(cosaId);
 

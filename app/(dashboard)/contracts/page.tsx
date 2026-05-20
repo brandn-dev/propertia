@@ -10,7 +10,7 @@ import {
   RotateCcw,
   TimerReset,
 } from "lucide-react";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { formatContractEndDate } from "@/lib/contracts/term";
 import { getContractsOverview } from "@/lib/data/dashboard";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
@@ -38,7 +38,7 @@ function formatTenantName(tenant: {
 }
 
 export default async function ContractsPage() {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CONTRACTS");
   const contracts = await getContractsOverview();
   const activeContracts = contracts.filter((contract) => contract.status === "ACTIVE").length;
   const totalMonthlyRent = contracts.reduce(

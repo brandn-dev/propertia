@@ -2,6 +2,7 @@ import "server-only";
 
 import { after } from "next/server";
 import type { AuthUser } from "@/lib/auth/user";
+import { hasAnyCapability, usesAdminWorkspace } from "@/lib/auth/roles";
 import { formatDate } from "@/lib/format";
 import type {
   NotificationInbox,
@@ -364,10 +365,26 @@ async function buildMeterReaderNotifications(): Promise<NotificationDraft[]> {
     }));
 }
 
-async function buildSystemNotificationsForUser(user: Pick<AuthUser, "role">) {
-  return user.role === "ADMIN"
-    ? buildAdminNotifications()
-    : buildMeterReaderNotifications();
+async function buildSystemNotificationsForUser(
+  user: Pick<AuthUser, "role" | "capabilities">
+) {
+  const notifications: NotificationDraft[] = [];
+
+  if (usesAdminWorkspace(user)) {
+    notifications.push(...(await buildAdminNotifications()));
+  }
+
+  if (
+    hasAnyCapability(user, [
+      "MANAGE_UTILITIES",
+      "MANAGE_METERS",
+      "RECORD_READINGS",
+    ])
+  ) {
+    notifications.push(...(await buildMeterReaderNotifications()));
+  }
+
+  return notifications;
 }
 
 function mapNotificationItems(
@@ -389,7 +406,9 @@ function mapNotificationItems(
   }));
 }
 
-export async function syncNotificationsForUser(user: Pick<AuthUser, "id" | "role">) {
+export async function syncNotificationsForUser(
+  user: Pick<AuthUser, "id" | "role" | "capabilities">
+) {
   const notifications = await buildSystemNotificationsForUser(user);
   const activeKeys = notifications.map((notification) => notification.dedupeKey);
 
@@ -445,7 +464,9 @@ export async function syncNotificationsForUser(user: Pick<AuthUser, "id" | "role
   });
 }
 
-function scheduleNotificationSync(user: Pick<AuthUser, "id" | "role">) {
+function scheduleNotificationSync(
+  user: Pick<AuthUser, "id" | "role" | "capabilities">
+) {
   after(async () => {
     try {
       await syncNotificationsForUser(user);
@@ -456,7 +477,7 @@ function scheduleNotificationSync(user: Pick<AuthUser, "id" | "role">) {
 }
 
 export async function getNotificationSummaryForUser(
-  user: Pick<AuthUser, "id" | "role">
+  user: Pick<AuthUser, "id" | "role" | "capabilities">
 ): Promise<NotificationSummary> {
   const [unreadCount, rows] = await Promise.all([
     prisma.notification.count({
@@ -493,7 +514,7 @@ export async function getNotificationSummaryForUser(
 }
 
 export async function getNotificationInboxForUser(
-  user: Pick<AuthUser, "id" | "role">
+  user: Pick<AuthUser, "id" | "role" | "capabilities">
 ): Promise<NotificationInbox> {
   await syncNotificationsForUser(user);
 

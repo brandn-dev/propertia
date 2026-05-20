@@ -946,6 +946,8 @@ export async function getInvoiceForView(invoiceId: string) {
       dueDate: true,
       billingPeriodStart: true,
       billingPeriodEnd: true,
+      createdAt: true,
+      updatedAt: true,
       subtotal: true,
       additionalCharges: true,
       discount: true,

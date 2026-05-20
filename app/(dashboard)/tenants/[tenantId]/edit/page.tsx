@@ -13,7 +13,7 @@ import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { Button } from "@/components/ui/button";
 import { getTenantForEdit } from "@/lib/data/admin";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 
 type EditTenantPageProps = {
   params: Promise<{
@@ -53,7 +53,7 @@ function getPeopleCount(tenant: {
 }
 
 export default async function EditTenantPage({ params }: EditTenantPageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_TENANTS");
   const { tenantId } = await params;
   const tenant = await getTenantForEdit(tenantId);
 

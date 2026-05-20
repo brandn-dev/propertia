@@ -28,6 +28,10 @@ Copy `.env.example` to `.env` and fill in:
 ```bash
 DATABASE_URL=
 SESSION_PASSWORD=
+APP_URL=
+INVOICE_PDF_RENDER_MODE=
+GOTENBERG_URL=
+INVOICE_PDF_DEBUG_HEADERS=
 ADMIN_USERNAME=
 ADMIN_PASSWORD=
 ADMIN_DISPLAY_NAME=
@@ -40,7 +44,25 @@ Notes:
 
 - `DATABASE_URL` should point to your Neon or PostgreSQL database.
 - `SESSION_PASSWORD` must be at least 32 characters long.
+- `INVOICE_PDF_RENDER_MODE` supports `gotenberg`, `chromium`, or `react-pdf`.
+- `GOTENBERG_URL` is required when using `gotenberg`.
+- `INVOICE_PDF_DEBUG_HEADERS=1` enables renderer/debug headers on invoice PDF responses.
 - the seed script creates or updates the initial admin and meter-reader accounts from these values.
+
+## Invoice PDF Rendering
+
+Recommended production setup:
+
+- Vercel serves invoice HTML routes
+- Coolify-hosted Gotenberg renders PDF from those routes
+- local and deployed should share `DATABASE_URL` if you expect identical invoice output
+
+Debugging helpers:
+
+- protected render diagnostics: `/billing/:invoiceId/pdf/debug`
+- optional PDF debug headers via `INVOICE_PDF_DEBUG_HEADERS=1`
+
+If local and deployed output differs, check data parity first, then renderer/layout.
 
 ## First Run
 

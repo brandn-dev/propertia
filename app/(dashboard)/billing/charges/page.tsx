@@ -7,7 +7,7 @@ import {
   Rows4,
   TimerReset,
 } from "lucide-react";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   type RecurringChargeOverviewItem,
   getRecurringChargesOverview,
@@ -38,7 +38,7 @@ function formatTenantName(tenant: {
 }
 
 export default async function BillingChargesPage() {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CHARGES");
   const charges = await getRecurringChargesOverview();
   const activeCharges = charges.filter(
     (charge: RecurringChargeOverviewItem) => charge.isActive

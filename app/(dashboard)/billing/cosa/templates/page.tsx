@@ -11,7 +11,7 @@ import {
   Users2,
   Wrench,
 } from "lucide-react";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { getCosaTemplatesOverview } from "@/lib/data/billing";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
@@ -47,7 +47,7 @@ const PRESET_ICONS = {
 } as const;
 
 export default async function BillingCosaTemplatesPage() {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_COSA");
   const templates = await getCosaTemplatesOverview();
   const activeTemplates = templates.filter((template) => template.isActive).length;
   const defaultedTemplates = templates.filter((template) => template.defaultAmount).length;

@@ -7,7 +7,7 @@ import {
   Plus,
   Users2,
 } from "lucide-react";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { getPropertyTenantBoard } from "@/lib/data/dashboard";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
@@ -22,7 +22,7 @@ export default async function PropertyTenantsPage({
     propertyId: string;
   }>;
 }) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_PROPERTIES");
   const { propertyId } = await params;
   const board = await getPropertyTenantBoard(propertyId);
 

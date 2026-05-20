@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BrushCleaning, Eye, Palette, PencilLine, Plus } from "lucide-react";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { getInvoiceBrandingTemplatesOverview } from "@/lib/data/billing";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/table";
 
 export default async function InvoiceBrandingTemplatesPage() {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_INVOICE_TEMPLATES");
   const templates = await getInvoiceBrandingTemplatesOverview();
   const defaultTemplates = templates.filter((template) => template.isDefault).length;
   const propertyAssignments = templates.reduce(

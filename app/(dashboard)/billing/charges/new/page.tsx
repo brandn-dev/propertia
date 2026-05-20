@@ -8,7 +8,7 @@ import { createRecurringChargeAction } from "@/app/(dashboard)/billing/actions";
 import { RecurringChargeForm } from "@/components/billing/recurring-charge-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { getRecurringChargeContractOptions } from "@/lib/data/billing";
 import { formatDate, toDateInputValue } from "@/lib/format";
 
@@ -21,7 +21,7 @@ type NewBillingChargePageProps = {
 export default async function NewBillingChargePage({
   searchParams,
 }: NewBillingChargePageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CHARGES");
   const rawSearchParams = await searchParams;
   const selectedContractId =
     typeof rawSearchParams.contractId === "string" ? rawSearchParams.contractId : "";

@@ -11,7 +11,7 @@ import { DeleteReadingButton } from "@/components/utilities/delete-reading-butto
 import { MeterReadingForm } from "@/components/utilities/meter-reading-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireRole } from "@/lib/auth/user";
+import { requireAnyCapability } from "@/lib/auth/user";
 import { getMeterReadingForEdit } from "@/lib/data/admin";
 import { formatCurrency, formatDate, toNumber } from "@/lib/format";
 import { formatUtilityQuantity } from "@/lib/utility-units";
@@ -25,7 +25,10 @@ type EditMeterReadingPageProps = {
 export default async function EditMeterReadingPage({
   params,
 }: EditMeterReadingPageProps) {
-  const user = await requireRole(["ADMIN", "METER_READER"]);
+  const user = await requireAnyCapability([
+    "MANAGE_UTILITIES",
+    "RECORD_READINGS",
+  ]);
   const { readingId } = await params;
   const reading = await getMeterReadingForEdit(readingId);
 

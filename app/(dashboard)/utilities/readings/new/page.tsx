@@ -4,10 +4,13 @@ import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { MeterReadingForm } from "@/components/utilities/meter-reading-form";
 import { getUtilityMeterReadingOptions } from "@/lib/data/admin";
-import { requireRole } from "@/lib/auth/user";
+import { requireAnyCapability } from "@/lib/auth/user";
 
 export default async function NewMeterReadingPage() {
-  const user = await requireRole(["ADMIN", "METER_READER"]);
+  const user = await requireAnyCapability([
+    "MANAGE_UTILITIES",
+    "RECORD_READINGS",
+  ]);
   const meterOptions = await getUtilityMeterReadingOptions();
   const assignedTenantCount = new Set(
     meterOptions.flatMap((meter) => (meter.tenant ? [meter.tenant.id] : []))

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   getPropertyLogoFileError,
   removePropertyLogoFile,
@@ -121,7 +121,7 @@ export async function createPropertyAction(
   _previousState: PropertyFormState,
   formData: FormData
 ): Promise<PropertyFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_PROPERTIES");
 
   const validatedFields = propertySchema.safeParse(getPropertyPayload(formData));
 
@@ -227,7 +227,7 @@ export async function updatePropertyAction(
   _previousState: PropertyFormState,
   formData: FormData
 ): Promise<PropertyFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_PROPERTIES");
 
   const existingProperty = await prisma.property.findUnique({
     where: { id: propertyId },

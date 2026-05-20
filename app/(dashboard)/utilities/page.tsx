@@ -10,7 +10,7 @@ import {
   Sparkles,
   Split,
 } from "lucide-react";
-import { requireRole } from "@/lib/auth/user";
+import { requireAnyCapability } from "@/lib/auth/user";
 import { getUtilitiesOverview } from "@/lib/data/dashboard";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { formatCompactNumber, formatCurrency, formatDate, toNumber } from "@/lib/format";
@@ -31,7 +31,11 @@ import {
 } from "@/components/ui/table";
 
 export default async function UtilitiesPage() {
-  const user = await requireRole(["ADMIN", "METER_READER"]);
+  const user = await requireAnyCapability([
+    "MANAGE_UTILITIES",
+    "MANAGE_METERS",
+    "RECORD_READINGS",
+  ]);
   const { meters, recentReadings } = await getUtilitiesOverview();
   const sharedMeters = meters.filter((meter) => meter.isShared).length;
   const totalConsumption = recentReadings.reduce(

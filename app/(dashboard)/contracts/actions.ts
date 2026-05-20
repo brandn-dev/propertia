@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   OPEN_ENDED_CONTRACT_END_DATE_INPUT,
   getOpenEndedContractEndDate,
@@ -176,7 +176,7 @@ export async function createContractAction(
   _previousState: ContractFormState,
   formData: FormData
 ): Promise<ContractFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CONTRACTS");
 
   const validatedFields = contractSchema.safeParse(getContractPayload(formData));
 
@@ -252,7 +252,7 @@ export async function updateContractAction(
   _previousState: ContractFormState,
   formData: FormData
 ): Promise<ContractFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CONTRACTS");
 
   const existingContract = await prisma.contract.findUnique({
     where: { id: contractId },
@@ -341,7 +341,7 @@ export async function createRentAdjustmentAction(
   _previousState: RentAdjustmentFormState,
   formData: FormData
 ): Promise<RentAdjustmentFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CONTRACTS");
 
   const validatedFields = rentAdjustmentSchema.safeParse(
     getRentAdjustmentPayload(formData)
@@ -414,7 +414,7 @@ export async function saveRentScheduleAction(
   _previousState: RentScheduleFormState,
   formData: FormData
 ): Promise<RentScheduleFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CONTRACTS");
 
   const contract = await prisma.contract.findUnique({
     where: { id: contractId },
@@ -556,7 +556,7 @@ export async function updateRentAdjustmentAction(
   _previousState: RentAdjustmentFormState,
   formData: FormData
 ): Promise<RentAdjustmentFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CONTRACTS");
 
   const existingAdjustment = await prisma.rentAdjustment.findFirst({
     where: {

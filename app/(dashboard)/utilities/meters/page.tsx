@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Gauge, PencilLine, Plus, Split } from "lucide-react";
-import { requireRole } from "@/lib/auth/user";
+import { requireAnyCapability } from "@/lib/auth/user";
 import { getUtilityMetersOverview } from "@/lib/data/dashboard";
 import { formatCompactNumber } from "@/lib/format";
 import { ROLE_LABELS } from "@/lib/auth/roles";
@@ -32,7 +32,10 @@ function formatTenantName(tenant: {
 }
 
 export default async function UtilityMetersPage() {
-  const user = await requireRole(["ADMIN", "METER_READER"]);
+  const user = await requireAnyCapability([
+    "MANAGE_UTILITIES",
+    "MANAGE_METERS",
+  ]);
   const meters = await getUtilityMetersOverview();
   const sharedMeters = meters.filter((meter) => meter.isShared).length;
   const totalReadings = meters.reduce((sum, meter) => sum + meter._count.readings, 0);

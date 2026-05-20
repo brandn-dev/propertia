@@ -4,7 +4,7 @@ import { replaceUtilityMeterAction } from "@/app/(dashboard)/utilities/actions";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { UtilityMeterReplacementForm } from "@/components/utilities/utility-meter-replacement-form";
-import { requireRole } from "@/lib/auth/user";
+import { requireAnyCapability } from "@/lib/auth/user";
 import { getUtilityMeterForReplacement } from "@/lib/data/admin";
 import { formatDate } from "@/lib/format";
 
@@ -29,7 +29,7 @@ function formatTenantName(tenant: {
 export default async function ReplaceUtilityMeterPage({
   params,
 }: ReplaceUtilityMeterPageProps) {
-  await requireRole("ADMIN");
+  await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
   const { meterId } = await params;
   const meter = await getUtilityMeterForReplacement(meterId);
 

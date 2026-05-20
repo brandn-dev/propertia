@@ -9,7 +9,7 @@ import { updateRecurringChargeAction } from "@/app/(dashboard)/billing/actions";
 import { RecurringChargeForm } from "@/components/billing/recurring-charge-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   getRecurringChargeContractOptions,
   getRecurringChargeForEdit,
@@ -34,7 +34,7 @@ function formatTenantName(tenant: {
 export default async function EditBillingChargePage({
   params,
 }: EditBillingChargePageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CHARGES");
   const { chargeId } = await params;
   const charge = await getRecurringChargeForEdit(chargeId);
 

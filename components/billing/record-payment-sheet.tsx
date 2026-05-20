@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import type { RecordPaymentFormState } from "@/app/(dashboard)/billing/actions";
@@ -29,6 +30,13 @@ type RecordPaymentSheetProps = {
     referenceNumber: string;
     notes: string;
   };
+  triggerLabel?: string | null;
+  triggerAriaLabel?: string;
+  triggerTitle?: string;
+  triggerVariant?: "default" | "outline" | "secondary" | "ghost" | "destructive" | "link";
+  triggerSize?: "default" | "xs" | "sm" | "lg" | "icon" | "icon-xs" | "icon-sm" | "icon-lg";
+  triggerClassName?: string;
+  triggerIcon?: ReactNode;
   items: {
     id: string;
     itemType:
@@ -54,19 +62,31 @@ export function RecordPaymentSheet({
   invoiceBalance,
   dueDateLabel,
   initialValues,
+  triggerLabel = "Record payment",
+  triggerAriaLabel,
+  triggerTitle,
+  triggerVariant = "default",
+  triggerSize = "default",
+  triggerClassName,
+  triggerIcon = <Plus />,
   items,
 }: RecordPaymentSheetProps) {
   const [open, setOpen] = useState(false);
+  const buttonLabel = triggerLabel ?? triggerAriaLabel ?? "Record payment";
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <Button
         type="button"
-        className="rounded-full"
+        variant={triggerVariant}
+        size={triggerSize}
+        className={triggerClassName ?? "rounded-full"}
+        aria-label={buttonLabel}
+        title={triggerTitle ?? buttonLabel}
         onClick={() => setOpen(true)}
       >
-        <Plus />
-        Record payment
+        {triggerIcon}
+        {triggerLabel ? triggerLabel : <span className="sr-only">{buttonLabel}</span>}
       </Button>
 
       <SheetContent side="right" className="w-full overflow-y-auto p-0 data-[side=right]:sm:max-w-6xl">

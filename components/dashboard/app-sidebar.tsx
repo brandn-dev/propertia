@@ -1,7 +1,7 @@
 "use client";
 
 import type { AuthUser } from "@/lib/auth/user";
-import { getRouteMeta, getRoutesForRole } from "@/lib/navigation";
+import { getRouteMeta, getRoutesForUser } from "@/lib/navigation";
 import { NavMain } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
 import { SidebarBrand } from "@/components/sidebar-brand";
@@ -20,7 +20,7 @@ type AppSidebarProps = {
 
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
-  const routes = getRoutesForRole(user.role);
+  const routes = getRoutesForUser(user);
   const currentRoute = getRouteMeta(pathname);
 
   const sections = ["Workspace", "Operations"]
@@ -55,9 +55,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
       <SidebarFooter className="group-data-[collapsible=icon]:items-center">
         <NavUser
           user={{
+            id: user.id,
             name: user.displayName,
             username: user.username,
             role: user.role,
+            avatarUrl: user.avatarUrl,
           }}
         />
       </SidebarFooter>

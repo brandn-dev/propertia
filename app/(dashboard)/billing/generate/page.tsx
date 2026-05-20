@@ -11,7 +11,7 @@ import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { InvoiceGenerationForm } from "@/components/billing/invoice-generation-form";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { getInvoiceGenerationContractOptions } from "@/lib/data/billing";
 import { formatDate, toDateInputValue } from "@/lib/format";
 
@@ -22,7 +22,7 @@ function addDays(date: Date, days: number) {
 }
 
 export default async function GenerateBillingPage() {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_BILLING");
   const rawContractOptions = await getInvoiceGenerationContractOptions();
   const today = new Date();
   const issueDate = addDays(today, 0);

@@ -13,7 +13,7 @@ import { createCosaTemplateAction } from "@/app/(dashboard)/billing/actions";
 import { CosaTemplateForm } from "@/components/billing/cosa-template-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   getCosaContractOptions,
   getCosaPropertyOptions,
@@ -38,7 +38,7 @@ export default async function NewBillingCosaTemplatePage({
     preset?: string | string[];
   }>;
 }) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_COSA");
   const rawSearchParams = await searchParams;
   const presetId =
     typeof rawSearchParams.preset === "string" ? rawSearchParams.preset : undefined;

@@ -12,7 +12,7 @@ import {
   Wrench,
   Gauge,
 } from "lucide-react";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { getCosasOverview } from "@/lib/data/billing";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
@@ -48,7 +48,7 @@ const PRESET_ICONS = {
 } as const;
 
 export default async function BillingCosaPage() {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_COSA");
   const cosas = await getCosasOverview();
   const totalSharedValue = cosas.reduce(
     (sum, cosa) => sum + toNumber(cosa.totalAmount),

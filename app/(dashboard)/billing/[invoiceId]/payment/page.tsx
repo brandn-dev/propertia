@@ -9,7 +9,7 @@ import { recordPaymentAction } from "@/app/(dashboard)/billing/actions";
 import { PaymentForm } from "@/components/billing/payment-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
 import { getInvoiceForView } from "@/lib/data/billing";
 import { formatCurrency, formatDate, toDateInputValue, toNumber } from "@/lib/format";
@@ -31,7 +31,7 @@ function formatTenantName(tenant: {
 export default async function InvoicePaymentPage({
   params,
 }: InvoicePaymentPageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_BILLING");
   const { invoiceId } = await params;
   const invoice = await getInvoiceForView(invoiceId);
 

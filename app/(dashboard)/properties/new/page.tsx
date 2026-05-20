@@ -6,10 +6,10 @@ import {
   getInvoiceBrandingTemplateOptions,
   getPropertyParentOptions,
 } from "@/lib/data/admin";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 
 export default async function NewPropertyPage() {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_PROPERTIES");
   const [parentOptions, brandingTemplateOptions] = await Promise.all([
     getPropertyParentOptions(),
     getInvoiceBrandingTemplateOptions(),

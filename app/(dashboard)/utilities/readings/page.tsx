@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Gauge, Plus, ReceiptText, ScanLine } from "lucide-react";
-import { requireRole } from "@/lib/auth/user";
+import { requireAnyCapability } from "@/lib/auth/user";
 import { getMeterReadingsOverview } from "@/lib/data/dashboard";
 import { formatCompactNumber, formatCurrency, toNumber } from "@/lib/format";
 import { ROLE_LABELS } from "@/lib/auth/roles";
@@ -12,7 +12,10 @@ import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function UtilityReadingsPage() {
-  const user = await requireRole(["ADMIN", "METER_READER"]);
+  const user = await requireAnyCapability([
+    "MANAGE_UTILITIES",
+    "RECORD_READINGS",
+  ]);
   const readings = await getMeterReadingsOverview();
   const clientReadings = readings.map((reading) => ({
     ...reading,

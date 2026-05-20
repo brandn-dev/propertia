@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { prisma } from "@/lib/prisma";
 import { withToast } from "@/lib/toast";
 
@@ -20,7 +20,7 @@ function revalidateBillingViews(invoiceId: string) {
 }
 
 export async function deleteBacklogInvoiceAction(invoiceId: string) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_BILLING");
 
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },

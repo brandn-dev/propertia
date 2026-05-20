@@ -80,7 +80,7 @@ export function InvoiceDocument({
   const contentInsetClass = paperLayout
     ? "pl-3 pr-8"
     : "px-4 sm:px-5 md:pl-3 md:pr-8";
-  const sectionStackClass = paperLayout ? "space-y-5" : "space-y-4 md:space-y-5";
+  const sectionStackClass = paperLayout ? "space-y-4" : "space-y-4 md:space-y-5";
   const headerSectionClass = paperLayout
     ? "space-y-5 pb-3"
     : "space-y-3 pb-1.5 md:space-y-3 md:pb-1.5";
@@ -219,7 +219,7 @@ export function InvoiceDocument({
                     <p className={LABEL_CLASS}>{item.label}</p>
                     <p
                       className={cn(
-                        "mt-1 break-words text-[0.95rem] font-semibold leading-tight tracking-[-0.03em] md:text-sm",
+                        "mt-1 break-words text-[0.93rem] font-[560] leading-tight tracking-[-0.03em] md:text-sm",
                         VALUE_CLASS
                       )}
                     >
@@ -267,11 +267,11 @@ export function InvoiceDocument({
                             {item.typeLabel}
                           </td>
                           <td
-                            className={cn(
-                              "py-2.5 pr-4 align-top break-words font-medium text-[#0f172a]",
-                              item.itemType === "UTILITY_READING" || item.itemType === "COSA"
-                                ? "text-[0.9rem] leading-[1.35]"
-                                : "text-sm leading-[1.45]",
+                              className={cn(
+                                  "py-2.5 pr-4 align-top break-words font-[430] text-[#0f172a]",
+                                  item.itemType === "UTILITY_READING" || item.itemType === "COSA"
+                                ? "text-[0.88rem] leading-[1.35]"
+                                : "text-[0.92rem] leading-[1.45]",
                               VALUE_CLASS
                             )}
                           >
@@ -352,10 +352,10 @@ export function InvoiceDocument({
                               </td>
                               <td
                                 className={cn(
-                                  "py-2.5 pr-4 align-top break-words font-medium",
+                                  "py-2.5 pr-4 align-top break-words font-[430]",
                                   item.itemType === "UTILITY_READING" || item.itemType === "COSA"
-                                    ? "text-[0.9rem] leading-[1.35]"
-                                    : "text-sm leading-[1.45]",
+                                    ? "text-[0.88rem] leading-[1.35]"
+                                    : "text-[0.92rem] leading-[1.45]",
                                   VALUE_CLASS
                                 )}
                               >
@@ -422,10 +422,10 @@ export function InvoiceDocument({
                         </div>
                         <p
                           className={cn(
-                            "mt-2 break-words font-medium",
+                            "mt-2 break-words font-[430]",
                             item.itemType === "UTILITY_READING" || item.itemType === "COSA"
                               ? "text-[0.9rem] leading-[1.45]"
-                              : "text-[0.95rem] leading-6",
+                              : "text-[0.93rem] leading-6",
                             VALUE_CLASS
                           )}
                         >
@@ -445,116 +445,50 @@ export function InvoiceDocument({
               )}
             </div>
 
-            {paperLayout ? (
+            <div className={cn("space-y-4 border-t pt-3", DIVIDER_CLASS)}>
               <div
                 className={cn(
-                  "grid grid-cols-2 gap-6 border-t pt-3",
-                  DIVIDER_CLASS,
+                  "gap-4",
+                  paperLayout
+                    ? "grid grid-cols-[minmax(0,1fr)_18rem] items-start"
+                    : "space-y-4 md:grid md:grid-cols-[minmax(0,1fr)_18rem] md:items-start md:space-y-0"
                 )}
               >
-                <div className="min-w-0 space-y-8">
-                  {accessBlock &&
-                  (renderMode === "internal" || renderMode === "print") ? (
-                    <section className="space-y-2">
-                      <p className={LABEL_CLASS}>Invoice access</p>
-                      <div className="flex flex-col items-start gap-2">
-                        <Image
-                          src={accessBlock.qrDataUrl}
-                          alt={`QR code for invoice ${model.invoiceNumber}`}
-                          width={112}
-                          height={112}
-                          unoptimized
-                          className="size-[112px]"
-                        />
-                        <div className="space-y-0.5">
-                          <p className={cn("text-[0.56rem] uppercase tracking-[0.2em]", LABEL_CLASS)}>
-                            Invoice password
-                          </p>
-                          <p className={cn("break-all font-mono text-[0.7rem] font-medium tracking-[0.2em]", MUTED_CLASS)}>
-                            {accessBlock.publicAccessCode}
-                          </p>
-                        </div>
-                      </div>
-                    </section>
-                  ) : null}
-
+                <div className="min-w-0 space-y-4">
                   {model.notes ? (
-                    <section className="space-y-3">
+                    <section className="space-y-2.5">
                       <p className={LABEL_CLASS}>Notes</p>
-                      <p className={cn("max-w-3xl whitespace-pre-wrap break-words text-sm leading-7", MUTED_CLASS)}>
+                      <p
+                        className={cn(
+                          "max-w-3xl whitespace-pre-wrap break-words text-[0.93rem] leading-6 font-[430]",
+                          MUTED_CLASS
+                        )}
+                      >
                         {model.notes}
                       </p>
                     </section>
                   ) : null}
-
-                  {paymentSummaryVisible ? (
-                    <section className="space-y-4 pt-2">
-                      <p className={LABEL_CLASS}>Payment history</p>
-                      <PaymentSummary model={model} />
-                    </section>
-                  ) : null}
                 </div>
 
-                <InvoiceTotalsPanel model={model} />
-              </div>
-            ) : (
-              <div className={cn("space-y-4 border-t pt-3", DIVIDER_CLASS)}>
-                <div
-                  className={cn(
-                    "flex flex-col gap-3",
-                    accessBlock
-                      ? "md:grid md:grid-cols-[max-content_minmax(0,1fr)] md:items-start md:gap-4"
-                      : "md:flex md:items-end"
-                  )}
-                >
-                  {accessBlock && renderMode === "internal" ? (
-                    <section className="space-y-2 md:w-fit">
-                      <p className={LABEL_CLASS}>Invoice access</p>
-                      <div className="flex flex-col items-start gap-2">
-                        <Image
-                          src={accessBlock.qrDataUrl}
-                          alt={`QR code for invoice ${model.invoiceNumber}`}
-                          width={112}
-                          height={112}
-                          unoptimized
-                          className="size-[112px]"
-                        />
-                        <div className="space-y-0.5">
-                          <p className={cn("text-[0.56rem] uppercase tracking-[0.2em]", LABEL_CLASS)}>
-                            Invoice password
-                          </p>
-                          <p className={cn("break-all font-mono text-[0.7rem] font-medium tracking-[0.2em]", MUTED_CLASS)}>
-                            {accessBlock.publicAccessCode}
-                          </p>
-                        </div>
-                      </div>
-                    </section>
-                  ) : null}
-
-                  <div className={cn("min-w-0", !accessBlock && "md:w-[min(100%,34rem)] md:ml-auto")}>
-                    <InvoiceTotalsPanel model={model} />
-                  </div>
+                <div className="min-w-0">
+                  <InvoiceTotalsPanel model={model} />
                 </div>
-
-                {model.notes ? (
-                  <section className="space-y-3">
-                    <p className={LABEL_CLASS}>Notes</p>
-                    <p className={cn("max-w-3xl whitespace-pre-wrap break-words text-sm leading-7", MUTED_CLASS)}>
-                      {model.notes}
-                    </p>
-                  </section>
-                ) : null}
-
-                {paymentSummaryVisible ? (
-                  <section className="space-y-4 pt-1">
-                    <p className={LABEL_CLASS}>Payment history</p>
-                    <PaymentSummary model={model} />
-                  </section>
-                ) : null}
               </div>
-            )}
 
-            <InvoiceReceiptFooter paperLayout={paperLayout} />
+              {paymentSummaryVisible ? (
+                <section className="space-y-3 pt-1">
+                  <p className={LABEL_CLASS}>Payment history</p>
+                  <PaymentSummary model={model} />
+                </section>
+              ) : null}
+            </div>
+
+            <InvoiceReceiptFooter
+              paperLayout={paperLayout}
+              renderMode={renderMode}
+              invoiceNumber={model.invoiceNumber}
+              accessBlock={accessBlock}
+            />
           </section>
         </div>
       </article>
@@ -687,28 +621,95 @@ function InvoiceTotalsPanel({
   );
 }
 
-function InvoiceReceiptFooter({ paperLayout }: { paperLayout: boolean }) {
-  if (!paperLayout) {
-    return null;
-  }
+function InvoiceReceiptFooter({
+  paperLayout,
+  renderMode,
+  invoiceNumber,
+  accessBlock,
+}: {
+  paperLayout: boolean;
+  renderMode: InvoiceDocumentProps["renderMode"];
+  invoiceNumber: string;
+  accessBlock?: InvoiceDocumentProps["accessBlock"];
+}) {
+  const showAccessBlock =
+    Boolean(accessBlock) && (renderMode === "internal" || renderMode === "print");
 
   return (
     <footer className={cn("space-y-3 border-t pt-4", DIVIDER_CLASS)}>
-        <div
-          className={cn(
-          "grid gap-x-6 gap-y-3 text-[0.72rem]",
-          MUTED_CLASS,
-          paperLayout ? "grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-3"
+      <div
+        className={cn(
+          "gap-4",
+          showAccessBlock
+            ? paperLayout
+              ? "grid grid-cols-[10rem_minmax(0,1fr)] items-start"
+              : "space-y-4 md:grid md:grid-cols-[10rem_minmax(0,1fr)] md:items-start md:space-y-0"
+            : "space-y-3"
         )}
       >
-        <FooterField label="Received by" />
-        <FooterField label="Received Date" />
-        <FooterField label="Signature" />
-        <FooterField label="Paid Amount" />
-        <FooterField label="Paid Date" />
-        <FooterModeField />
+        {showAccessBlock && accessBlock ? (
+          <InvoiceAccessFooterBlock
+            accessBlock={accessBlock}
+            invoiceNumber={invoiceNumber}
+          />
+        ) : null}
+
+        <div
+          className={cn(
+            "grid gap-x-6 gap-y-3 text-[0.72rem]",
+            MUTED_CLASS,
+            paperLayout ? "grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-3"
+          )}
+        >
+          <FooterField label="Received by" />
+          <FooterField label="Received date" />
+          <FooterField label="Signature" />
+          <FooterField label="Paid amount" />
+          <FooterField label="Paid date" />
+          <FooterModeField />
+        </div>
       </div>
     </footer>
+  );
+}
+
+function InvoiceAccessFooterBlock({
+  accessBlock,
+  invoiceNumber,
+}: {
+  accessBlock: NonNullable<InvoiceDocumentProps["accessBlock"]>;
+  invoiceNumber: string;
+}) {
+  return (
+    <section className="space-y-2">
+      <p className={LABEL_CLASS}>Digital copy</p>
+      <div className="flex items-start gap-3">
+        <Image
+          src={accessBlock.qrDataUrl}
+          alt={`QR code for invoice ${invoiceNumber}`}
+          width={76}
+          height={76}
+          unoptimized
+          className="size-[76px] shrink-0 rounded-[0.7rem] border border-[color:var(--invoice-paper-border)] bg-white p-1"
+        />
+        <div className="min-w-0 space-y-1.5">
+          <p className={cn("text-[0.56rem] uppercase tracking-[0.18em]", LABEL_CLASS)}>
+            Access code
+          </p>
+          <p
+            className={cn(
+              "break-all font-mono text-[0.7rem] font-medium tracking-[0.18em]",
+              VALUE_CLASS
+            )}
+          >
+            {accessBlock.publicAccessCode}
+          </p>
+          <p className={cn("text-[0.66rem] leading-4", MUTED_CLASS)}>
+            Scan for public invoice copy.
+          </p>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -882,7 +883,7 @@ function FooterField({ label }: { label: string }) {
   return (
     <div className="grid gap-1">
       <p className={LABEL_CLASS}>{label}</p>
-      <div className={cn("h-5 border-b", DIVIDER_CLASS)} />
+      <div className={cn("h-6 border-b", DIVIDER_CLASS)} />
     </div>
   );
 }

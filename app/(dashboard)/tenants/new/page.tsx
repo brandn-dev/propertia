@@ -2,10 +2,10 @@ import { Plus, Users2 } from "lucide-react";
 import { createTenantAction } from "@/app/(dashboard)/tenants/actions";
 import { TenantForm } from "@/components/tenants/tenant-form";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 
 export default async function NewTenantPage() {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_TENANTS");
 
   return (
     <div className="space-y-6">

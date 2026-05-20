@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   formatBillingCycleLabel,
   getBillingCycleAtIndex,
@@ -549,7 +549,7 @@ export async function updateBacklogInvoiceAction(
   _previousState: BacklogInvoiceEditFormState,
   formData: FormData
 ): Promise<BacklogInvoiceEditFormState> {
-  const user = await requireRole("ADMIN");
+  const user = await requireCapability("MANAGE_BILLING");
 
   const invoiceId = String(formData.get("invoiceId") ?? "").trim();
   const issueDateRaw = String(formData.get("issueDate") ?? "").trim();

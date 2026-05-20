@@ -6,7 +6,7 @@ import { updateBacklogInvoiceAction } from "@/app/(dashboard)/billing/[invoiceId
 import { BacklogInvoiceEditForm } from "@/components/billing/backlog-invoice-edit-form";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { Button } from "@/components/ui/button";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { getInvoiceForView } from "@/lib/data/billing";
 import { toDateInputValue, toNumber } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
@@ -20,7 +20,7 @@ type BacklogInvoiceEditPageProps = {
 export default async function BacklogInvoiceEditPage({
   params,
 }: BacklogInvoiceEditPageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_BILLING");
   const { invoiceId } = await params;
   const invoice = await getInvoiceForView(invoiceId);
 

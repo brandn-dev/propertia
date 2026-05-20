@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const ALLOWED_PREFIXES = [
   "uploads/property-logos/",
   "uploads/invoice-templates/",
+  "uploads/user-avatars/",
 ] as const;
 
 function isAllowedPathname(pathname: string) {

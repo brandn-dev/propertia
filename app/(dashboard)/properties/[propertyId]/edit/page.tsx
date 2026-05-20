@@ -9,7 +9,7 @@ import {
   getPropertyForEdit,
   getPropertyParentOptions,
 } from "@/lib/data/admin";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 
 type EditPropertyPageProps = {
   params: Promise<{
@@ -20,7 +20,7 @@ type EditPropertyPageProps = {
 export default async function EditPropertyPage({
   params,
 }: EditPropertyPageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_PROPERTIES");
   const { propertyId } = await params;
   const [property, parentOptions, brandingTemplateOptions] = await Promise.all([
     getPropertyForEdit(propertyId),

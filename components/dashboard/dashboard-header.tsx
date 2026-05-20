@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Badge } from "@/components/ui/badge";
 import { NotificationMenu } from "@/components/dashboard/notification-menu";
 import {
   Breadcrumb,
@@ -13,22 +12,15 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
-import type { AuthUser } from "@/lib/auth/user";
-import { ROLE_LABELS } from "@/lib/auth/roles";
 import type { NotificationSummary } from "@/lib/notification-types";
 import { getRouteMeta } from "@/lib/navigation";
 import { usePathname } from "next/navigation";
-import { PanelTopOpen } from "lucide-react";
 
 type DashboardHeaderProps = {
-  user: AuthUser;
   notificationSummary: NotificationSummary;
 };
 
-export function DashboardHeader({
-  user,
-  notificationSummary,
-}: DashboardHeaderProps) {
+export function DashboardHeader({ notificationSummary }: DashboardHeaderProps) {
   const pathname = usePathname();
   const route = getRouteMeta(pathname);
 
@@ -58,13 +50,6 @@ export function DashboardHeader({
 
         <div className="flex items-center gap-2">
           <NotificationMenu summary={notificationSummary} />
-          <Badge
-            variant="secondary"
-            className="hidden rounded-full border border-border/60 bg-card/80 px-3 md:inline-flex"
-          >
-            <PanelTopOpen className="size-3.5" />
-            {ROLE_LABELS[user.role]}
-          </Badge>
         </div>
       </div>
     </header>

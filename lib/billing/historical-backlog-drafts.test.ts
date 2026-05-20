@@ -153,7 +153,6 @@ test("bulk row schema accepts nested month draft payload", () => {
   const april = contract.pendingBacklogCycles[0]!;
   const draft = createHistoricalBacklogMonthDraft(contract, april);
   const parsed = backlogBulkRowSchema.safeParse({
-    rowKey: draft.rowKey,
     ...serializeMonthDraft({
       ...draft,
       utilityCharges: [

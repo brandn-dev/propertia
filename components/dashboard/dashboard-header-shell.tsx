@@ -6,5 +6,5 @@ export async function DashboardHeaderShell() {
   const user = await requireUser();
   const notificationSummary = await getNotificationSummaryForUser(user);
 
-  return <DashboardHeader user={user} notificationSummary={notificationSummary} />;
+  return <DashboardHeader notificationSummary={notificationSummary} />;
 }

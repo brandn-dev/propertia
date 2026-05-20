@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireRole } from "@/lib/auth/user";
+import { requireAnyCapability } from "@/lib/auth/user";
 import { prisma } from "@/lib/prisma";
 import { withToast } from "@/lib/toast";
 import { meterReadingSchema } from "@/lib/validations/meter-reading";
@@ -179,7 +179,7 @@ export async function createUtilityMeterAction(
   _previousState: UtilityMeterFormState,
   formData: FormData
 ): Promise<UtilityMeterFormState> {
-  await requireRole("ADMIN");
+  await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
 
   const validatedFields = utilityMeterSchema.safeParse(
     getUtilityMeterPayload(formData)
@@ -255,7 +255,7 @@ export async function updateUtilityMeterAction(
   _previousState: UtilityMeterFormState,
   formData: FormData
 ): Promise<UtilityMeterFormState> {
-  await requireRole("ADMIN");
+  await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
 
   const existingMeter = await prisma.utilityMeter.findUnique({
     where: { id: meterId },
@@ -350,7 +350,7 @@ export async function replaceUtilityMeterAction(
   _previousState: UtilityMeterFormState,
   formData: FormData
 ): Promise<UtilityMeterFormState> {
-  await requireRole("ADMIN");
+  await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
 
   const validatedFields = utilityMeterReplacementSchema.safeParse(
     getUtilityMeterReplacementPayload(formData)
@@ -455,7 +455,10 @@ export async function createMeterReadingAction(
   _previousState: MeterReadingFormState,
   formData: FormData
 ): Promise<MeterReadingFormState> {
-  const user = await requireRole(["ADMIN", "METER_READER"]);
+  const user = await requireAnyCapability([
+    "MANAGE_UTILITIES",
+    "RECORD_READINGS",
+  ]);
 
   const validatedFields = meterReadingSchema.safeParse(
     getMeterReadingPayload(formData)
@@ -584,7 +587,10 @@ export async function updateMeterReadingAction(
   _previousState: MeterReadingFormState,
   formData: FormData
 ): Promise<MeterReadingFormState> {
-  const user = await requireRole(["ADMIN", "METER_READER"]);
+  const user = await requireAnyCapability([
+    "MANAGE_UTILITIES",
+    "RECORD_READINGS",
+  ]);
 
   const validatedFields = meterReadingSchema.safeParse(
     getMeterReadingPayload(formData)
@@ -812,7 +818,7 @@ export async function updateMeterReadingAction(
 }
 
 export async function deleteMeterReadingAction(readingId: string) {
-  await requireRole(["ADMIN", "METER_READER"]);
+  await requireAnyCapability(["MANAGE_UTILITIES", "RECORD_READINGS"]);
 
   const existingReading = await prisma.meterReading.findUnique({
     where: { id: readingId },

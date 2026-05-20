@@ -6,10 +6,10 @@ import {
   getContractPropertyOptions,
   getContractTenantOptions,
 } from "@/lib/data/admin";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 
 export default async function NewContractPage() {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CONTRACTS");
   const [propertyOptions, tenantOptions] = await Promise.all([
     getContractPropertyOptions(),
     getContractTenantOptions(),

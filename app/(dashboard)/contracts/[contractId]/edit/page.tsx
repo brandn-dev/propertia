@@ -21,7 +21,7 @@ import {
   getContractPropertyOptions,
   getContractTenantOptions,
 } from "@/lib/data/admin";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { formatCurrency, toDateInputValue, toNumber } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 
@@ -46,7 +46,7 @@ function formatTenantLabel(tenant: {
 export default async function EditContractPage({
   params,
 }: EditContractPageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CONTRACTS");
   const { contractId } = await params;
   const contract = await getContractForEdit(contractId);
 

@@ -8,29 +8,62 @@ import {
   Share2,
   ClockArrowDown,
   WalletCards,
+  type LucideIcon,
 } from "lucide-react";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { getRecurringChargesOverview } from "@/lib/data/billing";
 import { getBillingOverview } from "@/lib/data/dashboard";
 import { BillingMonitorWorkspace } from "@/components/billing/billing-monitor-workspace";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
-import { DashboardMetricCard } from "@/components/dashboard/metric-card";
-import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { formatCurrency, toNumber } from "@/lib/format";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+function MetricPill({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon: LucideIcon;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card px-4 py-3 shadow-sm">
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <div className="flex size-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Icon className="size-4" />
+        </div>
+        <span className="text-xl font-semibold tracking-[-0.04em]">{value}</span>
+      </div>
+    </div>
+  );
+}
 
 export default async function BillingPage() {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_BILLING");
   const [invoices, recurringCharges] = await Promise.all([
     getBillingOverview(),
     getRecurringChargesOverview(),
   ]);
+
   const clientInvoices = invoices.map((invoice) => ({
     ...invoice,
     totalAmount: toNumber(invoice.totalAmount),
     balanceDue: toNumber(invoice.balanceDue),
+    items: invoice.items.map((item) => ({
+      ...item,
+      amount: toNumber(item.amount),
+      allocations: item.allocations.map((allocation) => ({
+        ...allocation,
+        amountAllocated: toNumber(allocation.amountAllocated),
+      })),
+    })),
   }));
+
   const openInvoices = invoices.filter((invoice) =>
     ["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(invoice.status)
   ).length;
@@ -46,137 +79,93 @@ export default async function BillingPage() {
     .reduce((sum, charge) => sum + toNumber(charge.amount), 0);
 
   return (
-    <div className="space-y-6">
-      <DashboardPageHero
-        eyebrow="Operations / Billing"
-        title="Billing monitor"
-        description="Invoices are generated from contract billing anchors, recurring charges, COSA allocations, and tenant utility readings. This is the receivables queue for collection follow-up and payment allocation."
-        icon={ReceiptText}
-        badges={["Cycle-driven", "Recurring-charge aware", "Payment allocation ready"]}
-        action={
-          <div className="flex flex-wrap gap-2">
-            <Button
-              render={<Link href="/billing/backlog" />}
-              variant="outline"
-              className="button-blank rounded-full"
-            >
-              <ClockArrowDown />
-              Backlog
-            </Button>
-            <Button
-              render={<Link href="/billing/cosa" />}
-              variant="outline"
-              className="button-blank rounded-full"
-            >
-              <Share2 />
-              COSA
-            </Button>
-            <Button
-              render={<Link href="/billing/charges" />}
-              variant="outline"
-              className="button-blank rounded-full"
-            >
-              <Repeat2 />
-              Manage charges
-            </Button>
-            <Button render={<Link href="/billing/generate" />} className="rounded-full">
-              <Plus />
-              Generate invoices
-            </Button>
-          </div>
-        }
-      />
+    <div className="space-y-5 overflow-x-hidden">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-[-0.05em] sm:text-[2rem]">
+          Billing monitor
+        </h1>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            render={<Link href="/billing/backlog" />}
+            variant="outline"
+            className="rounded-full"
+          >
+            <ClockArrowDown />
+            Backlog
+          </Button>
+          <Button
+            render={<Link href="/billing/cosa" />}
+            variant="outline"
+            className="rounded-full"
+          >
+            <Share2 />
+            COSA
+          </Button>
+          <Button
+            render={<Link href="/billing/charges" />}
+            variant="outline"
+            className="rounded-full"
+          >
+            <Repeat2 />
+            Charges
+          </Button>
+          <Button render={<Link href="/billing/generate" />} className="rounded-full">
+            <Plus />
+            Generate
+          </Button>
+        </div>
+      </header>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardMetricCard
-          label="Visible invoices"
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricPill
+          label="Invoices"
           value={String(clientInvoices.length)}
-          detail="Invoices currently surfaced by the billing queue."
           icon={ReceiptText}
         />
-        <DashboardMetricCard
-          label="Open invoices"
-          value={String(openInvoices)}
-          detail="Issued, partially paid, or overdue billing records."
-          icon={Clock3}
-        />
-        <DashboardMetricCard
-          label="Active recurring"
+        <MetricPill label="Open" value={String(openInvoices)} icon={Clock3} />
+        <MetricPill
+          label="Recurring"
           value={String(activeRecurringCharges)}
-          detail={`${formatCurrency(recurringMonthlyValue)} in scheduled monthly charges.`}
           icon={Repeat2}
         />
-        <DashboardMetricCard
-          label="Balance due"
+        <MetricPill
+          label="Balance Due"
           value={formatCurrency(totalReceivables)}
-          detail="Current receivables still awaiting collection."
           icon={Scale}
         />
       </section>
 
-      <Card className="rounded-xl border-border/60 bg-card shadow-sm">
-        <CardHeader>
-          <div className="flex flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle>Invoice table</CardTitle>
-              <CardDescription>
-                Due dates, tenant assignments, payment counts, and remaining balances in one queue.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                render={<Link href="/billing/backlog" />}
-                variant="outline"
-                className="button-blank rounded-full"
-              >
-                <ClockArrowDown />
-                Backlog
-              </Button>
-              <Button
-                render={<Link href="/billing/cosa" />}
-                variant="outline"
-                className="button-blank rounded-full"
-              >
-                <Share2 />
-                COSA
-              </Button>
-              <Button
-                render={<Link href="/billing/charges" />}
-                variant="outline"
-                className="button-blank rounded-full"
-              >
-                <Repeat2 />
-                Charges
-              </Button>
-              <Button
-                render={<Link href="/billing/generate" />}
-                variant="outline"
-                className="button-blank rounded-full"
-              >
-                <Plus />
-                Generate
-              </Button>
-            </div>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3 px-1">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Queue
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="rounded-full">
+              {clientInvoices.length} invoices
+            </Badge>
+            <Badge variant="outline" className="rounded-full">
+              {formatCurrency(recurringMonthlyValue)} recurring
+            </Badge>
           </div>
-        </CardHeader>
-        <CardContent>
-          {clientInvoices.length === 0 ? (
-            <DashboardEmptyState
-              icon={WalletCards}
-              title="No invoices yet"
-              description="Generate the first billing run from active contracts, recurring charges, COSA allocations, and dedicated tenant meter readings. Once invoices exist, this becomes the daily collections and follow-up view."
-              action={
-                <Button render={<Link href="/billing/generate" />} className="rounded-full">
-                  <Plus />
-                  Generate first invoices
-                </Button>
-              }
-            />
-          ) : (
-            <BillingMonitorWorkspace invoices={clientInvoices} />
-          )}
-        </CardContent>
-      </Card>
+        </div>
+
+        {clientInvoices.length === 0 ? (
+          <DashboardEmptyState
+            icon={WalletCards}
+            title="No invoices yet"
+            description="Generate the first billing run."
+            action={
+              <Button render={<Link href="/billing/generate" />} className="rounded-full">
+                <Plus />
+                Generate first invoices
+              </Button>
+            }
+          />
+        ) : (
+          <BillingMonitorWorkspace invoices={clientInvoices} />
+        )}
+      </section>
     </div>
   );
 }

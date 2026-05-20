@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   buildRentScheduleRows,
   calculateAdjustedMonthlyRent,
@@ -42,7 +42,7 @@ function formatTenantLabel(tenant: {
 export default async function ContractAdjustmentsPage({
   params,
 }: ContractAdjustmentsPageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CONTRACTS");
   const { contractId } = await params;
   const contract = await getContractRentAdjustmentOverview(contractId);
 

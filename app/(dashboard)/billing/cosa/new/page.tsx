@@ -14,7 +14,7 @@ import { CosaForm } from "@/components/billing/cosa-form";
 import { Button } from "@/components/ui/button";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   getCosaContractOptions,
   getCosaPropertyOptions,
@@ -41,7 +41,7 @@ type NewBillingCosaPageProps = {
 export default async function NewBillingCosaPage({
   searchParams,
 }: NewBillingCosaPageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_COSA");
   const rawSearchParams = await searchParams;
   const requestedPropertyId =
     typeof rawSearchParams.propertyId === "string" ? rawSearchParams.propertyId : "";

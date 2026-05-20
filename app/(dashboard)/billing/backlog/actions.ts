@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   getHistoricalBacklogCutoffDate,
   getHistoricalBacklogLatestDate,
@@ -1577,7 +1577,7 @@ export async function createHistoricalBacklogAction(
   _previousState: HistoricalBacklogFormState,
   formData: FormData
 ): Promise<HistoricalBacklogFormState> {
-  const user = await requireRole("ADMIN");
+  const user = await requireCapability("MANAGE_BACKLOG");
   const payload = getHistoricalBacklogPayload(formData);
   const parseError = getHistoricalBacklogParseError(payload);
 
@@ -1632,7 +1632,7 @@ export async function createHistoricalBacklogBulkAction(
   _previousState: HistoricalBacklogBulkFormState,
   formData: FormData
 ): Promise<HistoricalBacklogBulkFormState> {
-  const user = await requireRole("ADMIN");
+  const user = await requireCapability("MANAGE_BACKLOG");
   const payload = getHistoricalBacklogBulkPayload(formData);
   const parseError = getHistoricalBacklogBulkParseError(payload);
 

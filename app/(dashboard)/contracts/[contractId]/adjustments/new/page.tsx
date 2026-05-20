@@ -4,7 +4,7 @@ import { createRentAdjustmentAction } from "@/app/(dashboard)/contracts/actions"
 import { RentAdjustmentForm } from "@/components/contracts/rent-adjustment-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import {
   formatContractEndDate,
   isOpenEndedContractEndDate,
@@ -33,7 +33,7 @@ function formatTenantLabel(tenant: {
 export default async function NewContractAdjustmentPage({
   params,
 }: NewContractAdjustmentPageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_CONTRACTS");
   const { contractId } = await params;
   const contract = await getContractRentAdjustmentOverview(contractId);
 

@@ -5,6 +5,7 @@ import { del, put } from "@vercel/blob";
 
 const PROPERTY_LOGO_PREFIX = "uploads/property-logos/";
 const INVOICE_TEMPLATE_LOGO_PREFIX = "uploads/invoice-templates/";
+const USER_AVATAR_PREFIX = "uploads/user-avatars/";
 const MAX_PROPERTY_LOGO_BYTES = 2 * 1024 * 1024;
 
 export function getManagedLogoUrl(pathname: string) {
@@ -76,6 +77,10 @@ export function getInvoiceTemplateLogoFileError(file: File) {
   return getPngFileError(file);
 }
 
+export function getUserAvatarFileError(file: File) {
+  return getPngFileError(file);
+}
+
 export async function storePropertyLogoFile(file: File) {
   return storeLogoFile(file, PROPERTY_LOGO_PREFIX);
 }
@@ -84,10 +89,18 @@ export async function storeInvoiceTemplateLogoFile(file: File) {
   return storeLogoFile(file, INVOICE_TEMPLATE_LOGO_PREFIX);
 }
 
+export async function storeUserAvatarFile(file: File) {
+  return storeLogoFile(file, USER_AVATAR_PREFIX);
+}
+
 export async function removePropertyLogoFile(storageKey?: string | null) {
   await removeLogoFile(storageKey, PROPERTY_LOGO_PREFIX);
 }
 
 export async function removeInvoiceTemplateLogoFile(storageKey?: string | null) {
   await removeLogoFile(storageKey, INVOICE_TEMPLATE_LOGO_PREFIX);
+}
+
+export async function removeUserAvatarFile(storageKey?: string | null) {
+  await removeLogoFile(storageKey, USER_AVATAR_PREFIX);
 }

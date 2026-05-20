@@ -3,7 +3,7 @@
 import type { Prisma } from "@prisma/client";
 import type { ZodError } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { prisma } from "@/lib/prisma";
 import { tenantSchema, type TenantInput } from "@/lib/validations/tenant";
 
@@ -219,7 +219,7 @@ export async function createTenantAction(
   _previousState: TenantFormState,
   formData: FormData
 ): Promise<TenantFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_TENANTS");
 
   const payload = getTenantPayload(formData);
   const peopleParseError = getPeopleFieldError(payload);
@@ -265,7 +265,7 @@ export async function updateTenantAction(
   _previousState: TenantFormState,
   formData: FormData
 ): Promise<TenantFormState> {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_TENANTS");
 
   const existingTenant = await prisma.tenant.findUnique({
     where: { id: tenantId },

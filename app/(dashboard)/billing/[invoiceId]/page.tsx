@@ -9,7 +9,7 @@ import {
 import { recordPaymentAction } from "@/app/(dashboard)/billing/actions";
 import { deleteBacklogInvoiceAction } from "@/app/(dashboard)/billing/[invoiceId]/actions";
 import { RecordPaymentSheet } from "@/components/billing/record-payment-sheet";
-import { requireRole } from "@/lib/auth/user";
+import { requireCapability } from "@/lib/auth/user";
 import { InvoiceDocument } from "@/components/billing/invoice-document";
 import { InvoicePdfLauncher } from "@/components/billing/invoice-pdf-launcher";
 import { generateInvoiceQrDataUrl } from "@/lib/billing/invoice-qr";
@@ -30,7 +30,7 @@ type InvoiceDetailPageProps = {
 export default async function InvoiceDetailPage({
   params,
 }: InvoiceDetailPageProps) {
-  await requireRole("ADMIN");
+  await requireCapability("MANAGE_BILLING");
   const { invoiceId } = await params;
   const invoice = await getInvoiceForView(invoiceId);
 

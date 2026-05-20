@@ -215,5 +215,7 @@
   .invoice-print-surface * {
     font-synthesis: none;
     font-synthesis-weight: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

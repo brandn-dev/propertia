@@ -4,13 +4,19 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { getSession } from "@/lib/auth/session";
-import type { AppRole } from "@/lib/auth/roles";
+import {
+  hasAnyCapability,
+  type AppCapability,
+  type AppRole,
+} from "@/lib/auth/roles";
 
 export type AuthUser = {
   id: string;
   username: string;
   displayName: string;
   role: AppRole;
+  capabilities: AppCapability[];
+  avatarUrl: string | null;
   isActive: boolean;
   lastLoginAt: Date | null;
 };
@@ -30,6 +36,8 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
         username: true,
         displayName: true,
         role: true,
+        capabilities: true,
+        avatarUrl: true,
         isActive: true,
         lastLoginAt: true,
       },
@@ -58,6 +66,26 @@ export async function requireRole(roles: AppRole | AppRole[]) {
   const allowedRoles = Array.isArray(roles) ? roles : [roles];
 
   if (!allowedRoles.includes(user.role)) {
+    redirect("/unauthorized");
+  }
+
+  return user;
+}
+
+export async function requireCapability(capability: AppCapability) {
+  const user = await requireUser();
+
+  if (!hasAnyCapability(user, [capability])) {
+    redirect("/unauthorized");
+  }
+
+  return user;
+}
+
+export async function requireAnyCapability(capabilities: readonly AppCapability[]) {
+  const user = await requireUser();
+
+  if (!hasAnyCapability(user, capabilities)) {
     redirect("/unauthorized");
   }
 

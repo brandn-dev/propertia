@@ -6,10 +6,10 @@ import {
   getUtilityPropertyOptions,
   getUtilityTenantOptions,
 } from "@/lib/data/admin";
-import { requireRole } from "@/lib/auth/user";
+import { requireAnyCapability } from "@/lib/auth/user";
 
 export default async function NewUtilityMeterPage() {
-  await requireRole("ADMIN");
+  await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
   const [propertyOptions, tenantOptions] = await Promise.all([
     getUtilityPropertyOptions(),
     getUtilityTenantOptions(),

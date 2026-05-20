@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth/user";
+import { buildInvoicePdfDebugHeaders } from "@/lib/billing/invoice-pdf-debug";
 import { renderInvoiceBestPdfBuffer, buildInvoicePdfFilename } from "@/lib/billing/invoice-pdf";
 import { parseInvoicePaperSize } from "@/lib/billing/invoice-pdf-options";
 import { buildInvoicePresentationModel } from "@/lib/billing/invoice-presenter";
@@ -33,9 +34,10 @@ export async function GET(
   const shouldDownload = url.searchParams.get("download") === "1";
   const paperSize = parseInvoicePaperSize(url.searchParams.get("paper"));
   const model = buildInvoicePresentationModel(invoice);
-  const pdfBuffer = await renderInvoiceBestPdfBuffer({
+  const { buffer: pdfBuffer, renderer } = await renderInvoiceBestPdfBuffer({
     requestUrl: request.url,
     invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
     model,
     options: {
       variant: "public",
@@ -50,6 +52,11 @@ export async function GET(
       "Content-Type": "application/pdf",
       "Content-Disposition": `${shouldDownload ? "attachment" : "inline"}; filename="${filename}"`,
       "Cache-Control": "private, no-store",
+      ...buildInvoicePdfDebugHeaders({
+        invoiceId: invoice.id,
+        issueDate: invoice.issueDate,
+        renderer,
+      }),
     },
   });
 }

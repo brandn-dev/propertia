@@ -1,6 +1,7 @@
 import {
   Building2,
   Bell,
+  ShieldCheck,
   Clock3,
   CopyPlus,
   FileSpreadsheet,
@@ -15,16 +16,22 @@ import {
   Users2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { AppRole } from "@/lib/auth/roles";
+import {
+  hasCapability,
+  type AppCapability,
+  type AppRole,
+} from "@/lib/auth/roles";
 
 export type AppRoute = {
   title: string;
   href: string;
   description: string;
   group: "Workspace" | "Operations";
-  roles: AppRole[];
+  roles?: AppRole[];
+  capability?: AppCapability;
   icon: LucideIcon;
   badge?: string;
+  visibleInNav?: boolean;
 };
 
 export const APP_ROUTES: AppRoute[] = [
@@ -33,7 +40,7 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/dashboard",
     description: "Portfolio health, billing, and utility activity at a glance.",
     group: "Workspace",
-    roles: ["ADMIN", "METER_READER"],
+    capability: "VIEW_DASHBOARD",
     icon: LayoutDashboard,
   },
   {
@@ -41,7 +48,7 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/properties",
     description: "Owned, leased, and nested property records.",
     group: "Workspace",
-    roles: ["ADMIN"],
+    capability: "MANAGE_PROPERTIES",
     icon: Building2,
   },
   {
@@ -49,15 +56,31 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/tenants",
     description: "Reusable tenant records and contract participation.",
     group: "Workspace",
-    roles: ["ADMIN"],
+    capability: "MANAGE_TENANTS",
     icon: Users2,
+  },
+  {
+    title: "People",
+    href: "/people",
+    description: "Reusable renter and contact records linked across tenants.",
+    group: "Workspace",
+    capability: "MANAGE_PEOPLE",
+    icon: ShieldCheck,
+  },
+  {
+    title: "Users",
+    href: "/users",
+    description: "App accounts, staff access, and profile setup.",
+    group: "Workspace",
+    roles: ["ADMIN"],
+    icon: ShieldCheck,
   },
   {
     title: "Contracts",
     href: "/contracts",
     description: "Lease terms, rent schedules, and contract status.",
     group: "Operations",
-    roles: ["ADMIN"],
+    capability: "MANAGE_CONTRACTS",
     icon: FileSpreadsheet,
   },
   {
@@ -65,7 +88,7 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/billing",
     description: "Invoices, balances, and collection status.",
     group: "Operations",
-    roles: ["ADMIN"],
+    capability: "MANAGE_BILLING",
     icon: ReceiptText,
   },
   {
@@ -73,15 +96,16 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/billing/invoice-templates",
     description: "Reusable invoice branding presets and property assignments.",
     group: "Operations",
-    roles: ["ADMIN"],
+    capability: "MANAGE_INVOICE_TEMPLATES",
     icon: Palette,
+    visibleInNav: false,
   },
   {
     title: "Charges",
     href: "/billing/charges",
     description: "Recurring monthly contract charges like internet or parking.",
     group: "Operations",
-    roles: ["ADMIN"],
+    capability: "MANAGE_CHARGES",
     icon: Repeat2,
   },
   {
@@ -89,7 +113,7 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/billing/backlog",
     description: "Historical manual billing entry before the strict operational cutoff.",
     group: "Operations",
-    roles: ["ADMIN"],
+    capability: "MANAGE_BACKLOG",
     icon: Clock3,
     badge: "History",
   },
@@ -98,7 +122,7 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/billing/cosa",
     description: "Shared common charges allocated across selected tenant contracts.",
     group: "Operations",
-    roles: ["ADMIN"],
+    capability: "MANAGE_COSA",
     icon: Share2,
   },
   {
@@ -106,7 +130,7 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/billing/cosa/templates",
     description: "Reusable COSA presets for security, maintenance, water, and electricity.",
     group: "Operations",
-    roles: ["ADMIN"],
+    capability: "MANAGE_COSA",
     icon: CopyPlus,
   },
   {
@@ -114,7 +138,7 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/utilities",
     description: "Meter registry and the utility reading workflow.",
     group: "Operations",
-    roles: ["ADMIN", "METER_READER"],
+    capability: "MANAGE_UTILITIES",
     icon: Gauge,
   },
   {
@@ -122,7 +146,7 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/utilities/meters",
     description: "Utility meter registry and assignments.",
     group: "Operations",
-    roles: ["ADMIN", "METER_READER"],
+    capability: "MANAGE_METERS",
     icon: Rows4,
   },
   {
@@ -130,13 +154,32 @@ export const APP_ROUTES: AppRoute[] = [
     href: "/utilities/readings",
     description: "Chronological utility reading captures.",
     group: "Operations",
-    roles: ["ADMIN", "METER_READER"],
+    capability: "RECORD_READINGS",
     icon: ScanLine,
   },
 ];
 
-export function getRoutesForRole(role: AppRole) {
-  return APP_ROUTES.filter((route) => route.roles.includes(role));
+type RouteUser = {
+  role: AppRole;
+  capabilities: AppCapability[];
+};
+
+export function canAccessRoute(route: AppRoute, user: RouteUser) {
+  if (route.roles?.includes(user.role)) {
+    return true;
+  }
+
+  if (!route.capability) {
+    return false;
+  }
+
+  return hasCapability(user, route.capability);
+}
+
+export function getRoutesForUser(user: RouteUser) {
+  return APP_ROUTES.filter(
+    (route) => route.visibleInNav !== false && canAccessRoute(route, user)
+  );
 }
 
 export function getRouteMeta(pathname: string) {
@@ -146,7 +189,7 @@ export function getRouteMeta(pathname: string) {
       href: "/notifications",
       description: "Persistent system alerts and inbox items.",
       group: "Workspace" as const,
-      roles: ["ADMIN", "METER_READER"] as AppRole[],
+      roles: ["ADMIN", "STAFF"] as AppRole[],
       icon: Bell,
     };
   }

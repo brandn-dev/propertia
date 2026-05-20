@@ -11,7 +11,7 @@ import {
   getUtilityPropertyOptions,
   getUtilityTenantOptions,
 } from "@/lib/data/admin";
-import { requireRole } from "@/lib/auth/user";
+import { requireAnyCapability } from "@/lib/auth/user";
 
 function formatTenantName(tenant: {
   firstName: string | null;
@@ -34,7 +34,7 @@ type EditUtilityMeterPageProps = {
 export default async function EditUtilityMeterPage({
   params,
 }: EditUtilityMeterPageProps) {
-  await requireRole("ADMIN");
+  await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
   const { meterId } = await params;
   const meter = await getUtilityMeterForEdit(meterId);
 
