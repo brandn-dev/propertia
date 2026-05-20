@@ -102,8 +102,7 @@ export function RecurringChargeForm({
                 <option value="">Select a contract</option>
                 {contractOptions.map((contract) => (
                   <option key={contract.id} value={contract.id}>
-                    {contract.property.propertyCode} · {formatTenantName(contract.tenant)} ·
-                    bills from {contract.paymentAnchorLabel}
+                    {formatTenantName(contract.tenant)}
                   </option>
                 ))}
               </select>

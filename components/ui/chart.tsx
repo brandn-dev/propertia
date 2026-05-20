@@ -41,7 +41,7 @@ export function ChartContainer({
       <div
         data-slot="chart"
         className={cn(
-          "h-full w-full text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground/80 [&_.recharts-cartesian-grid_line]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-none [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border/60",
+          "h-full min-h-0 w-full min-w-0 text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground/80 [&_.recharts-cartesian-grid_line]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-none [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border/60",
           className
         )}
         style={style}
@@ -49,6 +49,58 @@ export function ChartContainer({
         {children}
       </div>
     </ChartContext.Provider>
+  );
+}
+
+export function ChartResponsiveContainer({
+  className,
+  children,
+}: React.ComponentProps<"div">) {
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = React.useState({ width: 0, height: 0 });
+
+  React.useEffect(() => {
+    const node = containerRef.current;
+
+    if (!node) {
+      return;
+    }
+
+    const updateSize = () => {
+      const nextWidth = Math.floor(node.clientWidth);
+      const nextHeight = Math.floor(node.clientHeight);
+
+      setSize((current) =>
+        current.width === nextWidth && current.height === nextHeight
+          ? current
+          : { width: nextWidth, height: nextHeight }
+      );
+    };
+
+    updateSize();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateSize();
+    });
+
+    resizeObserver.observe(node);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      className={cn("h-full min-h-0 w-full min-w-0", className)}
+    >
+      {size.width > 0 && size.height > 0 ? (
+        <RechartsPrimitive.ResponsiveContainer width="100%" height="100%">
+          {children}
+        </RechartsPrimitive.ResponsiveContainer>
+      ) : null}
+    </div>
   );
 }
 

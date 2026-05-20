@@ -18,7 +18,9 @@ function isValidUnitCount(value: string) {
 }
 
 export const cosaAllocationInputSchema = z.object({
-  contractId: z.string().trim().min(1, "Select at least one tenant contract."),
+  entryId: z.string().trim().min(1, "Allocation entry is invalid."),
+  contractId: z.string().trim().optional(),
+  helperLabel: z.string().trim().max(80, "Helper label must be 80 characters or fewer.").optional(),
   percentage: z.string().trim().optional(),
   unitCount: z.string().trim().optional(),
   amount: z.string().trim().optional(),
@@ -67,13 +69,61 @@ export const cosaSchema = z
       });
     }
 
-    const uniqueContractIds = new Set(value.allocations.map((allocation) => allocation.contractId));
+    const uniqueEntryIds = new Set(value.allocations.map((allocation) => allocation.entryId));
+    const contractAllocations = value.allocations.filter(
+      (allocation) => Boolean(allocation.contractId)
+    );
+    const helperAllocations = value.allocations.filter(
+      (allocation) => !allocation.contractId
+    );
 
-    if (uniqueContractIds.size !== value.allocations.length) {
+    if (uniqueEntryIds.size !== value.allocations.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["allocations"],
+        message: "One or more allocation entries are duplicated.",
+      });
+    }
+
+    if (contractAllocations.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["allocations"],
+        message: "Select at least one tenant contract.",
+      });
+    }
+
+    const uniqueContractIds = new Set(
+      contractAllocations.map((allocation) => allocation.contractId)
+    );
+
+    if (uniqueContractIds.size !== contractAllocations.length) {
       ctx.addIssue({
         code: "custom",
         path: ["allocations"],
         message: "Each tenant contract can only be selected once.",
+      });
+    }
+
+    for (const [index, allocation] of value.allocations.entries()) {
+      if (!allocation.contractId && !(allocation.helperLabel ?? "").trim()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["allocations", index, "helperLabel"],
+          message: "Enter a label for each helper row.",
+        });
+      }
+    }
+
+    if (
+      helperAllocations.length > 0 &&
+      value.allocationType !== "PERCENTAGE" &&
+      value.allocationType !== "PER_UNIT"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["allocations"],
+        message: "Helper rows are only available for percentage or unit splits.",
       });
     }
 

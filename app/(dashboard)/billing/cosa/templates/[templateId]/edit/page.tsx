@@ -5,8 +5,12 @@ import {
   Layers3,
   PencilLine,
 } from "lucide-react";
-import { updateCosaTemplateAction } from "@/app/(dashboard)/billing/actions";
+import {
+  deleteCosaTemplateAction,
+  updateCosaTemplateAction,
+} from "@/app/(dashboard)/billing/actions";
 import { CosaTemplateForm } from "@/components/billing/cosa-template-form";
+import { DeleteCosaTemplateButton } from "@/components/billing/delete-cosa-template-button";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { requireCapability } from "@/lib/auth/user";
@@ -34,10 +38,15 @@ export default async function EditBillingCosaTemplatePage({
     notFound();
   }
 
+  const meterUtilityTypeFilter = template.meter?.utilityType ?? null;
   const [propertyOptions, meterOptions, contractOptionsRaw] = await Promise.all([
     getCosaPropertyOptions(template.propertyId),
-    getCosaSharedMeterOptions(template.meterId ?? undefined),
-    getCosaContractOptions(template.allocations.map((allocation) => allocation.contract.id)),
+    getCosaSharedMeterOptions(template.meterId ?? undefined, meterUtilityTypeFilter ?? undefined),
+    getCosaContractOptions(
+      template.allocations.flatMap((allocation) =>
+        allocation.contract ? [allocation.contract.id] : []
+      )
+    ),
   ]);
   const contractOptions = contractOptionsRaw.map((contract) => ({
     id: contract.id,
@@ -55,6 +64,7 @@ export default async function EditBillingCosaTemplatePage({
     tenant: contract.tenant,
   }));
   const action = updateCosaTemplateAction.bind(null, template.id);
+  const deleteAction = deleteCosaTemplateAction.bind(null, template.id);
 
   return (
     <div className="space-y-6">
@@ -83,9 +93,9 @@ export default async function EditBillingCosaTemplatePage({
           icon={CircleDollarSign}
         />
         <DashboardMetricCard
-          label="Selected tenants"
+          label="Participants"
           value={String(template.allocations.length)}
-          detail="Tenant contracts currently included in this reusable split."
+          detail="Tenant and helper participants currently included in this reusable split."
           icon={Layers3}
         />
         <DashboardMetricCard
@@ -101,6 +111,7 @@ export default async function EditBillingCosaTemplatePage({
         formAction={action}
         propertyOptions={propertyOptions}
         meterOptions={meterOptions}
+        meterUtilityTypeFilter={meterUtilityTypeFilter}
         contractOptions={contractOptions}
         initialValues={{
           propertyId: template.propertyId,
@@ -110,12 +121,20 @@ export default async function EditBillingCosaTemplatePage({
           defaultAmount: template.defaultAmount?.toString() ?? "",
           isActive: template.isActive,
           allocations: template.allocations.map((allocation) => ({
-            contractId: allocation.contract.id,
+            entryId: allocation.contract?.id ?? `helper:${allocation.id}`,
+            contractId: allocation.contract?.id ?? "",
+            helperLabel: allocation.helperLabel ?? "",
+            isHelper: !allocation.contract,
             percentage: allocation.percentage?.toString() ?? "",
             unitCount: allocation.unitCount?.toString() ?? "",
             amount: allocation.amount?.toString() ?? "",
           })),
         }}
+      />
+
+      <DeleteCosaTemplateButton
+        action={deleteAction}
+        templateName={template.name}
       />
     </div>
   );

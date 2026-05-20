@@ -26,7 +26,12 @@ import {
 } from "@/components/ui/table";
 import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
 import { INVOICE_ORIGIN_LABELS } from "@/lib/form-options";
-import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
+import {
+  formatCurrency,
+  formatDate,
+  getDatePartsInAppTimeZone,
+  toDateInputValue,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type BillingInvoice = {
@@ -98,6 +103,27 @@ type TenantGroup = {
   invoices: BillingInvoice[];
 };
 
+const MONTH_OPTIONS = [
+  { value: "01", label: "January" },
+  { value: "02", label: "February" },
+  { value: "03", label: "March" },
+  { value: "04", label: "April" },
+  { value: "05", label: "May" },
+  { value: "06", label: "June" },
+  { value: "07", label: "July" },
+  { value: "08", label: "August" },
+  { value: "09", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+] as const;
+
+type MonthValue = (typeof MONTH_OPTIONS)[number]["value"];
+
+function isMonthValue(value: string): value is MonthValue {
+  return MONTH_OPTIONS.some((option) => option.value === value);
+}
+
 function formatTenantName(tenant: BillingInvoice["tenant"]) {
   return (
     tenant.businessName ||
@@ -133,6 +159,10 @@ function getPayableItems(invoice: BillingInvoice) {
       };
     })
     .filter((item) => item.remainingAmount > 0);
+}
+
+function getInvoiceFilterParts(invoice: BillingInvoice) {
+  return getDatePartsInAppTimeZone(invoice.billingPeriodStart);
 }
 
 function InvoiceActions({
@@ -244,14 +274,6 @@ function InvoiceCards({ invoices }: { invoices: BillingInvoice[] }) {
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Building
-              </p>
-              <p className="mt-1 text-sm">
-                {invoice.contract.property.parent?.name ?? invoice.contract.property.name}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                 Business
               </p>
               <p className="mt-1 text-sm">{formatTenantName(invoice.tenant)}</p>
@@ -267,9 +289,9 @@ function InvoiceCards({ invoices }: { invoices: BillingInvoice[] }) {
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Due / Balance
+                Issued / Balance
               </p>
-              <p className="mt-1 text-sm">{formatDate(invoice.dueDate)}</p>
+              <p className="mt-1 text-sm">{formatDate(invoice.issueDate)}</p>
               <p className="text-xs text-muted-foreground">
                 {formatCurrency(invoice.balanceDue)}
               </p>
@@ -294,11 +316,10 @@ function InvoiceTable({ invoices }: { invoices: BillingInvoice[] }) {
         <Table className="w-full table-fixed">
           <TableHeader>
             <TableRow className="border-border/60">
-              <TableHead className="w-[18%]">Invoice</TableHead>
-              <TableHead className="w-[14%]">Building</TableHead>
+              <TableHead className="w-[22%]">Invoice</TableHead>
               <TableHead className="w-[14%]">Business</TableHead>
-              <TableHead className="w-[13%]">Space</TableHead>
-              <TableHead className="w-[10%]">Due Date</TableHead>
+              <TableHead className="w-[15%]">Space</TableHead>
+              <TableHead className="w-[10%]">Issued Date</TableHead>
               <TableHead className="w-[8%]">Status</TableHead>
               <TableHead className="w-[6%] text-right">Payments</TableHead>
               <TableHead className="w-[8%] text-right">Balance</TableHead>
@@ -317,11 +338,6 @@ function InvoiceTable({ invoices }: { invoices: BillingInvoice[] }) {
                   </p>
                 </TableCell>
                 <TableCell className="align-top">
-                  <p className="truncate">
-                    {invoice.contract.property.parent?.name ?? invoice.contract.property.name}
-                  </p>
-                </TableCell>
-                <TableCell className="align-top">
                   <p className="truncate">{formatTenantName(invoice.tenant)}</p>
                 </TableCell>
                 <TableCell className="align-top">
@@ -330,7 +346,7 @@ function InvoiceTable({ invoices }: { invoices: BillingInvoice[] }) {
                     {invoice.contract.property.propertyCode}
                   </p>
                 </TableCell>
-                <TableCell className="align-top">{formatDate(invoice.dueDate)}</TableCell>
+                <TableCell className="align-top">{formatDate(invoice.issueDate)}</TableCell>
                 <TableCell className="align-top">
                   <Badge variant="outline" className="rounded-full">
                     {formatStatusLabel(invoice.status)}
@@ -357,13 +373,38 @@ export function BillingMonitorWorkspace({
 }: BillingMonitorWorkspaceProps) {
   const [selectedBuildingId, setSelectedBuildingId] = useState("all");
   const [selectedTenantId, setSelectedTenantId] = useState("all");
+  const [selectedYear, setSelectedYear] = useState("all");
+  const [selectedMonth, setSelectedMonth] = useState<MonthValue | "all">("all");
   const [page, setPage] = useState(1);
   const pageSize = 8;
+
+  const sortedInvoices = useMemo(
+    () =>
+      [...invoices].sort((left, right) => {
+        const billingDelta =
+          right.billingPeriodStart.getTime() - left.billingPeriodStart.getTime();
+
+        if (billingDelta !== 0) {
+          return billingDelta;
+        }
+
+        const issueDelta = right.issueDate.getTime() - left.issueDate.getTime();
+
+        if (issueDelta !== 0) {
+          return issueDelta;
+        }
+
+        return right.invoiceNumber.localeCompare(left.invoiceNumber, undefined, {
+          numeric: true,
+        });
+      }),
+    [invoices]
+  );
 
   const buildingGroups = useMemo<BuildingGroup[]>(() => {
     const grouped = new Map<string, BuildingGroup>();
 
-    for (const invoice of invoices) {
+    for (const invoice of sortedInvoices) {
       const building = invoice.contract.property.parent ?? invoice.contract.property;
       const existing = grouped.get(building.id);
 
@@ -383,14 +424,14 @@ export function BillingMonitorWorkspace({
     return [...grouped.values()].sort((left, right) =>
       left.label.localeCompare(right.label, undefined, { numeric: true })
     );
-  }, [invoices]);
+  }, [sortedInvoices]);
 
   const buildingInvoices = useMemo(
     () =>
       selectedBuildingId === "all"
-        ? invoices
+        ? sortedInvoices
         : buildingGroups.find((group) => group.id === selectedBuildingId)?.invoices ?? [],
-    [buildingGroups, invoices, selectedBuildingId]
+    [buildingGroups, selectedBuildingId, sortedInvoices]
   );
 
   const tenantGroups = useMemo<TenantGroup[]>(() => {
@@ -421,13 +462,75 @@ export function BillingMonitorWorkspace({
       ? selectedTenantId
       : "all";
 
-  const filteredInvoices =
-    effectiveTenantId === "all"
-      ? buildingInvoices
-      : tenantGroups.find((group) => group.id === effectiveTenantId)?.invoices ?? [];
+  const tenantScopedInvoices = useMemo(
+    () =>
+      effectiveTenantId === "all"
+        ? buildingInvoices
+        : tenantGroups.find((group) => group.id === effectiveTenantId)?.invoices ?? [],
+    [buildingInvoices, effectiveTenantId, tenantGroups]
+  );
+
+  const yearOptions = useMemo(
+    () =>
+      [...new Set(
+        tenantScopedInvoices
+          .map((invoice) => getInvoiceFilterParts(invoice)?.year ?? null)
+          .filter((value): value is string => value !== null)
+      )].sort((left, right) => Number(right) - Number(left)),
+    [tenantScopedInvoices]
+  );
+
+  const effectiveYear =
+    selectedYear === "all" || yearOptions.includes(selectedYear) ? selectedYear : "all";
+
+  const monthOptions = useMemo(
+    () =>
+      MONTH_OPTIONS.filter(({ value }) =>
+        tenantScopedInvoices.some((invoice) => {
+          const parts = getInvoiceFilterParts(invoice);
+
+          if (!parts) {
+            return false;
+          }
+
+          if (effectiveYear !== "all" && parts.year !== effectiveYear) {
+            return false;
+          }
+
+          return parts.month === value;
+        })
+      ),
+    [effectiveYear, tenantScopedInvoices]
+  );
+
+  const monthOptionValues = monthOptions.map((option) => option.value);
+  const effectiveMonth =
+    selectedMonth === "all" ||
+    (isMonthValue(selectedMonth) && monthOptionValues.includes(selectedMonth))
+      ? selectedMonth
+      : "all";
+
+  const filteredInvoices = tenantScopedInvoices.filter((invoice) => {
+    const parts = getInvoiceFilterParts(invoice);
+
+    if (!parts) {
+      return effectiveYear === "all" && effectiveMonth === "all";
+    }
+
+    if (effectiveYear !== "all" && parts.year !== effectiveYear) {
+      return false;
+    }
+
+    if (effectiveMonth !== "all" && parts.month !== effectiveMonth) {
+      return false;
+    }
+
+    return true;
+  });
 
   const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / pageSize));
-  const pageStart = (page - 1) * pageSize;
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
   const pagedInvoices = filteredInvoices.slice(pageStart, pageStart + pageSize);
   const selectedBalance = filteredInvoices.reduce(
     (sum, invoice) => sum + invoice.balanceDue,
@@ -532,6 +635,52 @@ export function BillingMonitorWorkspace({
             ))}
           </div>
         </div>
+
+        <div className="grid gap-3 pb-1 sm:grid-cols-2">
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Year
+            </p>
+            <select
+              value={effectiveYear}
+              onChange={(event) => {
+                setSelectedYear(event.target.value);
+                setSelectedMonth("all");
+                setPage(1);
+              }}
+              className="select-blank"
+            >
+              <option value="all">All years</option>
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Month
+            </p>
+            <select
+              value={effectiveMonth}
+              onChange={(event) => {
+                const nextMonth = event.target.value;
+                setSelectedMonth(nextMonth === "all" || isMonthValue(nextMonth) ? nextMonth : "all");
+                setPage(1);
+              }}
+              className="select-blank"
+            >
+              <option value="all">All months</option>
+              {monthOptions.map((month) => (
+                <option key={month.value} value={month.value}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       <Card className="rounded-2xl border border-border/60 bg-card shadow-sm">
@@ -548,7 +697,7 @@ export function BillingMonitorWorkspace({
             </p>
           </div>
           <Badge variant="outline" className="rounded-full">
-            Page {page} of {totalPages}
+            Page {currentPage} of {totalPages}
           </Badge>
         </CardHeader>
         <CardContent className="space-y-2 pt-0">
@@ -572,7 +721,7 @@ export function BillingMonitorWorkspace({
                     size="sm"
                     className="rounded-full"
                     onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
-                    disabled={page === 1}
+                    disabled={currentPage === 1}
                   >
                     Previous
                   </Button>
@@ -584,7 +733,7 @@ export function BillingMonitorWorkspace({
                     onClick={() =>
                       setPage((currentPage) => Math.min(totalPages, currentPage + 1))
                     }
-                    disabled={page === totalPages}
+                    disabled={currentPage === totalPages}
                   >
                     Next
                   </Button>

@@ -13,6 +13,7 @@ export const PROPERTY_STATUSES = [
   "ARCHIVED",
 ] as const;
 export const TENANT_TYPES = ["INDIVIDUAL", "BUSINESS"] as const;
+export const TENANT_STATUSES = ["ACTIVE", "ARCHIVED"] as const;
 export const RECURRING_CHARGE_TYPES = [
   "INTERNET",
   "PARKING",
@@ -77,6 +78,11 @@ export const PROPERTY_STATUS_LABELS = {
 export const TENANT_TYPE_LABELS = {
   INDIVIDUAL: "Individual",
   BUSINESS: "Business",
+} as const;
+
+export const TENANT_STATUS_LABELS = {
+  ACTIVE: "Active",
+  ARCHIVED: "Archived",
 } as const;
 
 export const RECURRING_CHARGE_TYPE_LABELS = {

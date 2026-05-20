@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireCapability } from "@/lib/auth/user";
 import {
   getInvoiceTemplateLogoFileError,
@@ -131,7 +132,10 @@ function getRecurringChargePayload(formData: FormData) {
 }
 
 function getCosaPayload(formData: FormData) {
-  const allocationsResult = parseAllocations(formData.get("allocations"));
+  const allocationsResult = parseAllocations(
+    formData.get("allocations"),
+    "COSA allocation data is invalid."
+  );
 
   return {
     propertyId: String(formData.get("propertyId") ?? ""),
@@ -147,7 +151,10 @@ function getCosaPayload(formData: FormData) {
 }
 
 function getCosaTemplatePayload(formData: FormData) {
-  const allocationsResult = parseAllocations(formData.get("allocations"));
+  const allocationsResult = parseAllocations(
+    formData.get("allocations"),
+    "COSA template allocation data is invalid."
+  );
 
   return {
     propertyId: String(formData.get("propertyId") ?? ""),
@@ -191,7 +198,10 @@ function getInvoiceBrandingTemplatePayload(formData: FormData) {
   };
 }
 
-function parseAllocations(value: FormDataEntryValue | null) {
+function parseAllocations(
+  value: FormDataEntryValue | null,
+  errorMessage = "Allocation data is invalid."
+) {
   const rawValue = String(value ?? "").trim();
 
   if (!rawValue) {
@@ -207,7 +217,7 @@ function parseAllocations(value: FormDataEntryValue | null) {
     if (!Array.isArray(parsed)) {
       return {
         allocations: [],
-        error: "Payment allocations are invalid.",
+        error: errorMessage,
       };
     }
 
@@ -218,13 +228,16 @@ function parseAllocations(value: FormDataEntryValue | null) {
   } catch {
     return {
       allocations: [],
-      error: "Payment allocations are invalid.",
+      error: errorMessage,
     };
   }
 }
 
 function getPaymentPayload(formData: FormData) {
-  const allocationsResult = parseAllocations(formData.get("allocations"));
+  const allocationsResult = parseAllocations(
+    formData.get("allocations"),
+    "Payment allocation data is invalid."
+  );
 
   return {
     paymentDate: String(formData.get("paymentDate") ?? ""),
@@ -259,7 +272,7 @@ function getCosaParseError(payload: ParsedCosaPayload): CosaFormState | null {
     errors: {
       allocations: [payload.allocationsParseError],
     },
-    message: "COSA allocations could not be read. Try again.",
+    message: "COSA allocation data could not be read. Refresh and try again.",
   };
 }
 
@@ -274,7 +287,8 @@ function getCosaTemplateParseError(
     errors: {
       allocations: [payload.allocationsParseError],
     },
-    message: "Template allocations could not be read. Try again.",
+    message:
+      "COSA template allocation data could not be read. Refresh and try again.",
   };
 }
 
@@ -1035,11 +1049,7 @@ export async function generateInvoicesAction(
                 })),
                 ...cycleCosaAllocations.map((allocation) => ({
                   itemType: "COSA" as const,
-                  description: `${allocation.cosa.description} · ${allocation.cosa.billingDate.toISOString().slice(0, 10)}${
-                    allocation.cosa.meter
-                      ? ` · ${allocation.cosa.meter.utilityType.replaceAll("_", " ")} ${allocation.cosa.meter.meterCode}`
-                      : ""
-                  }`,
+                  description: allocation.cosa.description,
                   quantity: toMoney(1),
                   unitPrice: toMoney(Number(allocation.computedAmount.toString())),
                   amount: toMoney(Number(allocation.computedAmount.toString())),
@@ -1145,8 +1155,8 @@ export async function createCosaAction(
     };
   }
 
-  const contractIds = validatedFields.data.allocations.map(
-    (allocation) => allocation.contractId
+  const contractIds = validatedFields.data.allocations.flatMap((allocation) =>
+    allocation.contractId ? [allocation.contractId] : []
   );
   const selectionValidation = await validateCosaSelections({
     propertyId: validatedFields.data.propertyId,
@@ -1193,10 +1203,12 @@ export async function createCosaAction(
       allocationType: validatedFields.data.allocationType,
       totalAmount: resolvedTotalAmount,
       entries: validatedFields.data.allocations.map((allocation) => {
-        const contract = contractMap.get(allocation.contractId);
+        const contract = allocation.contractId
+          ? contractMap.get(allocation.contractId)
+          : undefined;
 
         return {
-          contractId: allocation.contractId,
+          contractId: allocation.entryId,
           percentage:
             allocation.percentage && allocation.percentage !== ""
               ? Number(allocation.percentage)
@@ -1239,21 +1251,20 @@ export async function createCosaAction(
         billingDate: endOfDay(new Date(validatedFields.data.billingDate)),
         allocationType: validatedFields.data.allocationType,
         allocations: {
-          create: calculatedAllocations.map((allocation) => ({
-            contractId: allocation.contractId,
-            percentage: toMoney(allocation.percentage),
-            unitCount:
-              validatedFields.data.allocations.find(
-                (entry) => entry.contractId === allocation.contractId
-              )?.unitCount
-                ? Number(
-                    validatedFields.data.allocations.find(
-                      (entry) => entry.contractId === allocation.contractId
-                    )?.unitCount
-                  )
-                : null,
-            computedAmount: toMoney(allocation.computedAmount),
-          })),
+          create: calculatedAllocations.map((allocation, index) => {
+            const sourceEntry = validatedFields.data.allocations[index];
+
+            return {
+              contractId: sourceEntry?.contractId || null,
+              helperLabel: sourceEntry?.helperLabel?.trim() || null,
+              percentage: toMoney(allocation.percentage),
+              unitCount:
+                sourceEntry?.unitCount && sourceEntry.unitCount !== ""
+                  ? Number(sourceEntry.unitCount)
+                  : null,
+              computedAmount: toMoney(allocation.computedAmount),
+            };
+          }),
         },
       },
     });
@@ -1321,16 +1332,16 @@ export async function updateCosaAction(
     };
   }
 
-  const contractIds = validatedFields.data.allocations.map(
-    (allocation) => allocation.contractId
+  const contractIds = validatedFields.data.allocations.flatMap((allocation) =>
+    allocation.contractId ? [allocation.contractId] : []
   );
   const selectionValidation = await validateCosaSelections({
     propertyId: validatedFields.data.propertyId,
     meterId: validatedFields.data.meterId,
     meterReadingId: validatedFields.data.meterReadingId,
     contractIds,
-    editableContractIds: existingCosa.allocations.map(
-      (allocation) => allocation.contractId
+    editableContractIds: existingCosa.allocations.flatMap((allocation) =>
+      allocation.contractId ? [allocation.contractId] : []
     ),
     editableCosaId: existingCosa.id,
   });
@@ -1373,10 +1384,12 @@ export async function updateCosaAction(
       allocationType: validatedFields.data.allocationType,
       totalAmount: resolvedTotalAmount,
       entries: validatedFields.data.allocations.map((allocation) => {
-        const contract = contractMap.get(allocation.contractId);
+        const contract = allocation.contractId
+          ? contractMap.get(allocation.contractId)
+          : undefined;
 
         return {
-          contractId: allocation.contractId,
+          contractId: allocation.entryId,
           percentage:
             allocation.percentage && allocation.percentage !== ""
               ? Number(allocation.percentage)
@@ -1421,21 +1434,20 @@ export async function updateCosaAction(
         allocationType: validatedFields.data.allocationType,
         allocations: {
           deleteMany: {},
-          create: calculatedAllocations.map((allocation) => ({
-            contractId: allocation.contractId,
-            percentage: toMoney(allocation.percentage),
-            unitCount:
-              validatedFields.data.allocations.find(
-                (entry) => entry.contractId === allocation.contractId
-              )?.unitCount
-                ? Number(
-                    validatedFields.data.allocations.find(
-                      (entry) => entry.contractId === allocation.contractId
-                    )?.unitCount
-                  )
-                : null,
-            computedAmount: toMoney(allocation.computedAmount),
-          })),
+          create: calculatedAllocations.map((allocation, index) => {
+            const sourceEntry = validatedFields.data.allocations[index];
+
+            return {
+              contractId: sourceEntry?.contractId || null,
+              helperLabel: sourceEntry?.helperLabel?.trim() || null,
+              percentage: toMoney(allocation.percentage),
+              unitCount:
+                sourceEntry?.unitCount && sourceEntry.unitCount !== ""
+                  ? Number(sourceEntry.unitCount)
+                  : null,
+              computedAmount: toMoney(allocation.computedAmount),
+            };
+          }),
         },
       },
     });
@@ -1469,12 +1481,12 @@ export async function createCosaTemplateAction(
   if (!validatedFields.success) {
     return {
       errors: validatedFields.error.flatten().fieldErrors,
-      message: "Fix the highlighted COSA template fields and try again.",
+      message: "Review the COSA template rules below and try again.",
     };
   }
 
-  const contractIds = validatedFields.data.allocations.map(
-    (allocation) => allocation.contractId
+  const contractIds = validatedFields.data.allocations.flatMap((allocation) =>
+    allocation.contractId ? [allocation.contractId] : []
   );
   const selectionValidation = await validateCosaSelections({
     propertyId: validatedFields.data.propertyId,
@@ -1485,7 +1497,8 @@ export async function createCosaTemplateAction(
   if (selectionValidation.errors) {
     return {
       errors: selectionValidation.errors,
-      message: "Template selections are invalid.",
+      message:
+        "One or more template selections are no longer valid. Review property, meter, and tenant entries.",
     };
   }
 
@@ -1517,7 +1530,8 @@ export async function createCosaTemplateAction(
         isActive: validatedFields.data.isActive,
         allocations: {
           create: validatedFields.data.allocations.map((allocation) => ({
-            contractId: allocation.contractId,
+            contractId: allocation.contractId || null,
+            helperLabel: allocation.helperLabel?.trim() || null,
             percentage:
               allocation.percentage && allocation.percentage !== ""
                 ? toMoney(Number(allocation.percentage))
@@ -1536,7 +1550,8 @@ export async function createCosaTemplateAction(
     });
   } catch {
     return {
-      message: "COSA template could not be saved. Try again.",
+      message:
+        "COSA template could not be saved because the final write failed. Refresh and try again.",
     };
   }
 
@@ -1583,26 +1598,27 @@ export async function updateCosaTemplateAction(
   if (!validatedFields.success) {
     return {
       errors: validatedFields.error.flatten().fieldErrors,
-      message: "Fix the highlighted COSA template fields and try again.",
+      message: "Review the COSA template rules below and try again.",
     };
   }
 
-  const contractIds = validatedFields.data.allocations.map(
-    (allocation) => allocation.contractId
+  const contractIds = validatedFields.data.allocations.flatMap((allocation) =>
+    allocation.contractId ? [allocation.contractId] : []
   );
   const selectionValidation = await validateCosaSelections({
     propertyId: validatedFields.data.propertyId,
     meterId: validatedFields.data.meterId,
     contractIds,
-    editableContractIds: existingTemplate.allocations.map(
-      (allocation) => allocation.contractId
+    editableContractIds: existingTemplate.allocations.flatMap((allocation) =>
+      allocation.contractId ? [allocation.contractId] : []
     ),
   });
 
   if (selectionValidation.errors) {
     return {
       errors: selectionValidation.errors,
-      message: "Template selections are invalid.",
+      message:
+        "One or more template selections are no longer valid. Review property, meter, and tenant entries.",
     };
   }
 
@@ -1636,7 +1652,8 @@ export async function updateCosaTemplateAction(
         allocations: {
           deleteMany: {},
           create: validatedFields.data.allocations.map((allocation) => ({
-            contractId: allocation.contractId,
+            contractId: allocation.contractId || null,
+            helperLabel: allocation.helperLabel?.trim() || null,
             percentage:
               allocation.percentage && allocation.percentage !== ""
                 ? toMoney(Number(allocation.percentage))
@@ -1655,7 +1672,8 @@ export async function updateCosaTemplateAction(
     });
   } catch {
     return {
-      message: "COSA template could not be updated. Try again.",
+      message:
+        "COSA template changes could not be saved because the final write failed. Refresh and try again.",
     };
   }
 
@@ -1663,6 +1681,50 @@ export async function updateCosaTemplateAction(
   return {
     redirectTo: "/billing/cosa/templates",
   };
+}
+
+export async function deleteCosaTemplateAction(
+  templateId: string,
+  _previousState: CosaTemplateFormState,
+  _formData: FormData
+): Promise<CosaTemplateFormState> {
+  void _previousState;
+  void _formData;
+  await requireCapability("MANAGE_COSA");
+
+  const existingTemplate = await prisma.cosaTemplate.findUnique({
+    where: { id: templateId },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!existingTemplate) {
+    return {
+      message: "COSA template no longer exists.",
+    };
+  }
+
+  try {
+    await prisma.cosaTemplate.delete({
+      where: { id: templateId },
+    });
+  } catch {
+    return {
+      message:
+        "COSA template could not be deleted. Refresh and try again.",
+    };
+  }
+
+  revalidateBillingViews();
+  redirect(
+    withToast("/billing/cosa/templates", {
+      intent: "success",
+      title: "Template deleted",
+      description: `${existingTemplate.name} was permanently deleted.`,
+    })
+  );
 }
 
 export async function createInvoiceBrandingTemplateAction(
@@ -2054,6 +2116,63 @@ export async function updateRecurringChargeAction(
   revalidateBillingViews();
   return {
     redirectTo: "/billing/charges",
+  };
+}
+
+export async function deactivateRecurringChargeAction(
+  chargeId: string,
+  _previousState: RecurringChargeFormState,
+  _formData: FormData
+): Promise<RecurringChargeFormState> {
+  void _previousState;
+  void _formData;
+  await requireCapability("MANAGE_CHARGES");
+
+  const existingCharge = await prisma.contractRecurringCharge.findUnique({
+    where: { id: chargeId },
+    select: {
+      id: true,
+      isActive: true,
+    },
+  });
+
+  if (!existingCharge) {
+    return {
+      message: "Recurring charge no longer exists.",
+    };
+  }
+
+  if (!existingCharge.isActive) {
+    return {
+      redirectTo: withToast("/billing/charges", {
+        title: "Charge already inactive",
+        description: "Recurring charge was already removed from future billing.",
+        intent: "info",
+      }),
+    };
+  }
+
+  try {
+    await prisma.contractRecurringCharge.update({
+      where: { id: chargeId },
+      data: {
+        isActive: false,
+      },
+    });
+  } catch {
+    return {
+      message: "Recurring charge could not be removed. Try again.",
+    };
+  }
+
+  revalidateBillingViews();
+  return {
+    redirectTo: withToast("/billing/charges", {
+      title: "Charge removed",
+      description:
+        "Recurring charge was removed from future billing. Existing invoices were not changed.",
+      intent: "success",
+    }),
   };
 }
 

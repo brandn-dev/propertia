@@ -42,8 +42,8 @@ type ParsedTenantPayload = {
 };
 
 function revalidateTenantViews() {
-  ["/dashboard", "/tenants", "/contracts", "/billing"].forEach((path) =>
-    revalidatePath(path)
+  ["/dashboard", "/tenants", "/contracts", "/billing", "/utilities"].forEach(
+    (path) => revalidatePath(path)
   );
 }
 
@@ -322,4 +322,78 @@ export async function updateTenantAction(
   return {
     redirectTo: "/tenants",
   };
+}
+
+export async function archiveTenantAction(tenantId: string) {
+  await requireCapability("MANAGE_TENANTS");
+
+  const existingTenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: {
+      id: true,
+      status: true,
+    },
+  });
+
+  if (!existingTenant || existingTenant.status === "ARCHIVED") {
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.tenant.update({
+      where: { id: tenantId },
+      data: {
+        status: "ARCHIVED",
+        archivedAt: new Date(),
+      },
+    });
+
+    await tx.contract.updateMany({
+      where: {
+        tenantId,
+        status: "ACTIVE",
+      },
+      data: {
+        status: "ENDED",
+      },
+    });
+
+    await tx.contract.updateMany({
+      where: {
+        tenantId,
+        status: "DRAFT",
+      },
+      data: {
+        status: "TERMINATED",
+      },
+    });
+  });
+
+  revalidateTenantViews();
+}
+
+export async function restoreTenantAction(tenantId: string) {
+  await requireCapability("MANAGE_TENANTS");
+
+  const existingTenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: {
+      id: true,
+      status: true,
+    },
+  });
+
+  if (!existingTenant || existingTenant.status === "ACTIVE") {
+    return;
+  }
+
+  await prisma.tenant.update({
+    where: { id: tenantId },
+    data: {
+      status: "ACTIVE",
+      archivedAt: null,
+    },
+  });
+
+  revalidateTenantViews();
 }

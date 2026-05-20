@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 export function useActionRedirect(redirectTo?: string) {
   const router = useRouter();
+  const lastRedirectRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (!redirectTo) {
       return;
     }
 
-    router.push(redirectTo);
-    router.refresh();
+    if (lastRedirectRef.current === redirectTo) {
+      return;
+    }
+
+    lastRedirectRef.current = redirectTo;
+    router.replace(redirectTo);
   }, [redirectTo, router]);
 }

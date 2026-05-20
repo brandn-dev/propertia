@@ -40,6 +40,21 @@ function formatTenantName(tenant: {
   return tenant.businessName || [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") || "Tenant";
 }
 
+function getAllocationLabel(allocation: {
+  helperLabel: string | null;
+  contract: {
+    tenant: {
+      firstName: string | null;
+      lastName: string | null;
+      businessName: string | null;
+    };
+  } | null;
+}) {
+  return allocation.contract
+    ? formatTenantName(allocation.contract.tenant)
+    : allocation.helperLabel || "Ghost helper";
+}
+
 const PRESET_ICONS = {
   "common-water": Droplets,
   "common-electricity": Gauge,
@@ -98,9 +113,9 @@ export default async function BillingCosaPage() {
           icon={Rows4}
         />
         <DashboardMetricCard
-          label="Allocated contracts"
+          label="Participants"
           value={String(allocatedContracts)}
-          detail="Tenant-contract shares currently tracked across all COSA records."
+          detail="Tenant and helper shares currently tracked across all COSA records."
           icon={Users2}
         />
         <DashboardMetricCard
@@ -226,7 +241,7 @@ export default async function BillingCosaPage() {
                   <TableHead>Billing date</TableHead>
                   <TableHead>Split</TableHead>
                   <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Tenants</TableHead>
+                  <TableHead className="text-right">Participants</TableHead>
                   <TableHead className="text-right">Billed</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
@@ -238,7 +253,7 @@ export default async function BillingCosaPage() {
                   ).length;
                   const participantLabel = cosa.allocations
                     .slice(0, 2)
-                    .map((allocation) => formatTenantName(allocation.contract.tenant))
+                    .map(getAllocationLabel)
                     .join(", ");
 
                   return (

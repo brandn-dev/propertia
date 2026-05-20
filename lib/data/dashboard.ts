@@ -1160,16 +1160,17 @@ export async function getPropertyTenantBoard(propertyId: string) {
 
 export async function getTenantsOverview() {
   return prisma.tenant.findMany({
-    take: 12,
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ status: "asc" }, { archivedAt: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
       type: true,
+      status: true,
       firstName: true,
       lastName: true,
       businessName: true,
       contactNumber: true,
       email: true,
+      archivedAt: true,
       _count: {
         select: {
           contracts: true,
@@ -1242,6 +1243,11 @@ export async function getPeopleOverview() {
 
 export async function getContractsOverview() {
   return prisma.contract.findMany({
+    where: {
+      tenant: {
+        status: "ACTIVE",
+      },
+    },
     take: 12,
     orderBy: [{ status: "asc" }, { startDate: "desc" }],
     select: {
@@ -1275,6 +1281,11 @@ export async function getContractsOverview() {
 
 export async function getBillingOverview() {
   return prisma.invoice.findMany({
+    where: {
+      tenant: {
+        status: "ACTIVE",
+      },
+    },
     orderBy: [{ dueDate: "asc" }, { issueDate: "desc" }],
     select: {
       id: true,

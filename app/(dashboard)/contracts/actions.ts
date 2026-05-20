@@ -112,7 +112,8 @@ function getRentSchedulePayload(formData: FormData) {
 async function validateContractRelations(
   propertyId: string,
   tenantId: string,
-  currentPropertyId?: string
+  currentPropertyId?: string,
+  currentTenantId?: string
 ) {
   const [property, tenant] = await Promise.all([
     prisma.property.findUnique({
@@ -125,7 +126,10 @@ async function validateContractRelations(
     }),
     prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true },
+      select: {
+        id: true,
+        status: true,
+      },
     }),
   ]);
 
@@ -141,6 +145,8 @@ async function validateContractRelations(
 
   if (!tenant) {
     errors.tenantId = ["Select a valid tenant."];
+  } else if (tenant.status === "ARCHIVED" && tenant.id !== currentTenantId) {
+    errors.tenantId = ["Archived tenants cannot receive new contracts."];
   }
 
   return Object.keys(errors).length > 0 ? errors : null;
@@ -256,7 +262,7 @@ export async function updateContractAction(
 
   const existingContract = await prisma.contract.findUnique({
     where: { id: contractId },
-    select: { id: true, propertyId: true },
+    select: { id: true, propertyId: true, tenantId: true },
   });
 
   if (!existingContract) {
@@ -277,7 +283,8 @@ export async function updateContractAction(
   const relationErrors = await validateContractRelations(
     validatedFields.data.propertyId,
     validatedFields.data.tenantId,
-    existingContract.propertyId
+    existingContract.propertyId,
+    existingContract.tenantId
   );
 
   if (relationErrors) {

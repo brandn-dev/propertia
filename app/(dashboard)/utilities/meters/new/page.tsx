@@ -9,7 +9,7 @@ import {
 import { requireAnyCapability } from "@/lib/auth/user";
 
 export default async function NewUtilityMeterPage() {
-  await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
+  const user = await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
   const [propertyOptions, tenantOptions] = await Promise.all([
     getUtilityPropertyOptions(),
     getUtilityTenantOptions(),
@@ -30,6 +30,7 @@ export default async function NewUtilityMeterPage() {
         formAction={createUtilityMeterAction}
         propertyOptions={propertyOptions}
         tenantOptions={tenantOptions}
+        role={user.role}
       />
     </div>
   );

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  Archive,
   Bolt,
   Building2,
   CalendarClock,
@@ -14,9 +15,14 @@ import {
   Plus,
   ReceiptText,
   ShieldCheck,
+  RotateCcw,
   WalletCards,
   type LucideIcon,
 } from "lucide-react";
+import {
+  archiveTenantAction,
+  restoreTenantAction,
+} from "@/app/(dashboard)/tenants/actions";
 import { requireCapability } from "@/lib/auth/user";
 import { formatContractEndDate } from "@/lib/contracts/term";
 import { getTenantProfile } from "@/lib/data/admin";
@@ -39,6 +45,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TENANT_STATUS_LABELS } from "@/lib/form-options";
 import { cn } from "@/lib/utils";
 
 type TenantProfilePageProps = {
@@ -84,6 +91,17 @@ function getStatusBadgeClasses(status: string) {
     case "ENDED":
     case "EXPIRED":
     case "VOID":
+      return "border-border/70 bg-muted/35 text-muted-foreground";
+    default:
+      return "border-border/70 bg-background text-foreground";
+  }
+}
+
+function getTenantStatusBadgeClasses(status: string) {
+  switch (status) {
+    case "ACTIVE":
+      return "border-chart-3/35 bg-chart-3/12 text-chart-3";
+    case "ARCHIVED":
       return "border-border/70 bg-muted/35 text-muted-foreground";
     default:
       return "border-border/70 bg-background text-foreground";
@@ -190,19 +208,55 @@ export default async function TenantProfilePage({
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-[-0.05em] sm:text-[2rem]">
             {tenantLabel}
           </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className={cn(
+                "h-6 rounded-full px-2.5",
+                getTenantStatusBadgeClasses(tenant.status)
+              )}
+            >
+              {TENANT_STATUS_LABELS[tenant.status]}
+            </Badge>
+            <Badge variant="outline" className="rounded-full">
+              {formatLabel(tenant.type)}
+            </Badge>
+            {tenant.archivedAt ? (
+              <Badge variant="outline" className="rounded-full">
+                Archived {formatDate(tenant.archivedAt)}
+              </Badge>
+            ) : null}
+          </div>
         </div>
 
-        <Button
-          render={<Link href={`/tenants/${tenant.id}/edit`} />}
-          className="rounded-full"
-        >
-          <PencilLine />
-          Edit tenant
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            render={<Link href={`/tenants/${tenant.id}/edit`} />}
+            className="rounded-full"
+          >
+            <PencilLine />
+            Edit tenant
+          </Button>
+          {tenant.status === "ARCHIVED" ? (
+            <form action={restoreTenantAction.bind(null, tenant.id)}>
+              <Button type="submit" variant="outline" className="rounded-full">
+                <RotateCcw />
+                Restore tenant
+              </Button>
+            </form>
+          ) : (
+            <form action={archiveTenantAction.bind(null, tenant.id)}>
+              <Button type="submit" variant="outline" className="rounded-full">
+                <Archive />
+                Archive tenant
+              </Button>
+            </form>
+          )}
+        </div>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -232,9 +286,20 @@ export default async function TenantProfilePage({
         <Card className="rounded-xl border-border/60 bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between gap-3">
             <CardTitle>Profile</CardTitle>
-            <Badge variant="outline" className="rounded-full">
-              {formatLabel(tenant.type)}
-            </Badge>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="rounded-full">
+                {formatLabel(tenant.type)}
+              </Badge>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "rounded-full",
+                  getTenantStatusBadgeClasses(tenant.status)
+                )}
+              >
+                {TENANT_STATUS_LABELS[tenant.status]}
+              </Badge>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -284,6 +349,14 @@ export default async function TenantProfilePage({
                 </p>
                 <p className="mt-2 font-medium">{formatDate(tenant.updatedAt)}</p>
               </div>
+              {tenant.archivedAt ? (
+                <div className="rounded-xl border border-border/60 bg-background px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                    Archived
+                  </p>
+                  <p className="mt-2 font-medium">{formatDate(tenant.archivedAt)}</p>
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>

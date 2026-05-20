@@ -39,6 +39,21 @@ function formatTenantName(tenant: {
   return tenant.businessName || [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") || "Tenant";
 }
 
+function getAllocationLabel(allocation: {
+  helperLabel: string | null;
+  contract: {
+    tenant: {
+      firstName: string | null;
+      lastName: string | null;
+      businessName: string | null;
+    };
+  } | null;
+}) {
+  return allocation.contract
+    ? formatTenantName(allocation.contract.tenant)
+    : allocation.helperLabel || "Ghost helper";
+}
+
 const PRESET_ICONS = {
   "common-water": Droplets,
   "common-electricity": Gauge,
@@ -107,7 +122,7 @@ export default async function BillingCosaTemplatesPage() {
         <DashboardMetricCard
           label="Template participants"
           value={String(participantCount)}
-          detail="Tenant-contract defaults tracked across all templates."
+          detail="Tenant and helper defaults tracked across all templates."
           icon={Users2}
         />
       </section>
@@ -204,7 +219,7 @@ export default async function BillingCosaTemplatesPage() {
                   <TableHead>Split</TableHead>
                   <TableHead>Defaults</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Tenants</TableHead>
+                  <TableHead className="text-right">Participants</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -212,7 +227,7 @@ export default async function BillingCosaTemplatesPage() {
                 {templates.map((template) => {
                   const participantLabel = template.allocations
                     .slice(0, 2)
-                    .map((allocation) => formatTenantName(allocation.contract.tenant))
+                    .map(getAllocationLabel)
                     .join(", ");
 
                   return (

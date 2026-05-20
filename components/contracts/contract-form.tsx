@@ -14,6 +14,7 @@ import {
   ADVANCE_RENT_APPLICATIONS,
   CONTRACT_STATUSES,
   CONTRACT_STATUS_LABELS,
+  TENANT_STATUS_LABELS,
 } from "@/lib/form-options";
 import { formatCurrency } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ type ContractFormProps = {
   tenantOptions: {
     id: string;
     type: string;
+    status: string;
     firstName: string | null;
     lastName: string | null;
     businessName: string | null;
@@ -73,11 +75,14 @@ function FieldError({ message }: { message?: string }) {
 }
 
 function formatTenantLabel(tenant: ContractFormProps["tenantOptions"][number]) {
-  return (
+  const baseLabel =
     tenant.businessName ||
     [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") ||
-    "Unnamed tenant"
-  );
+    "Unnamed tenant";
+
+  return tenant.status === "ARCHIVED"
+    ? `${baseLabel} (${TENANT_STATUS_LABELS.ARCHIVED})`
+    : baseLabel;
 }
 
 function toMoneyValue(value: string) {

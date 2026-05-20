@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
+  Archive,
   Building2,
   Eye,
   Mail,
@@ -25,6 +26,7 @@ type TenantRegistryGroupKind = "building" | "standalone" | "unassigned";
 
 type TenantRegistryItem = {
   id: string;
+  status: string;
   displayName: string;
   peopleCount: number;
   tenantTypeLabel: string;
@@ -44,26 +46,87 @@ type TenantRegistryGroup = {
   items: TenantRegistryItem[];
 };
 
-export function TenantRegistry({ groups }: { groups: TenantRegistryGroup[] }) {
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>("all");
+type TenantRegistryScope = "active" | "archived";
+
+export function TenantRegistry({
+  activeGroups,
+  archivedGroups,
+}: {
+  activeGroups: TenantRegistryGroup[];
+  archivedGroups: TenantRegistryGroup[];
+}) {
+  const [scope, setScope] = useState<TenantRegistryScope>("active");
+  const [selectedActiveGroupId, setSelectedActiveGroupId] = useState<string | null>("all");
+  const [selectedArchivedGroupId, setSelectedArchivedGroupId] = useState<string | null>(
+    "all"
+  );
+  const groups = scope === "active" ? activeGroups : archivedGroups;
+  const selectedGroupId =
+    scope === "active" ? selectedActiveGroupId : selectedArchivedGroupId;
   const selectedGroup =
     selectedGroupId === "all"
       ? {
           id: "all",
-          label: "All tenants",
+          label: scope === "active" ? "All active tenants" : "All archived tenants",
           meta: "All",
           kind: "building" as const,
           items: groups.flatMap((group) => group.items),
         }
       : groups.find((group) => group.id === selectedGroupId) ?? null;
+  const totalActive = activeGroups.reduce((sum, group) => sum + group.items.length, 0);
+  const totalArchived = archivedGroups.reduce((sum, group) => sum + group.items.length, 0);
+
+  function selectGroup(nextGroupId: string) {
+    if (scope === "active") {
+      setSelectedActiveGroupId(nextGroupId);
+      return;
+    }
+
+    setSelectedArchivedGroupId(nextGroupId);
+  }
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setScope("active")}
+          className={cn(
+            "inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+            scope === "active"
+              ? "border-chart-3/35 bg-chart-3/12 text-chart-3"
+              : "border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          )}
+        >
+          <Building2 className="size-3.5" />
+          <span className="font-medium">Active</span>
+          <Badge variant="outline" className="h-5 rounded-full px-1.5">
+            {totalActive}
+          </Badge>
+        </button>
+        <button
+          type="button"
+          onClick={() => setScope("archived")}
+          className={cn(
+            "inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+            scope === "archived"
+              ? "border-border/70 bg-muted/50 text-foreground"
+              : "border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          )}
+        >
+          <Archive className="size-3.5" />
+          <span className="font-medium">Archived</span>
+          <Badge variant="outline" className="h-5 rounded-full px-1.5">
+            {totalArchived}
+          </Badge>
+        </button>
+      </div>
+
       <div className="-mx-1 overflow-x-auto px-1 pb-1">
         <div className="flex min-w-max gap-2">
           <button
             type="button"
-            onClick={() => setSelectedGroupId("all")}
+            onClick={() => selectGroup("all")}
             className={cn(
               "inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
               selectedGroupId === "all"
@@ -85,7 +148,7 @@ export function TenantRegistry({ groups }: { groups: TenantRegistryGroup[] }) {
               <button
                 key={group.id}
                 type="button"
-                onClick={() => setSelectedGroupId(group.id)}
+                onClick={() => selectGroup(group.id)}
                 className={cn(
                   "inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                   isActive
@@ -94,7 +157,7 @@ export function TenantRegistry({ groups }: { groups: TenantRegistryGroup[] }) {
                 )}
               >
                 {group.kind === "building" ? (
-                <Building2 className="size-3.5" />
+                  <Building2 className="size-3.5" />
                 ) : (
                   <Building2 className="size-3.5" />
                 )}
@@ -109,6 +172,13 @@ export function TenantRegistry({ groups }: { groups: TenantRegistryGroup[] }) {
       </div>
 
       {selectedGroup ? (
+        selectedGroup.items.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border/60 bg-muted/15 px-4 py-5 text-sm text-muted-foreground">
+            {scope === "active"
+              ? "No active tenants in this view yet."
+              : "No archived tenants in this view yet."}
+          </div>
+        ) : (
         <div className="overflow-hidden rounded-2xl border border-border/60">
           <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/15 px-3 py-2.5">
             <div className="min-w-0">
@@ -161,6 +231,11 @@ export function TenantRegistry({ groups }: { groups: TenantRegistryGroup[] }) {
                     {tenant.peopleCount > 0 ? (
                       <p className="text-xs text-muted-foreground">
                         {tenant.peopleCount} people linked
+                      </p>
+                    ) : null}
+                    {tenant.status === "ARCHIVED" ? (
+                      <p className="text-xs text-muted-foreground">
+                        Archived record
                       </p>
                     ) : null}
                   </TableCell>
@@ -233,9 +308,12 @@ export function TenantRegistry({ groups }: { groups: TenantRegistryGroup[] }) {
             </TableBody>
           </Table>
         </div>
+        )
       ) : (
         <div className="rounded-2xl border border-dashed border-border/60 bg-muted/15 px-4 py-5 text-sm text-muted-foreground">
-          Pick a building or property to show tenants.
+          {scope === "active"
+            ? "Pick a building or property to show active tenants."
+            : "Pick a building or property to show archived tenants."}
         </div>
       )}
     </div>

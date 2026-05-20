@@ -34,7 +34,7 @@ type EditUtilityMeterPageProps = {
 export default async function EditUtilityMeterPage({
   params,
 }: EditUtilityMeterPageProps) {
-  await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
+  const user = await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
   const { meterId } = await params;
   const meter = await getUtilityMeterForEdit(meterId);
 
@@ -119,12 +119,14 @@ export default async function EditUtilityMeterPage({
         formAction={action}
         propertyOptions={propertyOptions}
         tenantOptions={tenantOptions}
+        role={user.role}
         initialValues={{
           propertyId: meter.propertyId,
           tenantId: meter.tenantId ?? "",
           utilityType: meter.utilityType,
           meterCode: meter.meterCode,
           isShared: meter.isShared,
+          openedAt: meter.openedAt.toISOString().slice(0, 10),
         }}
       />
     </div>

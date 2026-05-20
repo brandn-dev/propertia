@@ -43,9 +43,10 @@ export default async function NewBillingCosaTemplatePage({
   const presetId =
     typeof rawSearchParams.preset === "string" ? rawSearchParams.preset : undefined;
   const selectedPreset = getCosaTemplatePreset(presetId);
+  const presetUtilityType = selectedPreset?.utilityType;
   const [propertyOptions, meterOptions, contractOptionsRaw] = await Promise.all([
     getCosaPropertyOptions(),
-    getCosaSharedMeterOptions(),
+    getCosaSharedMeterOptions(undefined, presetUtilityType),
     getCosaContractOptions(),
   ]);
   const contractOptions = contractOptionsRaw.map((contract) => ({
@@ -63,6 +64,12 @@ export default async function NewBillingCosaTemplatePage({
     },
     tenant: contract.tenant,
   }));
+  const selectablePropertyCount = propertyOptions.filter((property) =>
+    propertyOptions.some(
+      (candidate) =>
+        candidate.parentPropertyId === property.id && candidate.status !== "ARCHIVED",
+    )
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -134,7 +141,7 @@ export default async function NewBillingCosaTemplatePage({
       <section className="grid gap-4 md:grid-cols-3">
         <DashboardMetricCard
           label="Eligible properties"
-          value={String(propertyOptions.length)}
+          value={String(selectablePropertyCount)}
           detail="Properties available for reusable COSA templates."
           icon={Layers3}
         />
@@ -157,6 +164,7 @@ export default async function NewBillingCosaTemplatePage({
         formAction={createCosaTemplateAction}
         propertyOptions={propertyOptions}
         meterOptions={meterOptions}
+        meterUtilityTypeFilter={presetUtilityType ?? null}
         contractOptions={contractOptions}
         initialValues={{
           propertyId: "",

@@ -587,6 +587,7 @@ export function PropertyTreeFlow({
                 nodes={graph.nodes}
                 edges={graph.edges}
                 nodeTypes={nodeTypes}
+                proOptions={{ hideAttribution: true }}
                 onNodeClick={onNodeClick}
                 fitView
                 fitViewOptions={{ padding: 0.12 }}

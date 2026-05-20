@@ -127,6 +127,9 @@ export function MeterReadingForm({
   const [readingDate, setReadingDate] = useState(initialValues.readingDate);
   const [currentReading, setCurrentReading] = useState(initialValues.currentReading);
   const [ratePerUnit, setRatePerUnit] = useState(initialValues.ratePerUnit);
+  const [startingReadingOverride, setStartingReadingOverride] = useState(
+    initialMeter?.openingReading ?? ""
+  );
 
   const tenantScopeOptions = useMemo(() => {
     const tenants = new Map<string, ScopeOption>();
@@ -220,7 +223,11 @@ export function MeterReadingForm({
   const previousReadingValue = previousReadingEntry
     ? Number(previousReadingEntry.currentReading)
     : selectedMeter
-      ? Number(selectedMeter.openingReading)
+      ? Number(
+          role === "ADMIN" && startingReadingOverride !== ""
+            ? startingReadingOverride
+            : selectedMeter.openingReading
+        )
       : 0;
   const suggestedRatePerUnit = previousReadingEntry?.ratePerUnit ?? "";
   const currentReadingValue = currentReading === "" ? null : Number(currentReading);
@@ -245,6 +252,9 @@ export function MeterReadingForm({
   const rateLabel = selectedMeter
     ? getUtilityRateLabel(selectedMeter.utilityType)
     : "Rate per unit";
+  const isFirstReadingForMeter = Boolean(selectedMeter) && !previousReadingEntry;
+  const canOverrideStartingReading =
+    !isEditMode && role === "ADMIN" && isFirstReadingForMeter;
 
   function handleScopeChange(nextScopeKey: string) {
     setSelectedScopeKey(nextScopeKey);
@@ -255,6 +265,7 @@ export function MeterReadingForm({
 
     if (!nextMeters.some((meter) => meter.id === selectedMeterId)) {
       setSelectedMeterId("");
+      setStartingReadingOverride("");
     }
   }
 
@@ -269,8 +280,11 @@ export function MeterReadingForm({
 
     if (!nextMeter || !readingDate) {
       setRatePerUnit("");
+      setStartingReadingOverride(nextMeter?.openingReading ?? "");
       return;
     }
+
+    setStartingReadingOverride(nextMeter.openingReading);
 
     const nextPreviousReading =
       [...nextMeter.readings]
@@ -468,6 +482,33 @@ export function MeterReadingForm({
               />
             </div>
 
+            {canOverrideStartingReading ? (
+              <div className="space-y-2">
+                <Label htmlFor="startingReadingOverride">
+                  Starting reading override
+                </Label>
+                <Input
+                  id="startingReadingOverride"
+                  name="startingReadingOverride"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={startingReadingOverride}
+                  onChange={(event) =>
+                    setStartingReadingOverride(event.target.value)
+                  }
+                  placeholder={selectedMeter?.openingReading ?? "0.00"}
+                  className="field-blank h-11"
+                />
+                <FieldError message={state.errors?.startingReadingOverride?.[0]} />
+                <p className="text-xs text-muted-foreground">
+                  Admin only. First reading can override this meter&apos;s starting
+                  baseline. Saving will also update the meter opening reading for
+                  future chronology.
+                </p>
+              </div>
+            ) : null}
+
             <div className="space-y-2">
               <Label htmlFor="ratePerUnit">{rateLabel}</Label>
               <Input
@@ -511,7 +552,9 @@ export function MeterReadingForm({
                   <p className="text-sm leading-6 text-muted-foreground">
                     {previousReadingEntry
                       ? `Previous reading: ${formatUtilityQuantity(selectedMeter.utilityType, previousReadingEntry.currentReading)} on ${formatDate(previousReadingEntry.readingDate)}.`
-                      : `No previous reading found. Initial baseline is ${formatUtilityQuantity(selectedMeter.utilityType, selectedMeter.openingReading)} from meter activation.`}
+                      : canOverrideStartingReading
+                        ? `No previous reading found. Admin may override the starting baseline before saving. Current baseline is ${formatUtilityQuantity(selectedMeter.utilityType, startingReadingOverride || selectedMeter.openingReading)}.`
+                        : `No previous reading found. Initial baseline is ${formatUtilityQuantity(selectedMeter.utilityType, selectedMeter.openingReading)} from meter activation.`}
                   </p>
                   <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                     <span>

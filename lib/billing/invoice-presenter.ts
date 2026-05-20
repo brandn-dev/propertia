@@ -2,7 +2,10 @@ import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
 import { RECURRING_CHARGE_TYPE_LABELS } from "@/lib/form-options";
 import { formatDate, toNumber } from "@/lib/format";
 import { UTILITY_TYPE_LABELS } from "@/lib/form-options";
-import { getUtilityUnitLabel } from "@/lib/utility-units";
+import {
+  formatUtilityQuantity,
+  getUtilityUnitLabel,
+} from "@/lib/utility-units";
 
 const ITEM_TYPE_LABELS = {
   RENT: "Rent",
@@ -110,6 +113,11 @@ type InternalInvoiceShape = {
         meterReading?: {
           id: string;
           readingDate: Date;
+          previousReading: { toNumber(): number } | number;
+          currentReading: { toNumber(): number } | number;
+          ratePerUnit: { toNumber(): number } | number;
+          consumption: { toNumber(): number } | number;
+          totalAmount: { toNumber(): number } | number;
           meter: {
             id: string;
             meterCode: string;
@@ -223,6 +231,11 @@ type PublicInvoiceShape = {
         meterReading?: {
           id: string;
           readingDate: Date;
+          previousReading: { toNumber(): number } | number;
+          currentReading: { toNumber(): number } | number;
+          ratePerUnit: { toNumber(): number } | number;
+          consumption: { toNumber(): number } | number;
+          totalAmount: { toNumber(): number } | number;
           meter: {
             id: string;
             meterCode: string;
@@ -323,6 +336,10 @@ export type InvoicePresentationModel = {
       sourceUtilityTypeLabel: string | null;
       sourceMeterCode: string | null;
       sourceReadingDateLabel: string | null;
+      sourcePreviousReadingLabel: string | null;
+      sourceCurrentReadingLabel: string | null;
+      sourceConsumptionLabel: string | null;
+      sourceRateLabel: string | null;
     }>;
   };
 };
@@ -375,12 +392,18 @@ export function buildInvoicePresentationModel(
     const typeLabel = item.itemType === "RECURRING_CHARGE" && recurringChargeLabel
       ? recurringChargeLabel
       : ITEM_TYPE_LABELS[item.itemType];
+    const utilityReadingLabel =
+      item.itemType === "UTILITY_READING" && item.meterReading
+        ? `${UTILITY_TYPE_LABELS[item.meterReading.meter.utilityType]} Reading`
+        : null;
     const description = item.itemType === "RENT"
-      ? `Rent payment: ${formatDate(invoice.billingPeriodStart)} to ${formatDate(invoice.billingPeriodEnd)}`
+      ? `Coverage: ${formatDate(invoice.billingPeriodStart)} to ${formatDate(invoice.billingPeriodEnd)}`
       : item.itemType === "RECURRING_CHARGE" && recurringChargeLabel
         ? `${recurringChargeLabel}: ${formatDate(invoice.billingPeriodStart)} to ${formatDate(invoice.billingPeriodEnd)}`
-        : item.itemType === "UTILITY_READING" && item.description
-          ? item.description
+        : item.itemType === "UTILITY_READING" && utilityReadingLabel
+          ? utilityReadingLabel
+        : item.itemType === "COSA"
+          ? normalizeLegacyCosaDescription(item.description)
         : item.description;
 
     return {
@@ -430,6 +453,8 @@ export function buildInvoicePresentationModel(
 
     const sourceMeter =
       item.cosaAllocation.cosa.meterReading?.meter ?? item.cosaAllocation.cosa.meter ?? null;
+    const sourceReading = item.cosaAllocation.cosa.meterReading ?? null;
+    const sourceUtilityType = sourceMeter?.utilityType ?? null;
 
     return [
       {
@@ -446,9 +471,34 @@ export function buildInvoicePresentationModel(
           ? UTILITY_TYPE_LABELS[sourceMeter.utilityType]
           : null,
         sourceMeterCode: sourceMeter?.meterCode ?? null,
-        sourceReadingDateLabel: item.cosaAllocation.cosa.meterReading
-          ? formatDate(item.cosaAllocation.cosa.meterReading.readingDate)
+        sourceReadingDateLabel: sourceReading
+          ? formatDate(sourceReading.readingDate)
           : null,
+        sourcePreviousReadingLabel:
+          sourceReading && sourceUtilityType
+            ? formatUtilityQuantity(
+                sourceUtilityType,
+                toNumber(sourceReading.previousReading)
+              )
+            : null,
+        sourceCurrentReadingLabel:
+          sourceReading && sourceUtilityType
+            ? formatUtilityQuantity(
+                sourceUtilityType,
+                toNumber(sourceReading.currentReading)
+              )
+            : null,
+        sourceConsumptionLabel:
+          sourceReading && sourceUtilityType
+            ? formatUtilityQuantity(
+                sourceUtilityType,
+                toNumber(sourceReading.consumption)
+              )
+            : null,
+        sourceRateLabel:
+          sourceReading && sourceUtilityType
+            ? `₱${toNumber(sourceReading.ratePerUnit).toLocaleString("en-PH")} / ${getUtilityUnitLabel(sourceUtilityType)}`
+            : null,
       },
     ];
   });
@@ -627,4 +677,8 @@ export function buildInvoicePreviewModel(): InvoicePresentationModel {
       cosaAllocations: [],
     },
   };
+}
+
+function normalizeLegacyCosaDescription(description: string) {
+  return description.split(" · ")[0]?.trim() || description;
 }

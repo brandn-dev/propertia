@@ -51,9 +51,13 @@ export default async function NewBillingCosaPage({
     ? await getCosaTemplateForEdit(selectedTemplateId)
     : null;
   const selectedPropertyId = selectedTemplate?.propertyId ?? requestedPropertyId;
+  const meterUtilityTypeFilter = selectedTemplate?.meter?.utilityType ?? null;
   const [propertyOptions, meterOptionsRaw, contractOptionsRaw] = await Promise.all([
     getCosaPropertyOptions(selectedPropertyId || undefined),
-    getCosaSharedMeterOptions(selectedTemplate?.meterId ?? undefined),
+    getCosaSharedMeterOptions(
+      selectedTemplate?.meterId ?? undefined,
+      meterUtilityTypeFilter ?? undefined,
+    ),
     getCosaContractOptions(),
   ]);
   const contractOptions = contractOptionsRaw.map((contract) => ({
@@ -67,14 +71,29 @@ export default async function NewBillingCosaPage({
     },
     tenant: contract.tenant,
   }));
+  const selectablePropertyCount = propertyOptions.filter((property) =>
+    propertyOptions.some(
+      (candidate) =>
+        candidate.parentPropertyId === property.id && candidate.status !== "ARCHIVED",
+    )
+  ).length;
   const templateAllocations = selectedTemplate
     ? selectedTemplate.allocations
         .filter(
-          (allocation) =>
-            contractOptions.some((contract) => contract.id === allocation.contract.id)
+          (allocation) => {
+            const contractId = allocation.contract?.id;
+
+            return (
+              !contractId ||
+              contractOptions.some((contract) => contract.id === contractId)
+            );
+          }
         )
         .map((allocation) => ({
-          contractId: allocation.contract.id,
+          entryId: allocation.contract?.id ?? `helper:${allocation.id}`,
+          contractId: allocation.contract?.id ?? "",
+          helperLabel: allocation.helperLabel ?? "",
+          isHelper: !allocation.contract,
           percentage: allocation.percentage?.toString() ?? "",
           unitCount: allocation.unitCount?.toString() ?? "",
           amount: allocation.amount?.toString() ?? "",
@@ -88,13 +107,13 @@ export default async function NewBillingCosaPage({
         title="New COSA charge"
         description={
           selectedTemplate
-            ? `Record a shared common-area charge starting from the ${selectedTemplate.name} template. You can still adjust the amount, participants, or split before saving the month.`
+            ? `Record a shared common-area charge from the ${selectedTemplate.name} template. Template structure stays locked here so monthly COSA creation does not accidentally change template defaults.`
             : "Record a shared common-area charge, choose which tenant contracts should share it, and let invoice generation carry those computed allocations into the right billing month."
         }
         icon={Share2}
         badges={[
           "Shared charge",
-          selectedTemplate ? "Template prefill" : "Chosen tenants",
+          selectedTemplate ? "Template snapshot" : "Chosen tenants",
           "Admin only",
         ]}
         action={
@@ -112,7 +131,7 @@ export default async function NewBillingCosaPage({
       <section className="grid gap-4 md:grid-cols-3">
         <DashboardMetricCard
           label="Eligible properties"
-          value={String(propertyOptions.length)}
+          value={String(selectablePropertyCount)}
           detail="Active properties available for shared-charge allocation."
           icon={Share2}
         />
@@ -185,10 +204,12 @@ export default async function NewBillingCosaPage({
       ) : null}
 
       <CosaForm
+        key={selectedTemplate?.id ?? `property:${selectedPropertyId || "none"}`}
         mode="create"
         formAction={createCosaAction}
         propertyOptions={propertyOptions}
         meterOptions={meterOptionsRaw}
+        meterUtilityTypeFilter={meterUtilityTypeFilter}
         contractOptions={contractOptions}
         initialValues={{
           propertyId: selectedPropertyId,
@@ -200,6 +221,14 @@ export default async function NewBillingCosaPage({
           allocationType: selectedTemplate?.allocationType ?? "EQUAL_SPLIT",
           allocations: templateAllocations,
         }}
+        templateLock={
+          selectedTemplate
+            ? {
+                templateId: selectedTemplate.id,
+                templateName: selectedTemplate.name,
+              }
+            : null
+        }
       />
     </div>
   );

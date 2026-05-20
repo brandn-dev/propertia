@@ -34,13 +34,18 @@ export default async function EditBillingCosaPage({
     notFound();
   }
 
+  const meterUtilityTypeFilter = cosa.meter?.utilityType ?? null;
   const billedAllocationCount = cosa.allocations.filter(
     (allocation) => allocation.invoiceItem
   ).length;
   const [propertyOptions, meterOptionsRaw, contractOptionsRaw] = await Promise.all([
     getCosaPropertyOptions(cosa.propertyId),
-    getCosaSharedMeterOptions(cosa.meterId ?? undefined),
-    getCosaContractOptions(cosa.allocations.map((allocation) => allocation.contract.id)),
+    getCosaSharedMeterOptions(cosa.meterId ?? undefined, meterUtilityTypeFilter ?? undefined),
+    getCosaContractOptions(
+      cosa.allocations.flatMap((allocation) =>
+        allocation.contract ? [allocation.contract.id] : []
+      )
+    ),
   ]);
   const contractOptions = contractOptionsRaw.map((contract) => ({
     id: contract.id,
@@ -78,9 +83,9 @@ export default async function EditBillingCosaPage({
           icon={CircleDollarSign}
         />
         <DashboardMetricCard
-          label="Selected tenants"
+          label="Participants"
           value={String(cosa.allocations.length)}
-          detail="Tenant contracts currently participating in this shared charge."
+          detail="Tenant and helper participants currently attached to this shared charge."
           icon={Share2}
         />
         <DashboardMetricCard
@@ -96,6 +101,7 @@ export default async function EditBillingCosaPage({
         formAction={action}
         propertyOptions={propertyOptions}
         meterOptions={meterOptionsRaw}
+        meterUtilityTypeFilter={meterUtilityTypeFilter}
         contractOptions={contractOptions}
         initialValues={{
           propertyId: cosa.propertyId,
@@ -106,7 +112,10 @@ export default async function EditBillingCosaPage({
           billingDate: toDateInputValue(cosa.billingDate),
           allocationType: cosa.allocationType,
           allocations: cosa.allocations.map((allocation) => ({
-            contractId: allocation.contract.id,
+            entryId: allocation.contract?.id ?? `helper:${allocation.id}`,
+            contractId: allocation.contract?.id ?? "",
+            helperLabel: allocation.helperLabel ?? "",
+            isHelper: !allocation.contract,
             percentage: allocation.percentage.toString(),
             unitCount: allocation.unitCount?.toString() ?? "",
             amount: allocation.computedAmount.toString(),

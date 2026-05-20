@@ -56,7 +56,7 @@ export default async function EditContractPage({
 
   const [propertyOptions, tenantOptions] = await Promise.all([
     getContractPropertyOptions(contract.propertyId),
-    getContractTenantOptions(),
+    getContractTenantOptions(contract.tenantId),
   ]);
 
   const action = updateContractAction.bind(null, contract.id);

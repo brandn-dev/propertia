@@ -367,6 +367,16 @@ export function InvoiceGenerationForm({
             </div>
           </div>
 
+          <div className="rounded-[1.45rem] border border-border/60 bg-background/55 p-4">
+            <p className="text-sm font-medium">What this run includes</p>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-muted-foreground">
+              <li>Base rent is added automatically from the contract cycle.</li>
+              <li>Active recurring charges are added automatically when effective in that cycle.</li>
+              <li>Dedicated-meter utility readings stay selectable under each cycle.</li>
+              <li>Saved uninvoiced COSA allocations are included automatically when COSA billing date falls inside the selected cycle.</li>
+            </ol>
+          </div>
+
           <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="tenantId">Business scope</Label>

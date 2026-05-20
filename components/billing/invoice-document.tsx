@@ -63,7 +63,9 @@ export function InvoiceDocument({
     "--invoice-paper-background": paperLayout ? "#ffffff" : "var(--card)",
     "--invoice-paper-foreground": paperLayout ? "#0f172a" : "var(--card-foreground)",
     "--invoice-paper-border": paperLayout ? "#dbe5ef" : "var(--border)",
-    "--invoice-accent-color": model.branding.accentColor,
+    "--invoice-accent-color": paperLayout
+      ? model.branding.accentColor
+      : "var(--card-foreground)",
     "--invoice-label-color": paperLayout
       ? model.branding.labelColor
       : "var(--muted-foreground)",
@@ -268,7 +270,7 @@ export function InvoiceDocument({
                           </td>
                           <td
                               className={cn(
-                                  "py-2.5 pr-4 align-top break-words font-[430] text-[#0f172a]",
+                                  "py-2.5 pr-4 align-top break-words font-[430]",
                                   item.itemType === "UTILITY_READING" || item.itemType === "COSA"
                                 ? "text-[0.88rem] leading-[1.35]"
                                 : "text-[0.92rem] leading-[1.45]",
@@ -597,25 +599,19 @@ function InvoiceTotalsPanel({
     >
       <p className={LABEL_CLASS}>Invoice summary</p>
       <div className="space-y-2.5 pt-1 text-[0.95rem]">
-        <SummaryRow label="Issue date" value={model.issueDateLabel} />
-        <SummaryRow label="Rent subtotal" value={formatInvoiceMoney(model.totals.subtotal)} />
         <SummaryRow
-          label="Additional charges"
-          value={formatInvoiceMoney(model.totals.additionalCharges)}
+          label="Grand total"
+          value={formatInvoiceMoney(model.totals.totalAmount)}
+          strong
         />
-        <div className={cn("border-t pt-3", DIVIDER_CLASS)}>
-          <SummaryRow
-            label="Grand total"
-            value={formatInvoiceMoney(model.totals.totalAmount)}
-            strong
-          />
+        {model.totals.balanceDue !== model.totals.totalAmount ? (
           <SummaryRow
             label="Balance due"
             value={formatInvoiceMoney(model.totals.balanceDue)}
             strong
             valueClassName={model.totals.balanceDue > 0 ? ACCENT_CLASS : undefined}
           />
-        </div>
+        ) : null}
       </div>
     </section>
   );
@@ -642,8 +638,8 @@ function InvoiceReceiptFooter({
           "gap-4",
           showAccessBlock
             ? paperLayout
-              ? "grid grid-cols-[10rem_minmax(0,1fr)] items-start"
-              : "space-y-4 md:grid md:grid-cols-[10rem_minmax(0,1fr)] md:items-start md:space-y-0"
+              ? "grid grid-cols-[max-content_minmax(0,1fr)] items-start"
+              : "space-y-4 md:grid md:grid-cols-[max-content_minmax(0,1fr)] md:items-start md:space-y-0"
             : "space-y-3"
         )}
       >
@@ -681,34 +677,23 @@ function InvoiceAccessFooterBlock({
   invoiceNumber: string;
 }) {
   return (
-    <section className="space-y-2">
-      <p className={LABEL_CLASS}>Digital copy</p>
-      <div className="flex items-start gap-3">
-        <Image
-          src={accessBlock.qrDataUrl}
-          alt={`QR code for invoice ${invoiceNumber}`}
-          width={76}
-          height={76}
-          unoptimized
-          className="size-[76px] shrink-0 rounded-[0.7rem] border border-[color:var(--invoice-paper-border)] bg-white p-1"
-        />
-        <div className="min-w-0 space-y-1.5">
-          <p className={cn("text-[0.56rem] uppercase tracking-[0.18em]", LABEL_CLASS)}>
-            Access code
-          </p>
-          <p
-            className={cn(
-              "break-all font-mono text-[0.7rem] font-medium tracking-[0.18em]",
-              VALUE_CLASS
-            )}
-          >
-            {accessBlock.publicAccessCode}
-          </p>
-          <p className={cn("text-[0.66rem] leading-4", MUTED_CLASS)}>
-            Scan for public invoice copy.
-          </p>
-        </div>
-      </div>
+    <section className="flex w-fit flex-col items-start gap-1.5">
+      <Image
+        src={accessBlock.qrDataUrl}
+        alt={`QR code for invoice ${invoiceNumber}`}
+        width={76}
+        height={76}
+        unoptimized
+        className="size-[76px] shrink-0 rounded-[0.7rem] border border-[color:var(--invoice-paper-border)] bg-white p-1"
+      />
+      <p
+        className={cn(
+          "font-mono text-[0.7rem] font-medium",
+          VALUE_CLASS
+        )}
+      >
+        {accessBlock.publicAccessCode}
+      </p>
     </section>
   );
 }
@@ -835,8 +820,7 @@ function CosaBreakdownSection({
                 <td className={cn("py-2.5 pr-3 text-sm", MUTED_CLASS)}>{row.billingDateLabel}</td>
                 <td className={cn("py-2.5 pr-3 text-sm", MUTED_CLASS)}>
                   <div className="space-y-0.5">
-                    <p>{formatInvoiceMoney(row.sourceTotalAmount)}</p>
-                    {row.sourceUtilityTypeLabel || row.sourceMeterCode || row.sourceReadingDateLabel ? (
+                    {formatCosaSourceLabel(row) ? (
                       <p className="text-xs">
                         {formatCosaSourceLabel(row)}
                       </p>
@@ -866,7 +850,6 @@ function CosaBreakdownSection({
               </p>
             </div>
             <div className="mt-2 grid grid-cols-1 gap-2.5">
-              <MetricStack label="Source total" value={formatInvoiceMoney(row.sourceTotalAmount)} />
               <MetricStack label="Share" value={formatCosaShare(row)} />
               {formatCosaSourceLabel(row) ? (
                 <MetricStack label="Source" value={formatCosaSourceLabel(row)} />
@@ -976,23 +959,32 @@ function formatBreakdownNumber(value: number) {
 function formatCosaShare(
   row: InvoicePresentationModel["breakdowns"]["cosaAllocations"][number]
 ) {
-  const parts = [];
+  if (row.unitCount != null) {
+    return `${row.unitCount} unit${row.unitCount === 1 ? "" : "s"}`;
+  }
 
   if (row.percentage != null) {
-    parts.push(`${formatBreakdownNumber(row.percentage)}%`);
+    return `${formatBreakdownNumber(row.percentage)}%`;
   }
 
-  if (row.unitCount != null) {
-    parts.push(`${row.unitCount} unit${row.unitCount === 1 ? "" : "s"}`);
-  }
-
-  return parts.join(" · ") || "Allocated";
+  return "Allocated";
 }
 
 function formatCosaSourceLabel(
   row: InvoicePresentationModel["breakdowns"]["cosaAllocations"][number]
 ) {
-  const parts = [row.sourceUtilityTypeLabel, row.sourceMeterCode, row.sourceReadingDateLabel].filter(Boolean);
+  const parts = [
+    row.sourcePreviousReadingLabel
+      ? `Previous ${row.sourcePreviousReadingLabel}`
+      : null,
+    row.sourceCurrentReadingLabel
+      ? `Present ${row.sourceCurrentReadingLabel}`
+      : null,
+    row.sourceConsumptionLabel
+      ? `Consumption ${row.sourceConsumptionLabel}`
+      : null,
+    row.sourceRateLabel ? `Rate ${row.sourceRateLabel}` : null,
+  ].filter(Boolean);
   return parts.join(" · ");
 }
 

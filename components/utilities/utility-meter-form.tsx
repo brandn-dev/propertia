@@ -4,7 +4,12 @@ import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, LoaderCircle, Save } from "lucide-react";
 import type { UtilityMeterFormState } from "@/app/(dashboard)/utilities/actions";
-import { UTILITY_TYPES, UTILITY_TYPE_LABELS } from "@/lib/form-options";
+import type { AppRole } from "@/lib/auth/roles";
+import {
+  TENANT_STATUS_LABELS,
+  UTILITY_TYPES,
+  UTILITY_TYPE_LABELS,
+} from "@/lib/form-options";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +42,7 @@ type UtilityMeterFormProps = {
   tenantOptions: {
     id: string;
     type: string;
+    status: string;
     firstName: string | null;
     lastName: string | null;
     businessName: string | null;
@@ -48,7 +54,9 @@ type UtilityMeterFormProps = {
     utilityType: (typeof UTILITY_TYPES)[number];
     meterCode: string;
     isShared: boolean;
+    openedAt: string;
   };
+  role: AppRole;
 };
 
 function FieldError({ message }: { message?: string }) {
@@ -64,12 +72,14 @@ export function UtilityMeterForm({
   formAction,
   propertyOptions,
   tenantOptions,
+  role,
   initialValues = {
     propertyId: "",
     tenantId: "",
     utilityType: "ELECTRICITY",
     meterCode: "",
     isShared: false,
+    openedAt: "",
   },
 }: UtilityMeterFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
@@ -87,11 +97,14 @@ export function UtilityMeterForm({
   );
 
   function formatTenantLabel(tenant: UtilityMeterFormProps["tenantOptions"][number]) {
-    return (
+    const baseLabel =
       tenant.businessName ||
       [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") ||
-      "Tenant"
-    );
+      "Tenant";
+
+    return tenant.status === "ARCHIVED"
+      ? `${baseLabel} (${TENANT_STATUS_LABELS.ARCHIVED})`
+      : baseLabel;
   }
 
   function formatPropertyLabel(
@@ -221,6 +234,25 @@ export function UtilityMeterForm({
               />
               <FieldError message={state.errors?.meterCode?.[0]} />
             </div>
+
+            {mode === "edit" && role === "ADMIN" ? (
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="openedAt">Activation date</Label>
+                <Input
+                  id="openedAt"
+                  name="openedAt"
+                  type="date"
+                  defaultValue={initialValues.openedAt}
+                  className="field-blank h-11"
+                />
+                <FieldError message={state.errors?.openedAt?.[0]} />
+                <p className="text-sm text-muted-foreground">
+                  Admin only. Activation date must stay on or before the first
+                  recorded reading and cannot cross replacement or retirement
+                  chronology.
+                </p>
+              </div>
+            ) : null}
 
             <div className="md:col-span-2">
               <label className="field-blank flex items-start gap-3 rounded-[1.2rem] border bg-background/60 px-4 py-3">

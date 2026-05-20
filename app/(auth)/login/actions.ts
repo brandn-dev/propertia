@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import {
+  isRetryablePrismaError,
+  prisma,
+  withPrismaRetry,
+} from "@/lib/prisma";
 import { getSession } from "@/lib/auth/session";
 import { verifyPassword } from "@/lib/auth/password";
 import {
@@ -39,9 +43,14 @@ export async function loginAction(
 
   try {
     const username = validatedFields.data.username.trim().toLowerCase();
-    const user = await prisma.user.findUnique({
-      where: { username },
-    });
+    const user = await withPrismaRetry(
+      () =>
+        prisma.user.findUnique({
+          where: { username },
+        }),
+      5,
+      400
+    );
 
     if (!user || !user.isActive) {
       return {
@@ -73,10 +82,16 @@ export async function loginAction(
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
-  } catch {
+  } catch (error) {
+    if (isRetryablePrismaError(error)) {
+      return {
+        message:
+          "Database is configured but not reachable right now. Check your internet or Neon status, then try again.",
+      };
+    }
+
     return {
-      message:
-        "The database connection is not ready yet. Add your Neon URLs, run migrations, and seed the users.",
+      message: "Login failed due to a server error. Try again.",
     };
   }
 

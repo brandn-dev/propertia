@@ -25,6 +25,14 @@ export const meterReadingSchema = z.object({
     .trim()
     .min(1, "Rate per unit is required.")
     .refine(isNonNegativeNumber, "Rate per unit must be a valid non-negative number."),
+  startingReadingOverride: z
+    .string()
+    .trim()
+    .optional()
+    .refine(
+      (value) => value == null || value === "" || isNonNegativeNumber(value),
+      "Starting reading override must be a valid non-negative number."
+    ),
 });
 
 export type MeterReadingInput = z.infer<typeof meterReadingSchema>;

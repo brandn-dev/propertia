@@ -711,42 +711,26 @@ function InvoicePrimaryPage({
           <Text style={[styles.sectionLabel, labelTextStyle]}>Invoice summary</Text>
           <View style={styles.summaryTable}>
             <SummaryRow
-              label="Issue date"
-              labelTextStyle={mutedTextStyle}
-              value={model.issueDateLabel}
-              valueTextStyle={valueTextStyle}
-            />
-            <SummaryRow
-              label="Rent subtotal"
-              labelTextStyle={mutedTextStyle}
-              value={formatInvoiceMoney(model.totals.subtotal)}
-              valueTextStyle={valueTextStyle}
-            />
-            <SummaryRow
-              label="Additional charges"
-              labelTextStyle={mutedTextStyle}
-              value={formatInvoiceMoney(model.totals.additionalCharges)}
-              valueTextStyle={valueTextStyle}
-            />
-          </View>
-          <View style={styles.summaryDivider}>
-            <SummaryRow
               label="Grand total"
               labelTextStyle={valueTextStyle}
               strong
               value={formatInvoiceMoney(model.totals.totalAmount)}
               valueTextStyle={valueTextStyle}
             />
-            <SummaryRow
-              label="Balance due"
-              labelTextStyle={valueTextStyle}
-              strong
-              value={formatInvoiceMoney(model.totals.balanceDue)}
-              valueTextStyle={
-                model.totals.balanceDue > 0 ? accentTextStyle : valueTextStyle
-              }
-            />
           </View>
+          {model.totals.balanceDue !== model.totals.totalAmount ? (
+            <View style={styles.summaryDivider}>
+              <SummaryRow
+                label="Balance due"
+                labelTextStyle={valueTextStyle}
+                strong
+                value={formatInvoiceMoney(model.totals.balanceDue)}
+                valueTextStyle={
+                  model.totals.balanceDue > 0 ? accentTextStyle : valueTextStyle
+                }
+              />
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -971,9 +955,6 @@ function InvoiceBreakdownPage({
                   {row.billingDateLabel}
                 </Text>
                 <View style={{ width: "22%", paddingRight: 8 }}>
-                  <Text style={[styles.breakdownText, mutedTextStyle]}>
-                    {formatInvoiceMoney(row.sourceTotalAmount)}
-                  </Text>
                   {formatCosaSourceLabel(row) ? (
                     <Text style={[styles.paymentMeta, mutedTextStyle]}>
                       {formatCosaSourceLabel(row)}
@@ -1165,26 +1146,31 @@ function formatBreakdownNumber(value: number) {
 function formatCosaShare(
   row: InvoicePresentationModel["breakdowns"]["cosaAllocations"][number]
 ) {
-  const parts = [];
+  if (row.unitCount != null) {
+    return `${row.unitCount} unit${row.unitCount === 1 ? "" : "s"}`;
+  }
 
   if (row.percentage != null) {
-    parts.push(`${row.percentage}%`);
+    return `${row.percentage}%`;
   }
 
-  if (row.unitCount != null) {
-    parts.push(`${row.unitCount} units`);
-  }
-
-  return parts.length > 0 ? parts.join(" · ") : "Allocated share";
+  return "Allocated share";
 }
 
 function formatCosaSourceLabel(
   row: InvoicePresentationModel["breakdowns"]["cosaAllocations"][number]
 ) {
   return [
-    row.sourceUtilityTypeLabel,
-    row.sourceMeterCode,
-    row.sourceReadingDateLabel,
+    row.sourcePreviousReadingLabel
+      ? `Previous ${row.sourcePreviousReadingLabel}`
+      : null,
+    row.sourceCurrentReadingLabel
+      ? `Present ${row.sourceCurrentReadingLabel}`
+      : null,
+    row.sourceConsumptionLabel
+      ? `Consumption ${row.sourceConsumptionLabel}`
+      : null,
+    row.sourceRateLabel ? `Rate ${row.sourceRateLabel}` : null,
   ]
     .filter(Boolean)
     .join(" · ");

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAnyCapability } from "@/lib/auth/user";
+import { toDateInputValue } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { withToast } from "@/lib/toast";
 import { meterReadingSchema } from "@/lib/validations/meter-reading";
@@ -41,6 +42,7 @@ function getUtilityMeterPayload(formData: FormData) {
     utilityType: String(formData.get("utilityType") ?? ""),
     meterCode: String(formData.get("meterCode") ?? ""),
     isShared: formData.get("isShared") === "on",
+    openedAt: String(formData.get("openedAt") ?? ""),
   };
 }
 
@@ -50,6 +52,9 @@ function getMeterReadingPayload(formData: FormData) {
     readingDate: String(formData.get("readingDate") ?? ""),
     currentReading: String(formData.get("currentReading") ?? ""),
     ratePerUnit: String(formData.get("ratePerUnit") ?? ""),
+    startingReadingOverride: String(
+      formData.get("startingReadingOverride") ?? ""
+    ),
   };
 }
 
@@ -65,6 +70,25 @@ function toFixedDecimal(value: number) {
   return value.toFixed(2);
 }
 
+function getAppDateKey(value: Date | string) {
+  return toDateInputValue(value);
+}
+
+function compareAppDates(left: Date | string, right: Date | string) {
+  const leftKey = getAppDateKey(left);
+  const rightKey = getAppDateKey(right);
+
+  if (leftKey < rightKey) {
+    return -1;
+  }
+
+  if (leftKey > rightKey) {
+    return 1;
+  }
+
+  return 0;
+}
+
 type TimelineReading = {
   id: string;
   readingDate: Date;
@@ -74,20 +98,16 @@ type TimelineReading = {
 };
 
 function findPreviousReading(readings: TimelineReading[], readingDate: Date) {
-  const timestamp = readingDate.getTime();
-
   return (
     [...readings]
       .reverse()
-      .find((reading) => reading.readingDate.getTime() < timestamp) ?? null
+      .find((reading) => compareAppDates(reading.readingDate, readingDate) < 0) ?? null
   );
 }
 
 function findNextReading(readings: TimelineReading[], readingDate: Date) {
-  const timestamp = readingDate.getTime();
-
   return (
-    readings.find((reading) => reading.readingDate.getTime() > timestamp) ?? null
+    readings.find((reading) => compareAppDates(reading.readingDate, readingDate) > 0) ?? null
   );
 }
 
@@ -129,6 +149,7 @@ async function validateUtilityTenant(
     where: { id: tenantId },
     select: {
       id: true,
+      status: true,
       contracts: {
         where: {
           propertyId,
@@ -145,6 +166,12 @@ async function validateUtilityTenant(
   if (!tenant) {
     return {
       tenantId: ["Select a valid tenant."],
+    };
+  }
+
+  if (tenant.status === "ARCHIVED" && tenant.id !== currentTenantId) {
+    return {
+      tenantId: ["Archived tenants cannot receive new meter assignments."],
     };
   }
 
@@ -179,7 +206,7 @@ export async function createUtilityMeterAction(
   _previousState: UtilityMeterFormState,
   formData: FormData
 ): Promise<UtilityMeterFormState> {
-  await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
+  const user = await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
 
   const validatedFields = utilityMeterSchema.safeParse(
     getUtilityMeterPayload(formData)
@@ -236,6 +263,10 @@ export async function createUtilityMeterAction(
         utilityType: validatedFields.data.utilityType,
         meterCode: validatedFields.data.meterCode,
         isShared: validatedFields.data.isShared,
+        openedAt:
+          user.role === "ADMIN" && validatedFields.data.openedAt
+            ? new Date(validatedFields.data.openedAt)
+            : undefined,
       },
     });
   } catch {
@@ -255,7 +286,7 @@ export async function updateUtilityMeterAction(
   _previousState: UtilityMeterFormState,
   formData: FormData
 ): Promise<UtilityMeterFormState> {
-  await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
+  const user = await requireAnyCapability(["MANAGE_UTILITIES", "MANAGE_METERS"]);
 
   const existingMeter = await prisma.utilityMeter.findUnique({
     where: { id: meterId },
@@ -263,6 +294,20 @@ export async function updateUtilityMeterAction(
       id: true,
       propertyId: true,
       tenantId: true,
+      openedAt: true,
+      retiredAt: true,
+      replacesMeter: {
+        select: {
+          retiredAt: true,
+        },
+      },
+      readings: {
+        take: 1,
+        orderBy: [{ readingDate: "asc" }, { createdAt: "asc" }],
+        select: {
+          readingDate: true,
+        },
+      },
     },
   });
 
@@ -320,6 +365,62 @@ export async function updateUtilityMeterAction(
     };
   }
 
+  const requestedOpenedAt = validatedFields.data.openedAt
+    ? new Date(validatedFields.data.openedAt)
+    : existingMeter.openedAt;
+  const openedAtChanged =
+    compareAppDates(requestedOpenedAt, existingMeter.openedAt) !== 0;
+
+  if (openedAtChanged && user.role !== "ADMIN") {
+    return {
+      errors: {
+        openedAt: ["Only administrators can change a meter activation date."],
+      },
+      message: "Meter activation date can only be changed by an administrator.",
+    };
+  }
+
+  const firstReading = existingMeter.readings[0] ?? null;
+
+  if (firstReading && compareAppDates(requestedOpenedAt, firstReading.readingDate) > 0) {
+    return {
+      errors: {
+        openedAt: [
+          "Activation date cannot be later than the first recorded reading on this meter.",
+        ],
+      },
+      message: "Meter activation date breaks reading chronology.",
+    };
+  }
+
+  if (
+    existingMeter.retiredAt &&
+    compareAppDates(requestedOpenedAt, existingMeter.retiredAt) > 0
+  ) {
+    return {
+      errors: {
+        openedAt: [
+          "Activation date cannot be later than this meter's retirement date.",
+        ],
+      },
+      message: "Meter activation date is outside this meter's active timeline.",
+    };
+  }
+
+  if (
+    existingMeter.replacesMeter?.retiredAt &&
+    compareAppDates(requestedOpenedAt, existingMeter.replacesMeter.retiredAt) < 0
+  ) {
+    return {
+      errors: {
+        openedAt: [
+          "Activation date cannot be earlier than the previous meter's retirement date.",
+        ],
+      },
+      message: "Meter activation date conflicts with replacement chronology.",
+    };
+  }
+
   try {
     await prisma.utilityMeter.update({
       where: { id: meterId },
@@ -331,6 +432,7 @@ export async function updateUtilityMeterAction(
         utilityType: validatedFields.data.utilityType,
         meterCode: validatedFields.data.meterCode,
         isShared: validatedFields.data.isShared,
+        openedAt: requestedOpenedAt,
       },
     });
   } catch {
@@ -406,7 +508,7 @@ export async function replaceUtilityMeterAction(
   const openedAt = new Date(validatedFields.data.openedAt);
   const latestReading = existingMeter.readings[0] ?? null;
 
-  if (latestReading && openedAt < latestReading.readingDate) {
+  if (latestReading && compareAppDates(openedAt, latestReading.readingDate) < 0) {
     return {
       errors: {
         openedAt: [
@@ -502,7 +604,7 @@ export async function createMeterReadingAction(
   const latestReading = meter.readings[0] ?? null;
   const readingDate = new Date(validatedFields.data.readingDate);
 
-  if (readingDate < meter.openedAt) {
+  if (compareAppDates(readingDate, meter.openedAt) < 0) {
     return {
       errors: {
         readingDate: [
@@ -513,7 +615,7 @@ export async function createMeterReadingAction(
     };
   }
 
-  if (meter.retiredAt && readingDate > meter.retiredAt) {
+  if (meter.retiredAt && compareAppDates(readingDate, meter.retiredAt) > 0) {
     return {
       errors: {
         readingDate: [
@@ -524,7 +626,7 @@ export async function createMeterReadingAction(
     };
   }
 
-  if (latestReading && readingDate <= latestReading.readingDate) {
+  if (latestReading && compareAppDates(readingDate, latestReading.readingDate) <= 0) {
     return {
       errors: {
         readingDate: [
@@ -538,36 +640,78 @@ export async function createMeterReadingAction(
   const previousReading = latestReading
     ? Number(latestReading.currentReading.toString())
     : Number(meter.openingReading.toString());
+  const startingReadingOverride =
+    validatedFields.data.startingReadingOverride &&
+    validatedFields.data.startingReadingOverride !== ""
+      ? Number(validatedFields.data.startingReadingOverride)
+      : null;
+  const resolvedPreviousReading =
+    !latestReading && user.role === "ADMIN" && startingReadingOverride !== null
+      ? startingReadingOverride
+      : previousReading;
   const currentReading = Number(validatedFields.data.currentReading);
 
-  if (currentReading < previousReading) {
+  if (currentReading < resolvedPreviousReading) {
     return {
       errors: {
         currentReading: [
-          `Current reading must be at least ${previousReading.toFixed(2)}.`,
+          `Current reading must be at least ${resolvedPreviousReading.toFixed(2)}.`,
         ],
       },
       message: "Current reading cannot be lower than the previous reading.",
     };
   }
 
+  if (latestReading && startingReadingOverride !== null) {
+    return {
+      errors: {
+        startingReadingOverride: [
+          "Starting reading override is only available on the first reading for this meter.",
+        ],
+      },
+      message: "Starting reading override is not allowed for this meter anymore.",
+    };
+  }
+
+  if (startingReadingOverride !== null && user.role !== "ADMIN") {
+    return {
+      errors: {
+        startingReadingOverride: [
+          "Only administrators can override the starting reading.",
+        ],
+      },
+      message: "Starting reading override requires administrator access.",
+    };
+  }
+
   const ratePerUnit = Number(validatedFields.data.ratePerUnit);
-  const consumption = currentReading - previousReading;
+  const consumption = currentReading - resolvedPreviousReading;
   const totalAmount = consumption * ratePerUnit;
 
   try {
-    await prisma.meterReading.create({
-      data: {
-        meterId: validatedFields.data.meterId,
-        tenantId: meter.tenantId ?? null,
-        readingDate,
-        previousReading: toFixedDecimal(previousReading),
-        currentReading: toFixedDecimal(currentReading),
-        consumption: toFixedDecimal(consumption),
-        ratePerUnit: toFixedDecimal(ratePerUnit),
-        totalAmount: toFixedDecimal(totalAmount),
-        recordedById: user.id,
-      },
+    await prisma.$transaction(async (tx) => {
+      if (!latestReading && user.role === "ADMIN" && startingReadingOverride !== null) {
+        await tx.utilityMeter.update({
+          where: { id: meter.id },
+          data: {
+            openingReading: toFixedDecimal(startingReadingOverride),
+          },
+        });
+      }
+
+      await tx.meterReading.create({
+        data: {
+          meterId: validatedFields.data.meterId,
+          tenantId: meter.tenantId ?? null,
+          readingDate,
+          previousReading: toFixedDecimal(resolvedPreviousReading),
+          currentReading: toFixedDecimal(currentReading),
+          consumption: toFixedDecimal(consumption),
+          ratePerUnit: toFixedDecimal(ratePerUnit),
+          totalAmount: toFixedDecimal(totalAmount),
+          recordedById: user.id,
+        },
+      });
     });
   } catch {
     return {
@@ -649,7 +793,7 @@ export async function updateMeterReadingAction(
   const currentReading = Number(validatedFields.data.currentReading);
   const ratePerUnit = Number(validatedFields.data.ratePerUnit);
 
-  if (readingDate < existingReading.meter.openedAt) {
+  if (compareAppDates(readingDate, existingReading.meter.openedAt) < 0) {
     return {
       errors: {
         readingDate: [
@@ -660,7 +804,10 @@ export async function updateMeterReadingAction(
     };
   }
 
-  if (existingReading.meter.retiredAt && readingDate > existingReading.meter.retiredAt) {
+  if (
+    existingReading.meter.retiredAt &&
+    compareAppDates(readingDate, existingReading.meter.retiredAt) > 0
+  ) {
     return {
       errors: {
         readingDate: [
@@ -693,7 +840,7 @@ export async function updateMeterReadingAction(
   });
 
   const conflictingReading = siblingReadings.find(
-    (reading) => reading.readingDate.getTime() === readingDate.getTime()
+    (reading) => compareAppDates(reading.readingDate, readingDate) === 0
   );
 
   if (conflictingReading) {
@@ -707,7 +854,7 @@ export async function updateMeterReadingAction(
 
   const laterBilledReading = siblingReadings.find(
     (reading) =>
-      reading.readingDate.getTime() > readingDate.getTime() &&
+      compareAppDates(reading.readingDate, readingDate) > 0 &&
       Boolean(reading.invoiceItem)
   );
 
@@ -754,7 +901,7 @@ export async function updateMeterReadingAction(
   const currentTotalAmount = currentConsumption * ratePerUnit;
 
   const subsequentReadings = siblingReadings.filter(
-    (reading) => reading.readingDate.getTime() > readingDate.getTime()
+    (reading) => compareAppDates(reading.readingDate, readingDate) > 0
   );
 
   let runningPreviousValue = currentReading;

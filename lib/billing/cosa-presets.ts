@@ -1,4 +1,4 @@
-import type { ALLOCATION_TYPES } from "@/lib/form-options";
+import type { ALLOCATION_TYPES, UTILITY_TYPES } from "@/lib/form-options";
 
 export const COSA_TEMPLATE_PRESET_IDS = [
   "common-water",
@@ -14,6 +14,7 @@ export type CosaTemplatePreset = {
   label: string;
   name: string;
   allocationType: (typeof ALLOCATION_TYPES)[number];
+  utilityType?: (typeof UTILITY_TYPES)[number];
   description: string;
   sourceHint: string;
 };
@@ -24,6 +25,7 @@ export const COSA_TEMPLATE_PRESETS: CosaTemplatePreset[] = [
     label: "Common Water",
     name: "Common Water",
     allocationType: "PERCENTAGE",
+    utilityType: "WATER",
     description:
       "Use this for the shared water meter, then split the monthly total by tenant percentage.",
     sourceHint: "Shared meter + percentage",
@@ -33,6 +35,7 @@ export const COSA_TEMPLATE_PRESETS: CosaTemplatePreset[] = [
     label: "Common Electricity",
     name: "Common Electricity",
     allocationType: "PERCENTAGE",
+    utilityType: "ELECTRICITY",
     description:
       "Use this for the shared electric meter, then split the monthly total by tenant percentage.",
     sourceHint: "Shared meter + percentage",

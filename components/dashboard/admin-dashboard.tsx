@@ -12,7 +12,6 @@ import {
   Label,
   Pie,
   PieChart,
-  ResponsiveContainer,
   XAxis,
   YAxis,
 } from "recharts";
@@ -41,6 +40,7 @@ import {
 } from "@/components/ui/card";
 import {
   ChartContainer,
+  ChartResponsiveContainer,
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
@@ -340,7 +340,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
           <CardContent className="pt-4">
             <div className="h-[280px]">
               <ChartContainer config={collectionsChartConfig}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ChartResponsiveContainer>
                   <ComposedChart
                     data={data.series.collections}
                     margin={{ top: 10, right: 8, left: 0, bottom: 0 }}
@@ -390,7 +390,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
                       strokeWidth={2}
                     />
                   </ComposedChart>
-                </ResponsiveContainer>
+                </ChartResponsiveContainer>
               </ChartContainer>
             </div>
           </CardContent>
@@ -411,7 +411,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
             ) : (
               <div className="h-[280px]">
                 <ChartContainer config={occupancyChartConfig}>
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ChartResponsiveContainer>
                     <BarChart
                       data={data.breakdowns.occupancyByBuilding.slice(0, 6)}
                       layout="vertical"
@@ -453,7 +453,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
                         fill="var(--color-vacant)"
                       />
                     </BarChart>
-                  </ResponsiveContainer>
+                  </ChartResponsiveContainer>
                 </ChartContainer>
               </div>
             )}
@@ -476,7 +476,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
               <>
                 <div className="h-[220px]">
                   <ChartContainer config={statusMixChartConfig}>
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ChartResponsiveContainer>
                       <PieChart>
                         <ChartTooltip
                           cursor={false}
@@ -534,7 +534,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
                           ))}
                         </Pie>
                       </PieChart>
-                    </ResponsiveContainer>
+                    </ChartResponsiveContainer>
                   </ChartContainer>
                 </div>
 
@@ -570,7 +570,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
           <CardContent className="pt-4">
             <div className="h-[280px]">
               <ChartContainer config={utilityChartConfig}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ChartResponsiveContainer>
                   <AreaChart
                     data={data.series.utilityCharges}
                     margin={{ top: 10, right: 8, left: 0, bottom: 0 }}
@@ -629,7 +629,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
                       maxBarSize={18}
                     />
                   </AreaChart>
-                </ResponsiveContainer>
+                </ChartResponsiveContainer>
               </ChartContainer>
             </div>
           </CardContent>

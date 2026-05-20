@@ -5,7 +5,11 @@ import {
   PencilLine,
   Repeat2,
 } from "lucide-react";
-import { updateRecurringChargeAction } from "@/app/(dashboard)/billing/actions";
+import {
+  deactivateRecurringChargeAction,
+  updateRecurringChargeAction,
+} from "@/app/(dashboard)/billing/actions";
+import { DeactivateRecurringChargeButton } from "@/components/billing/deactivate-recurring-charge-button";
 import { RecurringChargeForm } from "@/components/billing/recurring-charge-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
@@ -103,6 +107,28 @@ export default async function EditBillingChargePage({
           isActive: charge.isActive,
         }}
       />
+
+      {charge.isActive ? (
+        <div className="rounded-xl border border-destructive/25 bg-destructive/5 p-5">
+          <p className="text-[0.72rem] uppercase tracking-[0.26em] text-destructive/80">
+            Soft delete
+          </p>
+          <h3 className="mt-3 text-lg font-semibold tracking-[-0.03em] text-foreground">
+            Remove this recurring charge
+          </h3>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            This sets the charge to inactive only. Existing invoices stay unchanged,
+            but future billing cycles will stop including it.
+          </p>
+
+          <div className="mt-5">
+            <DeactivateRecurringChargeButton
+              action={deactivateRecurringChargeAction.bind(null, charge.id)}
+              chargeLabel={charge.label}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

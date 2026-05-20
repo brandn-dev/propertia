@@ -2,7 +2,11 @@ import "server-only";
 
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { prisma, withPrismaRetry } from "@/lib/prisma";
+import {
+  isRetryablePrismaError,
+  prisma,
+  withPrismaRetry,
+} from "@/lib/prisma";
 import { getSession } from "@/lib/auth/session";
 import {
   hasAnyCapability,
@@ -28,21 +32,31 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     return null;
   }
 
-  const user = await withPrismaRetry(() =>
-    prisma.user.findUnique({
-      where: { id: session.userId },
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        role: true,
-        capabilities: true,
-        avatarUrl: true,
-        isActive: true,
-        lastLoginAt: true,
-      },
-    })
-  );
+  let user;
+
+  try {
+    user = await withPrismaRetry(() =>
+      prisma.user.findUnique({
+        where: { id: session.userId },
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          role: true,
+          capabilities: true,
+          avatarUrl: true,
+          isActive: true,
+          lastLoginAt: true,
+        },
+      })
+    );
+  } catch (error) {
+    if (isRetryablePrismaError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
 
   if (!user || !user.isActive) {
     return null;

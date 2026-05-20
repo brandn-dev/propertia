@@ -162,12 +162,27 @@ export async function getContractPropertyOptions(includePropertyId?: string) {
   });
 }
 
-export async function getContractTenantOptions() {
+export async function getContractTenantOptions(includeTenantId?: string) {
   return prisma.tenant.findMany({
+    where: includeTenantId
+      ? {
+          OR: [
+            {
+              status: "ACTIVE",
+            },
+            {
+              id: includeTenantId,
+            },
+          ],
+        }
+      : {
+          status: "ACTIVE",
+        },
     orderBy: [{ createdAt: "desc" }],
     select: {
       id: true,
       type: true,
+      status: true,
       firstName: true,
       lastName: true,
       businessName: true,
@@ -228,26 +243,31 @@ export async function getUtilityTenantOptions(
   includePropertyId?: string
 ) {
   const contracts = await prisma.contract.findMany({
-    where:
-      includeTenantId && includePropertyId
-        ? {
-            OR: [
-              {
-                status: {
-                  in: ["DRAFT", "ACTIVE"],
-                },
+    where: includeTenantId
+      ? {
+          OR: [
+            {
+              status: {
+                in: ["DRAFT", "ACTIVE"],
               },
-              {
-                tenantId: includeTenantId,
-                propertyId: includePropertyId,
+              tenant: {
+                status: "ACTIVE",
               },
-            ],
-          }
-        : {
-            status: {
-              in: ["DRAFT", "ACTIVE"],
             },
+            {
+              tenantId: includeTenantId,
+              ...(includePropertyId ? { propertyId: includePropertyId } : {}),
+            },
+          ],
+        }
+      : {
+          status: {
+            in: ["DRAFT", "ACTIVE"],
           },
+          tenant: {
+            status: "ACTIVE",
+          },
+        },
     orderBy: [{ startDate: "desc" }],
     select: {
       propertyId: true,
@@ -255,6 +275,7 @@ export async function getUtilityTenantOptions(
         select: {
           id: true,
           type: true,
+          status: true,
           firstName: true,
           lastName: true,
           businessName: true,
@@ -268,6 +289,7 @@ export async function getUtilityTenantOptions(
     {
       id: string;
       type: string;
+      status: string;
       firstName: string | null;
       lastName: string | null;
       businessName: string | null;
@@ -835,6 +857,7 @@ export async function getTenantProfile(tenantId: string) {
       select: {
         id: true,
         type: true,
+        status: true,
         firstName: true,
         lastName: true,
         businessName: true,
@@ -843,6 +866,7 @@ export async function getTenantProfile(tenantId: string) {
         address: true,
         validIdType: true,
         validIdNumber: true,
+        archivedAt: true,
         createdAt: true,
         updatedAt: true,
         tenantPeople: {

@@ -19,6 +19,14 @@ export const utilityMeterSchema = z.object({
     )
     .transform((value) => value.toUpperCase()),
   isShared: z.boolean(),
+  openedAt: z
+    .string()
+    .trim()
+    .optional()
+    .refine(
+      (value) => value == null || value === "" || !Number.isNaN(new Date(value).getTime()),
+      "Enter a valid activation date."
+    ),
 }).superRefine((value, ctx) => {
   if (!value.isShared && !value.tenantId) {
     ctx.addIssue({

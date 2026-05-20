@@ -58,6 +58,11 @@ enum TenantType {
   BUSINESS
 }
 
+enum TenantStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum ContractStatus {
   DRAFT
   ACTIVE
@@ -282,6 +287,7 @@ model Lease {
 model Tenant {
   id              String                 @id @default(cuid())
   type            TenantType
+  status          TenantStatus           @default(ACTIVE)
   firstName       String?
   lastName        String?
   businessName    String
@@ -290,6 +296,7 @@ model Tenant {
   address         String?
   validIdType     String?
   validIdNumber   String?
+  archivedAt      DateTime?
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   contracts       Contract[]
@@ -298,6 +305,8 @@ model Tenant {
   meterReadings   MeterReading[]
   representatives TenantRepresentative[]
   tenantPeople    TenantPerson[]
+
+  @@index([status, createdAt])
 }
 
 model TenantRepresentative {
@@ -606,14 +615,15 @@ model CosaTemplate {
 model CosaTemplateAllocation {
   id             String       @id @default(cuid())
   cosaTemplateId String
-  contractId     String
+  contractId     String?
+  helperLabel    String?
   percentage     Decimal?     @db.Decimal(5, 2)
   unitCount      Int?
   amount         Decimal?     @db.Decimal(12, 2)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   cosaTemplate   CosaTemplate @relation(fields: [cosaTemplateId], references: [id], onDelete: Cascade)
-  contract       Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract       Contract?    @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
   @@unique([cosaTemplateId, contractId])
   @@index([contractId])
@@ -622,14 +632,15 @@ model CosaTemplateAllocation {
 model COSAAllocation {
   id             String   @id @default(cuid())
   cosaId         String
-  contractId     String
+  contractId     String?
+  helperLabel    String?
   percentage     Decimal  @db.Decimal(5, 2)
   unitCount      Int?
   computedAmount Decimal  @db.Decimal(12, 2)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   cosa           COSA     @relation(fields: [cosaId], references: [id], onDelete: Cascade)
-  contract       Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract       Contract? @relation(fields: [contractId], references: [id], onDelete: Cascade)
   invoiceItem    InvoiceItem?
 
   @@unique([cosaId, contractId])

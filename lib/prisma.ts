@@ -49,7 +49,7 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-function isRetryablePrismaError(error: unknown) {
+export function isRetryablePrismaError(error: unknown) {
   return (
     error instanceof Error &&
     /Connection terminated unexpectedly|Can't reach database server|Timed out fetching a new connection/i.test(
@@ -58,9 +58,14 @@ function isRetryablePrismaError(error: unknown) {
   );
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function withPrismaRetry<T>(
   run: () => Promise<T>,
-  retries = 1
+  retries = 3,
+  delayMs = 250
 ): Promise<T> {
   try {
     return await run();
@@ -69,6 +74,7 @@ export async function withPrismaRetry<T>(
       throw error;
     }
 
-    return withPrismaRetry(run, retries - 1);
+    await wait(delayMs);
+    return withPrismaRetry(run, retries - 1, Math.min(delayMs * 2, 2000));
   }
 }

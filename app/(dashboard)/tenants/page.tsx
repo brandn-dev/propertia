@@ -222,17 +222,33 @@ export default async function TenantsPage() {
   await requireCapability("MANAGE_TENANTS");
 
   const tenants = enrichTenants(await getTenantsOverview());
-  const groupedTenants = groupTenants(tenants);
-  const businessTenants = tenants.filter((tenant) => tenant.type === "BUSINESS").length;
-  const totalPeople = tenants.reduce((sum, tenant) => sum + tenant.peopleCount, 0);
-  const totalContracts = tenants.reduce((sum, tenant) => sum + tenant._count.contracts, 0);
+  const activeTenants = tenants.filter((tenant) => tenant.status === "ACTIVE");
+  const archivedTenants = tenants.filter((tenant) => tenant.status === "ARCHIVED");
+  const businessTenants = activeTenants.filter(
+    (tenant) => tenant.type === "BUSINESS"
+  ).length;
+  const totalPeople = activeTenants.reduce(
+    (sum, tenant) => sum + tenant.peopleCount,
+    0
+  );
+  const totalContracts = activeTenants.reduce(
+    (sum, tenant) => sum + tenant._count.contracts,
+    0
+  );
 
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-[-0.05em] sm:text-[2rem]">
-          Tenant registry
-        </h1>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-[-0.05em] sm:text-[2rem]">
+            Tenant registry
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Active tab stays operational. Archived tab keeps invoices,
+            payments, and contract history visible without crowding live
+            workflows.
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button
             render={<Link href="/people" />}
@@ -250,7 +266,7 @@ export default async function TenantsPage() {
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricPill label="Records" value={String(tenants.length)} icon={Users2} />
+        <MetricPill label="Records" value={String(activeTenants.length)} icon={Users2} />
         <MetricPill
           label="Business"
           value={String(businessTenants)}
@@ -266,7 +282,7 @@ export default async function TenantsPage() {
             Registry
           </h2>
           <Badge variant="outline" className="rounded-full">
-            {tenants.length} tenants
+            {activeTenants.length} active
           </Badge>
         </div>
 
@@ -282,13 +298,35 @@ export default async function TenantsPage() {
           ) : (
             <div className="p-3 sm:p-4">
               <TenantRegistry
-                groups={groupedTenants.map((group) => ({
+                activeGroups={groupTenants(activeTenants).map((group) => ({
                   id: group.id,
                   label: group.label,
                   meta: group.meta,
                   kind: group.kind,
                   items: group.items.map((tenant) => ({
                     id: tenant.id,
+                    status: tenant.status,
+                    displayName: tenant.displayName,
+                    peopleCount: tenant.peopleCount,
+                    tenantTypeLabel: TENANT_TYPE_LABELS[tenant.type],
+                    subjectPropertyName:
+                      tenant.preferredContract?.subjectProperty.name ?? null,
+                    subjectPropertyCode:
+                      tenant.preferredContract?.subjectProperty.propertyCode ?? null,
+                    contactNumber: tenant.contactNumber,
+                    email: tenant.email,
+                    contractsCount: tenant._count.contracts,
+                    invoicesCount: tenant._count.invoices,
+                  })),
+                }))}
+                archivedGroups={groupTenants(archivedTenants).map((group) => ({
+                  id: group.id,
+                  label: group.label,
+                  meta: group.meta,
+                  kind: group.kind,
+                  items: group.items.map((tenant) => ({
+                    id: tenant.id,
+                    status: tenant.status,
                     displayName: tenant.displayName,
                     peopleCount: tenant.peopleCount,
                     tenantTypeLabel: TENANT_TYPE_LABELS[tenant.type],

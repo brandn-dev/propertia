@@ -12,6 +12,8 @@ import {
   type RecurringChargeOverviewItem,
   getRecurringChargesOverview,
 } from "@/lib/data/billing";
+import { deactivateRecurringChargeAction } from "@/app/(dashboard)/billing/actions";
+import { DeactivateRecurringChargeButton } from "@/components/billing/deactivate-recurring-charge-button";
 import { DashboardEmptyState } from "@/components/dashboard/empty-state";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
@@ -193,15 +195,24 @@ export default async function BillingChargesPage() {
                       {charge._count.invoiceItems}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        render={<Link href={`/billing/charges/${charge.id}/edit`} />}
-                        variant="outline"
-                        size="sm"
-                        className="button-blank rounded-full"
-                      >
-                        <Eye />
-                        Edit
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          render={<Link href={`/billing/charges/${charge.id}/edit`} />}
+                          variant="outline"
+                          size="sm"
+                          className="button-blank rounded-full"
+                        >
+                          <Eye />
+                          Edit
+                        </Button>
+                        {charge.isActive ? (
+                          <DeactivateRecurringChargeButton
+                            action={deactivateRecurringChargeAction.bind(null, charge.id)}
+                            chargeLabel={charge.label}
+                            compact
+                          />
+                        ) : null}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

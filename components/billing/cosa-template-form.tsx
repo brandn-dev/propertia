@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Calculator, LoaderCircle, Save } from "lucide-react";
+import { ArrowLeft, Calculator, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import type { CosaTemplateFormState } from "@/app/(dashboard)/billing/actions";
 import { calculateCosaAllocations } from "@/lib/billing/cosa";
 import { ALLOCATION_TYPES, ALLOCATION_TYPE_LABELS } from "@/lib/form-options";
@@ -12,13 +12,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useActionRedirect } from "@/components/ui/use-action-redirect";
+import { useActionToast } from "@/components/ui/toast-provider";
 
 const initialState: CosaTemplateFormState = {};
 
 const selectClassName = "select-blank";
 
 type AllocationEntry = {
+  entryId: string;
   contractId: string;
+  helperLabel: string;
+  isHelper: boolean;
   percentage: string;
   unitCount: string;
   amount: string;
@@ -47,6 +51,7 @@ type CosaTemplateFormProps = {
       propertyCode: string;
     };
   }[];
+  meterUtilityTypeFilter?: string | null;
   contractOptions: {
     id: string;
     status: string;
@@ -134,11 +139,48 @@ function formatUnitLabel(value: string) {
   return `${quantity} ${quantity === 1 ? "unit" : "units"}`;
 }
 
+function parsePercentageValue(value: string) {
+  const parsedValue = Number(value.trim());
+
+  return Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : 0;
+}
+
+function roundPercentageValue(value: number) {
+  return Number(value.toFixed(2));
+}
+
+function formatPercentageValue(value: number) {
+  return roundPercentageValue(value).toFixed(2).replace(/\.?0+$/, "");
+}
+
+function buildHelperEntryId() {
+  return `helper:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function supportsHelperAllocations(
+  allocationType: (typeof ALLOCATION_TYPES)[number],
+) {
+  return allocationType === "PERCENTAGE" || allocationType === "PER_UNIT";
+}
+
+function createHelperEntry(): AllocationEntry {
+  return {
+    entryId: buildHelperEntryId(),
+    contractId: "",
+    helperLabel: "",
+    isHelper: true,
+    percentage: "",
+    unitCount: "1",
+    amount: "",
+  };
+}
+
 export function CosaTemplateForm({
   mode,
   formAction,
   propertyOptions,
   meterOptions,
+  meterUtilityTypeFilter = null,
   contractOptions,
   initialValues = {
     propertyId: "",
@@ -152,6 +194,11 @@ export function CosaTemplateForm({
 }: CosaTemplateFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
   useActionRedirect(state.redirectTo);
+  useActionToast({
+    message: state.message,
+    title: mode === "create" ? "Template not created" : "Template not saved",
+    intent: "error",
+  });
   const [propertyId, setPropertyId] = useState(initialValues.propertyId);
   const [meterId, setMeterId] = useState(initialValues.meterId);
   const [defaultAmount, setDefaultAmount] = useState(
@@ -172,6 +219,20 @@ export function CosaTemplateForm({
     [propertyId, propertyOptions],
   );
 
+  const selectableProperties = useMemo(
+    () =>
+      propertyOptions.filter(
+        (property) =>
+          property.id === propertyId ||
+          propertyOptions.some(
+            (candidate) =>
+              candidate.parentPropertyId === property.id &&
+              candidate.status !== "ARCHIVED",
+          ),
+      ),
+    [propertyId, propertyOptions],
+  );
+
   const visibleContracts = useMemo(
     () =>
       contractOptions.filter((contract) =>
@@ -181,8 +242,14 @@ export function CosaTemplateForm({
   );
 
   const visibleMeters = useMemo(
-    () => meterOptions.filter((meter) => meter.propertyId === propertyId),
-    [meterOptions, propertyId],
+    () =>
+      meterOptions.filter(
+        (meter) =>
+          meter.propertyId === propertyId &&
+          (!meterUtilityTypeFilter ||
+            meter.utilityType === meterUtilityTypeFilter),
+      ),
+    [meterOptions, meterUtilityTypeFilter, propertyId],
   );
 
   const contractLookup = useMemo(
@@ -194,10 +261,14 @@ export function CosaTemplateForm({
     nextType: (typeof ALLOCATION_TYPES)[number],
     currentEntries: AllocationEntry[],
   ) {
-    if (nextType === "PERCENTAGE") {
-      const equalPercentages = buildEqualPercentages(currentEntries.length);
+    const nextEntries = supportsHelperAllocations(nextType)
+      ? currentEntries
+      : currentEntries.filter((entry) => !entry.isHelper);
 
-      return currentEntries.map((entry, index) => ({
+    if (nextType === "PERCENTAGE") {
+      const equalPercentages = buildEqualPercentages(nextEntries.length);
+
+      return nextEntries.map((entry, index) => ({
         ...entry,
         percentage: equalPercentages[index] ?? entry.percentage,
         unitCount: "",
@@ -208,10 +279,10 @@ export function CosaTemplateForm({
     if (nextType === "CUSTOM") {
       const equalAmounts = buildEqualAmounts(
         defaultAmount,
-        currentEntries.length,
+        nextEntries.length,
       );
 
-      return currentEntries.map((entry, index) => ({
+      return nextEntries.map((entry, index) => ({
         ...entry,
         percentage: "",
         unitCount: "",
@@ -220,7 +291,7 @@ export function CosaTemplateForm({
     }
 
     if (nextType === "PER_UNIT") {
-      return currentEntries.map((entry) => ({
+      return nextEntries.map((entry) => ({
         ...entry,
         percentage: "",
         unitCount:
@@ -231,7 +302,7 @@ export function CosaTemplateForm({
       }));
     }
 
-    return currentEntries.map((entry) => ({
+    return nextEntries.map((entry) => ({
       ...entry,
       percentage: "",
       unitCount: "",
@@ -271,10 +342,12 @@ export function CosaTemplateForm({
           allocationType,
           totalAmount: Number(defaultAmount),
           entries: allocationEntries.map((entry) => {
-            const contract = contractLookup.get(entry.contractId);
+            const contract = entry.contractId
+              ? contractLookup.get(entry.contractId)
+              : undefined;
 
             return {
-              contractId: entry.contractId,
+              contractId: entry.entryId,
               percentage:
                 entry.percentage.trim() !== ""
                   ? Number(entry.percentage)
@@ -324,6 +397,10 @@ export function CosaTemplateForm({
 
     setAllocationEntries((currentEntries) =>
       currentEntries.filter((entry) => {
+        if (entry.isHelper) {
+          return true;
+        }
+
         const contract = contractLookup.get(entry.contractId);
         return contract ? nextScopeIds.has(contract.property.id) : false;
       }),
@@ -349,7 +426,10 @@ export function CosaTemplateForm({
         return rehydrateEntriesForType(allocationType, [
           ...currentEntries,
           {
+            entryId: contractId,
             contractId,
+            helperLabel: "",
+            isHelper: false,
             percentage: "",
             unitCount: "1",
             amount: "",
@@ -365,13 +445,13 @@ export function CosaTemplateForm({
   }
 
   function updateAllocationEntry(
-    contractId: string,
-    key: "percentage" | "unitCount" | "amount",
+    entryId: string,
+    key: "helperLabel" | "percentage" | "unitCount" | "amount",
     value: string,
   ) {
     setAllocationEntries((currentEntries) =>
       currentEntries.map((entry) =>
-        entry.contractId === contractId
+        entry.entryId === entryId
           ? {
               ...entry,
               [key]: value,
@@ -381,9 +461,26 @@ export function CosaTemplateForm({
     );
   }
 
+  function addHelperEntry() {
+    setAllocationEntries((currentEntries) =>
+      rehydrateEntriesForType(allocationType, [
+        ...currentEntries,
+        createHelperEntry(),
+      ]),
+    );
+  }
+
+  function removeHelperEntry(entryId: string) {
+    setAllocationEntries((currentEntries) =>
+      currentEntries.filter((entry) => entry.entryId !== entryId),
+    );
+  }
+
   const serializedAllocations = JSON.stringify(
     allocationEntries.map((entry) => ({
+      entryId: entry.entryId,
       contractId: entry.contractId,
+      helperLabel: entry.helperLabel,
       percentage: entry.percentage,
       unitCount: entry.unitCount,
       amount: entry.amount,
@@ -397,10 +494,12 @@ export function CosaTemplateForm({
     ]),
   );
 
-  const selectedContracts = allocationEntries.flatMap((entry) => {
-    const contract = contractLookup.get(entry.contractId);
+  const selectedParticipants = allocationEntries.flatMap((entry) => {
+    const contract = entry.contractId
+      ? contractLookup.get(entry.contractId) ?? null
+      : null;
 
-    if (!contract) {
+    if (!entry.isHelper && !contract) {
       return [];
     }
 
@@ -408,12 +507,43 @@ export function CosaTemplateForm({
       {
         entry,
         contract,
-        preview: previewLookup.get(entry.contractId),
+        preview: previewLookup.get(entry.entryId),
+        label: entry.isHelper
+          ? entry.helperLabel.trim() || "Ghost helper"
+          : formatTenantName(contract!.tenant),
       },
     ];
   });
 
+  const totalPercentage = allocationEntries.reduce(
+    (sum, entry) => sum + parsePercentageValue(entry.percentage),
+    0,
+  );
+  const percentageBalance = roundPercentageValue(100 - totalPercentage);
+  const contractAllocationEntries = allocationEntries.filter(
+    (entry) => !entry.isHelper && entry.contractId,
+  );
+  const helperAllocationEntries = allocationEntries.filter(
+    (entry) => entry.isHelper,
+  );
   const hasSelections = allocationEntries.length > 0;
+  const hasTenantSelections = contractAllocationEntries.length > 0;
+  const percentageStatus =
+    allocationType !== "PERCENTAGE" || !hasSelections
+      ? null
+      : percentageBalance < -0.01
+        ? `${formatPercentageValue(Math.abs(percentageBalance))}% over 100%.`
+        : Math.abs(percentageBalance) <= 0.01
+          ? "100% assigned."
+          : `${formatPercentageValue(percentageBalance)}% left to assign.`;
+  const allocationValidationSummary = Array.from(
+    new Set([
+      ...(state.errors?.allocations ?? []),
+      ...(state.errors?.propertyId ?? []),
+      ...(state.errors?.meterId ?? []),
+      ...(state.errors?.defaultAmount ?? []),
+    ])
+  );
 
   return (
     <form action={action} className="space-y-6">
@@ -452,7 +582,7 @@ export function CosaTemplateForm({
                   disabled={pending}
                 >
                   <option value="">Select a property</option>
-                  {propertyOptions.map((property) => (
+                  {selectableProperties.map((property) => (
                     <option key={property.id} value={property.id}>
                       {property.propertyCode} · {property.name}
                     </option>
@@ -551,6 +681,19 @@ export function CosaTemplateForm({
                 {state.message}
               </div>
             ) : null}
+
+            {allocationValidationSummary.length > 0 ? (
+              <div className="rounded-[1.2rem] border border-destructive/30 bg-destructive/5 px-4 py-4">
+                <p className="text-sm font-medium text-destructive">
+                  Template validation summary
+                </p>
+                <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-destructive">
+                  {allocationValidationSummary.map((message) => (
+                    <li key={message}>{message}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
 
           <div className="border-blank rounded-xl p-6">
@@ -565,11 +708,31 @@ export function CosaTemplateForm({
                 </p>
               </div>
               <div className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-border/60 bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground">
-                {allocationEntries.length} selected
+                {contractAllocationEntries.length} tenants
+                {helperAllocationEntries.length > 0
+                  ? ` · ${helperAllocationEntries.length} helpers`
+                  : ""}
               </div>
             </div>
 
+            <div className="mt-6 rounded-[1.2rem] border border-border/60 bg-background/45 px-4 py-4 text-sm leading-6 text-muted-foreground">
+              Save rules: choose at least one active tenant contract, keep each tenant selected only once, use helper rows only for percentage or per-unit splits, keep percentage totals at 100%, and make custom allocation totals match the default amount. If you link a shared meter, it must belong to the selected property.
+            </div>
+
             <FieldError message={state.errors?.allocations?.[0]} />
+            {percentageStatus ? (
+              <p
+                className={`mt-2 text-sm ${
+                  percentageBalance < -0.01
+                    ? "text-destructive"
+                    : Math.abs(percentageBalance) <= 0.01
+                      ? "text-muted-foreground"
+                      : "text-primary"
+                }`}
+              >
+                {percentageStatus}
+              </p>
+            ) : null}
 
             {!propertyId ? (
               <div className="mt-6 rounded-[1.2rem] border border-dashed border-border/80 bg-muted/45 px-4 py-3 text-sm text-muted-foreground">
@@ -750,6 +913,141 @@ export function CosaTemplateForm({
                   })}
                 </div>
 
+                {supportsHelperAllocations(allocationType) ? (
+                  <div className="rounded-[1.2rem] border border-border/60 bg-muted/35 px-4 py-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          Ghost helpers
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Add non-billed helper rows to absorb leftover percentage or unit weight. These save with the template, but never create tenant invoices.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addHelperEntry}
+                        disabled={pending}
+                      >
+                        <Plus />
+                        Add helper
+                      </Button>
+                    </div>
+
+                    {helperAllocationEntries.length === 0 ? (
+                      <p className="mt-4 text-sm text-muted-foreground">
+                        No helper rows yet.
+                      </p>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        {helperAllocationEntries.map((entry) => {
+                          const preview = previewLookup.get(entry.entryId);
+
+                          return (
+                            <div
+                              key={entry.entryId}
+                              className="border-blank rounded-xl p-4"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-foreground">
+                                    {entry.helperLabel.trim() || "Ghost helper"}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    Helper share excluded from tenant billing.
+                                  </p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => removeHelperEntry(entry.entryId)}
+                                  disabled={pending}
+                                >
+                                  <Trash2 />
+                                  Remove
+                                </Button>
+                              </div>
+
+                              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                  <Label htmlFor={`helper-label-${entry.entryId}`}>
+                                    Helper label
+                                  </Label>
+                                  <Input
+                                    id={`helper-label-${entry.entryId}`}
+                                    value={entry.helperLabel}
+                                    onChange={(event) =>
+                                      updateAllocationEntry(
+                                        entry.entryId,
+                                        "helperLabel",
+                                        event.target.value,
+                                      )
+                                    }
+                                    placeholder="Common area reserve"
+                                    className="field-blank h-11"
+                                    disabled={pending}
+                                  />
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label
+                                    htmlFor={`${allocationType === "PERCENTAGE" ? "helper-percentage" : "helper-unit"}-${entry.entryId}`}
+                                  >
+                                    {allocationType === "PERCENTAGE"
+                                      ? "Share percentage"
+                                      : "Unit count"}
+                                  </Label>
+                                  <Input
+                                    id={`${allocationType === "PERCENTAGE" ? "helper-percentage" : "helper-unit"}-${entry.entryId}`}
+                                    type="number"
+                                    min={allocationType === "PERCENTAGE" ? "0" : "1"}
+                                    step={allocationType === "PERCENTAGE" ? "0.01" : "1"}
+                                    value={
+                                      allocationType === "PERCENTAGE"
+                                        ? entry.percentage
+                                        : entry.unitCount
+                                    }
+                                    onChange={(event) =>
+                                      updateAllocationEntry(
+                                        entry.entryId,
+                                        allocationType === "PERCENTAGE"
+                                          ? "percentage"
+                                          : "unitCount",
+                                        event.target.value,
+                                      )
+                                    }
+                                    placeholder={
+                                      allocationType === "PERCENTAGE"
+                                        ? "10.00"
+                                        : "1"
+                                    }
+                                    className="field-blank h-11"
+                                    disabled={pending}
+                                  />
+                                </div>
+
+                                <div className="space-y-2 md:col-span-2">
+                                  <Label>Preview split</Label>
+                                  <div className="field-blank flex min-h-11 items-center rounded-lg px-3 text-sm text-muted-foreground">
+                                    {preview
+                                      ? `${formatCurrency(preview.computedAmount)} · ${preview.percentage.toFixed(2)}%`
+                                      : allocationType === "PERCENTAGE"
+                                        ? `${entry.percentage || "0"}% helper share`
+                                        : `${formatUnitLabel(entry.unitCount)} helper weight`}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
                 {hasSelections ? (
                   <div className="rounded-[1.2rem] border border-border/60 bg-muted/45 px-4 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -781,32 +1079,30 @@ export function CosaTemplateForm({
                       </p>
                     ) : (
                       <div className="mt-4 grid gap-2 text-sm">
-                        {selectedContracts.map((selectedContract) => {
-                          const preview = selectedContract.preview;
+                        {selectedParticipants.map((participant) => {
+                          const preview = participant.preview;
 
                           return (
                             <div
-                              key={selectedContract.contract.id}
+                              key={participant.entry.entryId}
                               className="flex items-center justify-between gap-4"
                             >
                               <span className="text-muted-foreground">
-                                {formatTenantName(
-                                  selectedContract.contract.tenant,
-                                )}
+                                {participant.label}
                               </span>
                               <span className="font-medium text-foreground">
                                 {preview
                                   ? `${formatCurrency(preview.computedAmount)} · ${preview.percentage.toFixed(2)}%`
                                   : allocationType === "PERCENTAGE"
-                                    ? `${selectedContract.entry.percentage || "0"}%`
+                                    ? `${participant.entry.percentage || "0"}%`
                                     : allocationType === "PER_UNIT"
                                       ? formatUnitLabel(
-                                          selectedContract.entry.unitCount,
+                                          participant.entry.unitCount,
                                         )
                                       : allocationType === "CUSTOM"
                                         ? formatCurrency(
                                             Number(
-                                              selectedContract.entry.amount ||
+                                              participant.entry.amount ||
                                                 0,
                                             ),
                                           )
@@ -844,9 +1140,17 @@ export function CosaTemplateForm({
               <div className="flex items-center justify-between gap-4">
                 <span className="text-muted-foreground">Selected tenants</span>
                 <span className="font-medium text-foreground">
-                  {allocationEntries.length}
+                  {contractAllocationEntries.length}
                 </span>
               </div>
+              {helperAllocationEntries.length > 0 ? (
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Ghost helpers</span>
+                  <span className="font-medium text-foreground">
+                    {helperAllocationEntries.length}
+                  </span>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between gap-4">
                 <span className="text-muted-foreground">Allocation mode</span>
                 <span className="font-medium text-foreground">
@@ -868,7 +1172,7 @@ export function CosaTemplateForm({
                 type="submit"
                 size="lg"
                 className="h-11 rounded-xl shadow-sm"
-                disabled={pending || !hasSelections}
+                disabled={pending || !hasTenantSelections}
               >
                 {pending ? <LoaderCircle className="animate-spin" /> : <Save />}
                 {mode === "create" ? "Create template" : "Save changes"}
