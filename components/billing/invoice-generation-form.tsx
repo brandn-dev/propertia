@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, CalendarRange, LoaderCircle, Save } from "lucide-react";
 import type { InvoiceGenerationFormState } from "@/app/(dashboard)/billing/actions";
 import {
+  cycleOverlapsRange,
   filterCyclesWithoutInvoicedMonths,
   findNextCompletedBillingCycles,
   formatBillingCycleLabel,
@@ -15,7 +16,11 @@ import {
   isReadingInUtilityBillingWindow,
 } from "@/lib/billing/cycles";
 import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
-import { UTILITY_TYPE_LABELS } from "@/lib/form-options";
+import {
+  ALLOCATION_TYPE_LABELS,
+  RECURRING_CHARGE_TYPE_LABELS,
+  UTILITY_TYPE_LABELS,
+} from "@/lib/form-options";
 import { formatLongDate } from "@/lib/format";
 import { getUtilityUnitLabel } from "@/lib/utility-units";
 import { Button } from "@/components/ui/button";
@@ -57,6 +62,26 @@ type InvoiceGenerationFormProps = {
     recurringChargeCount: number;
     rentAdjustmentCount: number;
     pendingCycleLabels: string[];
+    recurringCharges: {
+      id: string;
+      chargeType: keyof typeof RECURRING_CHARGE_TYPE_LABELS;
+      label: string;
+      amount: string;
+      effectiveStartDate: string;
+      effectiveEndDate: string | null;
+    }[];
+    cosaAllocations: {
+      id: string;
+      percentage: string;
+      unitCount: number | null;
+      computedAmount: string;
+      cosa: {
+        id: string;
+        description: string;
+        billingDate: string;
+        allocationType: keyof typeof ALLOCATION_TYPE_LABELS;
+      };
+    }[];
     readings: {
       id: string;
       readingDate: string;
@@ -88,6 +113,8 @@ type PendingCycleOption = {
   label: string;
   meta: string;
   readingOptions: ReadingSelectionOption[];
+  recurringChargeOptions: RecurringChargePreviewOption[];
+  cosaOptions: CosaPreviewOption[];
 };
 
 type PendingTenantGroup = {
@@ -106,6 +133,23 @@ type ReadingSelectionOption = {
   serviceCoverageLabel: string;
   consumptionLabel: string;
   rateLabel: string;
+  amountLabel: string;
+};
+
+type RecurringChargePreviewOption = {
+  id: string;
+  label: string;
+  chargeTypeLabel: string;
+  amountLabel: string;
+  effectiveLabel: string;
+};
+
+type CosaPreviewOption = {
+  id: string;
+  description: string;
+  billingDateLabel: string;
+  allocationTypeLabel: string;
+  basisLabel: string;
   amountLabel: string;
 };
 
@@ -132,6 +176,18 @@ function formatMoney(value: number) {
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(value)}`;
+}
+
+function formatAllocationBasisLabel(allocation: InvoiceGenerationFormProps["contractOptions"][number]["cosaAllocations"][number]) {
+  if (allocation.cosa.allocationType === "PER_UNIT" && allocation.unitCount != null) {
+    return `${allocation.unitCount} unit${allocation.unitCount === 1 ? "" : "s"}`;
+  }
+
+  if (allocation.cosa.allocationType === "PERCENTAGE") {
+    return `${Number(allocation.percentage)}%`;
+  }
+
+  return ALLOCATION_TYPE_LABELS[allocation.cosa.allocationType];
 }
 
 export function InvoiceGenerationForm({
@@ -220,12 +276,49 @@ export function InvoiceGenerationForm({
                   amountLabel: formatMoney(Number(reading.totalAmount)),
                 }))
             : [];
+          const recurringChargeOptions = contract.recurringCharges
+            .filter((charge) =>
+              cycleOverlapsRange(
+                cycle,
+                new Date(charge.effectiveStartDate),
+                charge.effectiveEndDate ? new Date(charge.effectiveEndDate) : null
+              )
+            )
+            .map((charge) => ({
+              id: charge.id,
+              label: charge.label,
+              chargeTypeLabel: RECURRING_CHARGE_TYPE_LABELS[charge.chargeType],
+              amountLabel: formatMoney(Number(charge.amount)),
+              effectiveLabel: `Effective ${formatLongDate(charge.effectiveStartDate)}${
+                charge.effectiveEndDate
+                  ? ` to ${formatLongDate(charge.effectiveEndDate)}`
+                  : " onward"
+              }`,
+            }));
+          const cosaOptions = contract.cosaAllocations
+            .filter((allocation) => {
+              const billingDate = new Date(allocation.cosa.billingDate);
+              return billingDate <= issueDateValue &&
+                billingDate >= cycle.start &&
+                billingDate <= cycle.end;
+            })
+            .map((allocation) => ({
+              id: allocation.id,
+              description: allocation.cosa.description,
+              billingDateLabel: formatLongDate(allocation.cosa.billingDate),
+              allocationTypeLabel:
+                ALLOCATION_TYPE_LABELS[allocation.cosa.allocationType],
+              basisLabel: formatAllocationBasisLabel(allocation),
+              amountLabel: formatMoney(Number(allocation.computedAmount)),
+            }));
 
           return {
             id: cycleSelectionKey,
             label: formatBillingCycleLabel(cycle),
             meta: `${contract.property.propertyCode} · ${contract.property.name}`,
             readingOptions,
+            recurringChargeOptions,
+            cosaOptions,
           };
         }),
       };
@@ -278,6 +371,14 @@ export function InvoiceGenerationForm({
         cycle.readingOptions.map((reading) => reading.selectionKey);
       return sum + effectiveReadingSelection.length;
     },
+    0
+  );
+  const selectedRecurringChargeCount = selectedVisibleCycles.reduce(
+    (sum, cycle) => sum + cycle.recurringChargeOptions.length,
+    0
+  );
+  const selectedCosaCount = selectedVisibleCycles.reduce(
+    (sum, cycle) => sum + cycle.cosaOptions.length,
     0
   );
 
@@ -488,68 +589,143 @@ export function InvoiceGenerationForm({
                             </div>
                           </label>
 
-                          {isChecked && cycle.readingOptions.length > 0 ? (
-                            <div className="mt-3 space-y-2 rounded-[0.95rem] border border-border/60 bg-background/45 p-3">
-                              <div className="space-y-1">
-                                <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                                  Utility readings
-                                </p>
-                                <p className="text-xs leading-5 text-muted-foreground">
-                                  Connected dedicated-meter readings for this cycle. Uncheck any line you do not want to bill now.
-                                </p>
-                              </div>
+                          {isChecked && (
+                            <div className="mt-3 space-y-2">
+                              {cycle.recurringChargeOptions.length > 0 ? (
+                                <div className="rounded-[0.95rem] border border-border/60 bg-background/45 p-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                      Recurring charges
+                                    </p>
+                                    <p className="text-xs leading-5 text-muted-foreground">
+                                      These lines auto-attach when effective in this cycle.
+                                    </p>
+                                  </div>
 
-                              <div className="space-y-2">
-                                {cycle.readingOptions.map((reading) => {
-                                  const isReadingChecked = effectiveReadingSelection.includes(
-                                    reading.selectionKey
-                                  );
-
-                                  return (
-                                    <label
-                                      key={reading.selectionKey}
-                                      className={`flex items-start gap-3 rounded-[0.9rem] border px-3 py-3 transition-colors ${
-                                        isReadingChecked
-                                          ? "border-primary/45 bg-primary/6"
-                                          : "border-border/55 bg-background/60"
-                                      }`}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        name="readingSelections"
-                                        value={reading.selectionKey}
-                                        checked={isReadingChecked}
-                                        onChange={() =>
-                                          toggleReading(cycle.id, reading.selectionKey)
-                                        }
-                                        className="mt-1 size-4 rounded border border-border bg-background text-primary accent-primary"
-                                      />
-                                      <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="mt-2 space-y-2">
+                                    {cycle.recurringChargeOptions.map((charge) => (
+                                      <div
+                                        key={charge.id}
+                                        className="rounded-[0.9rem] border border-border/55 bg-background/60 px-3 py-3"
+                                      >
                                         <div className="flex flex-wrap items-center justify-between gap-2">
                                           <p className="text-sm font-medium">
-                                            {reading.utilityTypeLabel} · {reading.meterCode}
+                                            {charge.label} · {charge.chargeTypeLabel}
                                           </p>
                                           <p className="text-sm font-semibold">
-                                            {reading.amountLabel}
+                                            {charge.amountLabel}
                                           </p>
                                         </div>
                                         <p className="text-xs leading-5 text-muted-foreground">
-                                          Reading date: {reading.readingDateLabel}
+                                          {charge.effectiveLabel}
                                         </p>
-                                        <p className="text-xs leading-5 text-muted-foreground">
-                                          Service: {reading.serviceCoverageLabel}
-                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {cycle.cosaOptions.length > 0 ? (
+                                <div className="rounded-[0.95rem] border border-border/60 bg-background/45 p-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                      COSA allocations
+                                    </p>
+                                    <p className="text-xs leading-5 text-muted-foreground">
+                                      Saved uninvoiced COSA lines inside this cycle auto-attach.
+                                    </p>
+                                  </div>
+
+                                  <div className="mt-2 space-y-2">
+                                    {cycle.cosaOptions.map((allocation) => (
+                                      <div
+                                        key={allocation.id}
+                                        className="rounded-[0.9rem] border border-border/55 bg-background/60 px-3 py-3"
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                          <p className="text-sm font-medium">
+                                            {allocation.description}
+                                          </p>
+                                          <p className="text-sm font-semibold">
+                                            {allocation.amountLabel}
+                                          </p>
+                                        </div>
                                         <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-                                          <p>Consumption: {reading.consumptionLabel}</p>
-                                          <p>Rate: {reading.rateLabel}</p>
+                                          <p>Billing date: {allocation.billingDateLabel}</p>
+                                          <p>
+                                            Basis: {allocation.basisLabel} · {allocation.allocationTypeLabel}
+                                          </p>
                                         </div>
                                       </div>
-                                    </label>
-                                  );
-                                })}
-                              </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {cycle.readingOptions.length > 0 ? (
+                                <div className="rounded-[0.95rem] border border-border/60 bg-background/45 p-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                      Utility readings
+                                    </p>
+                                    <p className="text-xs leading-5 text-muted-foreground">
+                                      Connected dedicated-meter readings for this cycle. Uncheck any line you do not want to bill now.
+                                    </p>
+                                  </div>
+
+                                  <div className="mt-2 space-y-2">
+                                    {cycle.readingOptions.map((reading) => {
+                                      const isReadingChecked = effectiveReadingSelection.includes(
+                                        reading.selectionKey
+                                      );
+
+                                      return (
+                                        <label
+                                          key={reading.selectionKey}
+                                          className={`flex items-start gap-3 rounded-[0.9rem] border px-3 py-3 transition-colors ${
+                                            isReadingChecked
+                                              ? "border-primary/45 bg-primary/6"
+                                              : "border-border/55 bg-background/60"
+                                          }`}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            name="readingSelections"
+                                            value={reading.selectionKey}
+                                            checked={isReadingChecked}
+                                            onChange={() =>
+                                              toggleReading(cycle.id, reading.selectionKey)
+                                            }
+                                            className="mt-1 size-4 rounded border border-border bg-background text-primary accent-primary"
+                                          />
+                                          <div className="min-w-0 flex-1 space-y-1">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                              <p className="text-sm font-medium">
+                                                {reading.utilityTypeLabel} · {reading.meterCode}
+                                              </p>
+                                              <p className="text-sm font-semibold">
+                                                {reading.amountLabel}
+                                              </p>
+                                            </div>
+                                            <p className="text-xs leading-5 text-muted-foreground">
+                                              Reading date: {reading.readingDateLabel}
+                                            </p>
+                                            <p className="text-xs leading-5 text-muted-foreground">
+                                              Service: {reading.serviceCoverageLabel}
+                                            </p>
+                                            <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                                              <p>Consumption: {reading.consumptionLabel}</p>
+                                              <p>Rate: {reading.rateLabel}</p>
+                                            </div>
+                                          </div>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
-                          ) : null}
+                          )}
                         </div>
                       );
                     })}
@@ -651,6 +827,16 @@ export function InvoiceGenerationForm({
                   {utilityReadingSelectionCount > 0 ? (
                     <p className="text-xs text-muted-foreground">
                       {utilityReadingSelectionCount} utility reading(s) currently selected.
+                    </p>
+                  ) : null}
+                  {selectedRecurringChargeCount > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedRecurringChargeCount} recurring charge line(s) auto-included.
+                    </p>
+                  ) : null}
+                  {selectedCosaCount > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedCosaCount} COSA allocation line(s) auto-included.
                     </p>
                   ) : null}
                 </div>

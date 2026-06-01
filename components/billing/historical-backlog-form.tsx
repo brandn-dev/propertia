@@ -20,10 +20,20 @@ import {
   type HistoricalBacklogDraftMap,
   type HistoricalBacklogContractOption,
 } from "@/lib/billing/historical-backlog-drafts";
-import { BACKLOG_PAYMENT_STATUS_LABELS } from "@/lib/form-options";
+import {
+  BACKLOG_PAYMENT_STATUS_LABELS,
+  RECURRING_CHARGE_TYPE_LABELS,
+} from "@/lib/form-options";
 
 const selectClassName = "select-blank";
 const initialState: HistoricalBacklogFormState = {};
+
+function formatMoney(value: string | number) {
+  return `₱${new Intl.NumberFormat("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value))}`;
+}
 
 type HistoricalBacklogFormProps = {
   formAction: (
@@ -449,6 +459,30 @@ export function HistoricalBacklogForm({
                 </span>
               </div>
             </div>
+
+            {activeDraft?.recurringCharges.length ? (
+              <div className="mt-5 rounded-[1.2rem] border border-border/60 bg-background/60 px-4 py-4">
+                <p className="text-sm font-medium">Recurring charges in this month</p>
+                <div className="mt-3 space-y-2">
+                  {activeDraft.recurringCharges.map((charge) => (
+                    <div
+                      key={charge.recurringChargeId}
+                      className="flex items-start justify-between gap-3 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium">{charge.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {RECURRING_CHARGE_TYPE_LABELS[charge.chargeType]}
+                        </p>
+                      </div>
+                      <p className="shrink-0 font-medium">
+                        {formatMoney(charge.amount)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-5 flex flex-col gap-2">
               <Button

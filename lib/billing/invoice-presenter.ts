@@ -1,4 +1,5 @@
 import type {
+  AllocationType,
   InvoiceDateDisplayMode,
   InvoiceItemDescriptionMode,
 } from "@prisma/client";
@@ -62,6 +63,7 @@ type InvoiceDescriptionItemShape = {
       description: string;
       billingDate: Date;
       totalAmount: { toNumber(): number } | number;
+      allocationType: AllocationType;
       meter?: {
         id: string;
         meterCode: string;
@@ -328,6 +330,43 @@ function getCosaQuantityDisplay(unitCount: number) {
   return `${formattedCount} ${unitCount === 1 ? "unit" : "units"}`;
 }
 
+function getCosaPercentageDisplay(percentage: number) {
+  return `${formatInvoiceQuantity(percentage)}%`;
+}
+
+function getCosaAllocationBasisPresentation(
+  item: InvoicePresentationItemShape,
+  amount: number
+) {
+  if (item.itemType !== "COSA" || !item.cosaAllocation?.cosa) {
+    return null;
+  }
+
+  if (
+    item.cosaAllocation.cosa.allocationType === "PER_UNIT" &&
+    item.cosaAllocation.unitCount != null &&
+    item.cosaAllocation.unitCount > 0
+  ) {
+    return {
+      quantity: item.cosaAllocation.unitCount,
+      quantityDisplay: getCosaQuantityDisplay(item.cosaAllocation.unitCount),
+      unitPrice: Number((amount / item.cosaAllocation.unitCount).toFixed(2)),
+    };
+  }
+
+  const percentage = toNumber(item.cosaAllocation.percentage);
+
+  if (item.cosaAllocation.cosa.allocationType === "PERCENTAGE" && percentage > 0) {
+    return {
+      quantity: percentage,
+      quantityDisplay: getCosaPercentageDisplay(percentage),
+      unitPrice: Number((amount / percentage).toFixed(2)),
+    };
+  }
+
+  return null;
+}
+
 function stripTrailingBillingDateRange(description: string) {
   const withoutIsoRange = description.replace(
     / · \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}$/,
@@ -468,13 +507,15 @@ export function buildInvoicePresentationModel(
       : 0;
     const amount = toNumber(item.amount);
     const recurringChargeLabel = getRecurringChargeLineLabel(item);
-    const cosaUnitCount = item.cosaAllocation?.unitCount ?? null;
-    const isPerUnitCosa = item.itemType === "COSA" && cosaUnitCount != null && cosaUnitCount > 0;
+    const cosaAllocationBasisPresentation = getCosaAllocationBasisPresentation(
+      item,
+      amount
+    );
     const quantityDisplay =
       item.itemType === "UTILITY_READING" && item.meterReading
         ? `${formatInvoiceQuantity(toNumber(item.quantity))} ${getUtilityUnitLabel(item.meterReading.meter.utilityType)}`
-        : isPerUnitCosa
-          ? getCosaQuantityDisplay(cosaUnitCount)
+        : cosaAllocationBasisPresentation
+          ? cosaAllocationBasisPresentation.quantityDisplay
         : item.quantity != null
           ? formatInvoiceQuantity(toNumber(item.quantity))
           : undefined;
@@ -482,10 +523,12 @@ export function buildInvoicePresentationModel(
       ? recurringChargeLabel
       : ITEM_TYPE_LABELS[item.itemType];
     const description = resolveInvoiceItemDescription(invoice, item);
-    const quantity = isPerUnitCosa ? cosaUnitCount : toNumber(item.quantity);
+    const quantity = cosaAllocationBasisPresentation
+      ? cosaAllocationBasisPresentation.quantity
+        : toNumber(item.quantity);
     const unitPrice =
-      isPerUnitCosa && cosaUnitCount > 0
-        ? Number((amount / cosaUnitCount).toFixed(2))
+      cosaAllocationBasisPresentation
+        ? cosaAllocationBasisPresentation.unitPrice
         : toNumber(item.unitPrice);
 
     return {

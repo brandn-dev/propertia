@@ -60,6 +60,21 @@ export default async function GenerateBillingPage() {
     paymentAnchorLabel: formatDate(contract.paymentStartDate),
     recurringChargeCount: contract._count.recurringCharges,
     rentAdjustmentCount: contract._count.rentAdjustments,
+    recurringCharges: contract.recurringCharges.map((charge) => ({
+      id: charge.id,
+      chargeType: charge.chargeType,
+      label: charge.label,
+      amount: charge.amount,
+      effectiveStartDate: charge.effectiveStartDate,
+      effectiveEndDate: charge.effectiveEndDate,
+    })),
+    cosaAllocations: contract.cosaAllocations.map((allocation) => ({
+      id: allocation.id,
+      percentage: allocation.percentage,
+      unitCount: allocation.unitCount,
+      computedAmount: allocation.computedAmount,
+      cosa: allocation.cosa,
+    })),
     property: contract.property,
     tenant: contract.tenant,
     readings: contract.readings.map((reading) => ({

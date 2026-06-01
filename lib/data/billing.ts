@@ -86,6 +86,20 @@ export async function getInvoiceGenerationContractOptions() {
           rentAdjustments: true,
         },
       },
+      recurringCharges: {
+        where: {
+          isActive: true,
+        },
+        orderBy: [{ effectiveStartDate: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          chargeType: true,
+          label: true,
+          amount: true,
+          effectiveStartDate: true,
+          effectiveEndDate: true,
+        },
+      },
       invoices: {
         select: {
           billingPeriodStart: true,
@@ -128,7 +142,35 @@ export async function getInvoiceGenerationContractOptions() {
       })
     : [];
 
+  const cosaAllocations = contracts.length
+    ? await prisma.cOSAAllocation.findMany({
+        where: {
+          contractId: {
+            in: contracts.map((contract) => contract.id),
+          },
+          invoiceItem: null,
+        },
+        orderBy: [{ createdAt: "asc" }],
+        select: {
+          id: true,
+          contractId: true,
+          percentage: true,
+          unitCount: true,
+          computedAmount: true,
+          cosa: {
+            select: {
+              id: true,
+              description: true,
+              billingDate: true,
+              allocationType: true,
+            },
+          },
+        },
+      })
+    : [];
+
   const readingsByScope = new Map<string, typeof readings>();
+  const cosaAllocationsByContractId = new Map<string, typeof cosaAllocations>();
 
   for (const reading of readings) {
     const scopeKey = getContractScopeKey(
@@ -140,12 +182,41 @@ export async function getInvoiceGenerationContractOptions() {
     readingsByScope.set(scopeKey, entries);
   }
 
+  for (const allocation of cosaAllocations) {
+    if (!allocation.contractId) {
+      continue;
+    }
+
+    const entries = cosaAllocationsByContractId.get(allocation.contractId) ?? [];
+    entries.push(allocation);
+    cosaAllocationsByContractId.set(allocation.contractId, entries);
+  }
+
   return contracts.map((contract) => ({
     ...contract,
     readings:
       readingsByScope.get(
         getContractScopeKey(contract.property.id, contract.tenantId)
       ) ?? [],
+    recurringCharges: contract.recurringCharges.map((charge) => ({
+      ...charge,
+      amount: charge.amount.toString(),
+      effectiveStartDate: charge.effectiveStartDate.toISOString(),
+      effectiveEndDate: charge.effectiveEndDate?.toISOString() ?? null,
+    })),
+    cosaAllocations:
+      (cosaAllocationsByContractId.get(contract.id) ?? []).map((allocation) => ({
+        id: allocation.id,
+        percentage: allocation.percentage.toString(),
+        unitCount: allocation.unitCount,
+        computedAmount: allocation.computedAmount.toString(),
+        cosa: {
+          id: allocation.cosa.id,
+          description: allocation.cosa.description,
+          billingDate: allocation.cosa.billingDate.toISOString(),
+          allocationType: allocation.cosa.allocationType,
+        },
+      })),
   }));
 }
 
@@ -1080,6 +1151,7 @@ export async function getInvoiceForView(invoiceId: string) {
                   description: true,
                   billingDate: true,
                   totalAmount: true,
+                  allocationType: true,
                   meter: {
                     select: {
                       id: true,
@@ -1263,6 +1335,7 @@ export async function getInvoiceForPublicView(invoiceId: string) {
                   description: true,
                   billingDate: true,
                   totalAmount: true,
+                  allocationType: true,
                   meter: {
                     select: {
                       id: true,

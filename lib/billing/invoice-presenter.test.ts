@@ -213,6 +213,7 @@ test("per-unit cosa rows show unit counts and derived unit price", () => {
             description: "Generator Fuel",
             billingDate: new Date("2026-06-01T00:00:00.000Z"),
             totalAmount: 10000,
+            allocationType: "PER_UNIT" as const,
             meter: null,
             meterReading: null,
           },
@@ -229,4 +230,91 @@ test("per-unit cosa rows show unit counts and derived unit price", () => {
   assert.equal(model.items[0]?.quantityDisplay, "2 units");
   assert.equal(model.items[0]?.unitPrice, 1147.56);
   assert.equal(model.items[0]?.description, "Generator Fuel");
+});
+
+test("percentage cosa rows show saved percentage basis", () => {
+  const invoice = {
+    id: "invoice-cosa-2",
+    invoiceNumber: "INV-TEST-COSA-METER",
+    issueDate: new Date("2026-06-01T00:00:00.000Z"),
+    dueDate: new Date("2026-06-05T00:00:00.000Z"),
+    billingPeriodStart,
+    billingPeriodEnd,
+    subtotal: 68.6,
+    additionalCharges: 0,
+    discount: 0,
+    totalAmount: 68.6,
+    balanceDue: 68.6,
+    origin: "GENERATED",
+    status: "ISSUED",
+    notes: null,
+    contract: {
+      paymentStartDate: new Date("2026-06-01T00:00:00.000Z"),
+      property: {
+        name: "Coco Nails",
+        propertyCode: "COCO",
+        logoUrl: null,
+        invoiceBrandingTemplate: null,
+      },
+    },
+    tenant: {
+      firstName: null,
+      lastName: null,
+      businessName: "Coco Nails",
+      invoiceDescriptionDateDisplayDefault: "SHOW" as const,
+    },
+    items: [
+      {
+        id: "item-cosa-water-1",
+        itemType: "COSA" as const,
+        description: "Common Water",
+        descriptionMode: "AUTO" as const,
+        customDescription: null,
+        quantity: 1,
+        unitPrice: 68.6,
+        amount: 68.6,
+        cosaAllocation: {
+          id: "allocation-water-1",
+          percentage: 35,
+          unitCount: null,
+          computedAmount: 68.6,
+          cosa: {
+            id: "cosa-water-1",
+            description: "Common Water",
+            billingDate: new Date("2026-06-01T00:00:00.000Z"),
+            totalAmount: 196,
+            allocationType: "PERCENTAGE" as const,
+            meter: {
+              id: "meter-water-1",
+              meterCode: "SH-WTR-1",
+              utilityType: "WATER",
+            },
+            meterReading: {
+              id: "reading-water-1",
+              readingDate: new Date("2026-05-31T00:00:00.000Z"),
+              previousReading: 100,
+              currentReading: 102,
+              ratePerUnit: 98,
+              consumption: 2,
+              totalAmount: 196,
+              meter: {
+                id: "meter-water-1",
+                meterCode: "SH-WTR-1",
+                utilityType: "WATER",
+              },
+            },
+          },
+        },
+        allocations: [],
+      },
+    ],
+    payments: [],
+  } satisfies Parameters<typeof buildInvoicePresentationModel>[0];
+
+  const model = buildInvoicePresentationModel(invoice);
+
+  assert.equal(model.items[0]?.quantity, 35);
+  assert.equal(model.items[0]?.quantityDisplay, "35%");
+  assert.equal(model.items[0]?.unitPrice, 1.96);
+  assert.equal(model.items[0]?.description, "Common Water");
 });
