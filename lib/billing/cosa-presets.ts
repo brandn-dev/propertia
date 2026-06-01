@@ -5,6 +5,7 @@ export const COSA_TEMPLATE_PRESET_IDS = [
   "common-electricity",
   "security-guard",
   "maintenance-staff",
+  "generator-fuel",
 ] as const;
 
 export type CosaTemplatePresetId = (typeof COSA_TEMPLATE_PRESET_IDS)[number];
@@ -57,6 +58,15 @@ export const COSA_TEMPLATE_PRESETS: CosaTemplatePreset[] = [
     description:
       "Use this for the monthly maintenance payroll, then divide it by the participating tenant unit counts.",
     sourceHint: "Manual amount + by unit",
+  },
+  {
+    id: "generator-fuel",
+    label: "Generator Fuel",
+    name: "Generator Fuel",
+    allocationType: "PER_UNIT",
+    description:
+      "Use this for the monthly generator fuel cost, then choose the participating tenants and adjust the split mode if needed.",
+    sourceHint: "Manual amount + flexible split",
   },
 ];
 

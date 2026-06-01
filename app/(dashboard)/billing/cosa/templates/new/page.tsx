@@ -1,6 +1,7 @@
 import {
   CircleDollarSign,
   Droplets,
+  Fuel,
   Gauge,
   Layers3,
   Shield,
@@ -29,6 +30,7 @@ const PRESET_ICONS = {
   "common-electricity": Gauge,
   "security-guard": Shield,
   "maintenance-staff": Wrench,
+  "generator-fuel": Fuel,
 } as const;
 
 export default async function NewBillingCosaTemplatePage({
@@ -95,14 +97,14 @@ export default async function NewBillingCosaTemplatePage({
       <section className="border-blank rounded-xl p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.04em]">
-              Recommended presets
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              These are the four COSA templates you described. Pick one to start with
-              the correct split mode already selected.
-            </p>
-          </div>
+              <h2 className="text-lg font-semibold tracking-[-0.04em]">
+                Recommended presets
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              These are the standard COSA templates you described. Pick one to start with
+              the recommended split mode already selected, including a manual generator-fuel starter.
+              </p>
+            </div>
           {selectedPreset ? (
             <Button
               render={<Link href="/billing/cosa/templates/new" />}
@@ -114,7 +116,7 @@ export default async function NewBillingCosaTemplatePage({
           ) : null}
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {COSA_TEMPLATE_PRESETS.map((preset) => {
             const Icon = PRESET_ICONS[preset.id];
             const isSelected = selectedPreset?.id === preset.id;

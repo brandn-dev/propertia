@@ -1,3 +1,7 @@
+import type {
+  InvoiceDateDisplayMode,
+  InvoiceItemDescriptionMode,
+} from "@prisma/client";
 import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
 import { RECURRING_CHARGE_TYPE_LABELS } from "@/lib/form-options";
 import { formatDate, toNumber } from "@/lib/format";
@@ -20,6 +24,75 @@ type TenantShape = {
   firstName: string | null;
   lastName: string | null;
   businessName: string | null;
+  invoiceDescriptionDateDisplayDefault: InvoiceDateDisplayMode;
+};
+
+type InvoiceDescriptionItemShape = {
+  id: string;
+  itemType: keyof typeof ITEM_TYPE_LABELS;
+  description: string;
+  descriptionMode?: InvoiceItemDescriptionMode;
+  customDescription?: string | null;
+  contractRecurringCharge?: {
+    label: string;
+    chargeType: keyof typeof RECURRING_CHARGE_TYPE_LABELS;
+    descriptionDateDisplayOverride: InvoiceDateDisplayMode | null;
+  } | null;
+  meterReading?: {
+    id: string;
+    readingDate: Date;
+    previousReading: { toNumber(): number } | number;
+    currentReading: { toNumber(): number } | number;
+    ratePerUnit: { toNumber(): number } | number;
+    consumption: { toNumber(): number } | number;
+    totalAmount: { toNumber(): number } | number;
+    meter: {
+      id: string;
+      meterCode: string;
+      utilityType: keyof typeof UTILITY_TYPE_LABELS;
+    };
+  } | null;
+  cosaAllocation?: {
+    id: string;
+    percentage: { toNumber(): number } | number;
+    unitCount: number | null;
+    computedAmount: { toNumber(): number } | number;
+    cosa: {
+      id: string;
+      description: string;
+      billingDate: Date;
+      totalAmount: { toNumber(): number } | number;
+      meter?: {
+        id: string;
+        meterCode: string;
+        utilityType: keyof typeof UTILITY_TYPE_LABELS;
+      } | null;
+      meterReading?: {
+        id: string;
+        readingDate: Date;
+        previousReading: { toNumber(): number } | number;
+        currentReading: { toNumber(): number } | number;
+        ratePerUnit: { toNumber(): number } | number;
+        consumption: { toNumber(): number } | number;
+        totalAmount: { toNumber(): number } | number;
+        meter: {
+          id: string;
+          meterCode: string;
+          utilityType: keyof typeof UTILITY_TYPE_LABELS;
+        };
+      } | null;
+    };
+  } | null;
+};
+
+type InvoicePresentationItemShape = InvoiceDescriptionItemShape & {
+  quantity: { toNumber(): number } | number;
+  unitPrice: { toNumber(): number } | number;
+  amount: { toNumber(): number } | number;
+  allocations?: Array<{
+    id: string;
+    amountAllocated: { toNumber(): number } | number;
+  }>;
 };
 
 type InternalInvoiceShape = {
@@ -70,67 +143,7 @@ type InternalInvoiceShape = {
     };
   };
   tenant: TenantShape;
-  items: Array<{
-    id: string;
-    itemType: keyof typeof ITEM_TYPE_LABELS;
-    description: string;
-    quantity: { toNumber(): number } | number;
-    unitPrice: { toNumber(): number } | number;
-    amount: { toNumber(): number } | number;
-    contractRecurringCharge?: {
-      label: string;
-      chargeType: keyof typeof RECURRING_CHARGE_TYPE_LABELS;
-    } | null;
-    meterReading?: {
-      id: string;
-      readingDate: Date;
-      previousReading: { toNumber(): number } | number;
-      currentReading: { toNumber(): number } | number;
-      ratePerUnit: { toNumber(): number } | number;
-      consumption: { toNumber(): number } | number;
-      totalAmount: { toNumber(): number } | number;
-      meter: {
-        id: string;
-        meterCode: string;
-        utilityType: keyof typeof UTILITY_TYPE_LABELS;
-      };
-    } | null;
-    cosaAllocation?: {
-      id: string;
-      percentage: { toNumber(): number } | number;
-      unitCount: number | null;
-      computedAmount: { toNumber(): number } | number;
-      cosa: {
-        id: string;
-        description: string;
-        billingDate: Date;
-        totalAmount: { toNumber(): number } | number;
-        meter?: {
-          id: string;
-          meterCode: string;
-          utilityType: keyof typeof UTILITY_TYPE_LABELS;
-        } | null;
-        meterReading?: {
-          id: string;
-          readingDate: Date;
-          previousReading: { toNumber(): number } | number;
-          currentReading: { toNumber(): number } | number;
-          ratePerUnit: { toNumber(): number } | number;
-          consumption: { toNumber(): number } | number;
-          totalAmount: { toNumber(): number } | number;
-          meter: {
-            id: string;
-            meterCode: string;
-            utilityType: keyof typeof UTILITY_TYPE_LABELS;
-          };
-        } | null;
-      };
-    } | null;
-    allocations?: Array<{
-      id: string;
-      amountAllocated: { toNumber(): number } | number;
-    }>;
-  }>;
+  items: InvoicePresentationItemShape[];
   payments?: Array<{
     id: string;
     amountPaid: { toNumber(): number } | number;
@@ -188,63 +201,14 @@ type PublicInvoiceShape = {
     };
   };
   tenant: TenantShape;
-  items: Array<{
-    id: string;
-    itemType: keyof typeof ITEM_TYPE_LABELS;
-    description: string;
-    quantity: { toNumber(): number } | number;
-    unitPrice: { toNumber(): number } | number;
-    amount: { toNumber(): number } | number;
-    contractRecurringCharge?: {
-      label: string;
-      chargeType: keyof typeof RECURRING_CHARGE_TYPE_LABELS;
-    } | null;
-    meterReading?: {
-      id: string;
-      readingDate: Date;
-      previousReading: { toNumber(): number } | number;
-      currentReading: { toNumber(): number } | number;
-      ratePerUnit: { toNumber(): number } | number;
-      consumption: { toNumber(): number } | number;
-      totalAmount: { toNumber(): number } | number;
-      meter: {
-        id: string;
-        meterCode: string;
-        utilityType: keyof typeof UTILITY_TYPE_LABELS;
-      };
-    } | null;
-    cosaAllocation?: {
-      id: string;
-      percentage: { toNumber(): number } | number;
-      unitCount: number | null;
-      computedAmount: { toNumber(): number } | number;
-      cosa: {
-        id: string;
-        description: string;
-        billingDate: Date;
-        totalAmount: { toNumber(): number } | number;
-        meter?: {
-          id: string;
-          meterCode: string;
-          utilityType: keyof typeof UTILITY_TYPE_LABELS;
-        } | null;
-        meterReading?: {
-          id: string;
-          readingDate: Date;
-          previousReading: { toNumber(): number } | number;
-          currentReading: { toNumber(): number } | number;
-          ratePerUnit: { toNumber(): number } | number;
-          consumption: { toNumber(): number } | number;
-          totalAmount: { toNumber(): number } | number;
-          meter: {
-            id: string;
-            meterCode: string;
-            utilityType: keyof typeof UTILITY_TYPE_LABELS;
-          };
-        } | null;
-      };
-    } | null;
-  }>;
+  items: InvoicePresentationItemShape[];
+};
+
+type InvoiceDescriptionContext = {
+  origin: string;
+  billingPeriodStart: Date;
+  billingPeriodEnd: Date;
+  tenant: TenantShape;
 };
 
 export type InvoicePresentationModel = {
@@ -359,6 +323,129 @@ function formatInvoiceQuantity(value: number) {
   }).format(value);
 }
 
+function getCosaQuantityDisplay(unitCount: number) {
+  const formattedCount = formatInvoiceQuantity(unitCount);
+  return `${formattedCount} ${unitCount === 1 ? "unit" : "units"}`;
+}
+
+function stripTrailingBillingDateRange(description: string) {
+  const withoutIsoRange = description.replace(
+    / · \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}$/,
+    ""
+  );
+
+  if (withoutIsoRange !== description) {
+    return withoutIsoRange.trim() || null;
+  }
+
+  const withoutFormattedRange = description.replace(
+    /(?::| ·) [A-Z][a-z]{2,8} \d{1,2}, \d{4} to [A-Z][a-z]{2,8} \d{1,2}, \d{4}$/,
+    ""
+  );
+
+  if (withoutFormattedRange !== description) {
+    return withoutFormattedRange.trim() || null;
+  }
+
+  return null;
+}
+
+function getRecurringChargeDisplayMode(
+  item: InvoiceDescriptionItemShape,
+  tenant: TenantShape
+) {
+  return (
+    item.contractRecurringCharge?.descriptionDateDisplayOverride ??
+    tenant.invoiceDescriptionDateDisplayDefault
+  );
+}
+
+function getRecurringChargeLineLabel(item: InvoiceDescriptionItemShape) {
+  return item.contractRecurringCharge?.chargeType
+    ? RECURRING_CHARGE_TYPE_LABELS[item.contractRecurringCharge.chargeType]
+    : item.contractRecurringCharge?.label;
+}
+
+function getResolvedInvoiceDateDisplayMode(
+  invoice: InvoiceDescriptionContext,
+  item: InvoiceDescriptionItemShape
+) {
+  if (item.descriptionMode === "SHOW") {
+    return "SHOW" as const;
+  }
+
+  if (item.descriptionMode === "HIDE") {
+    return "HIDE" as const;
+  }
+
+  if (item.itemType === "RECURRING_CHARGE") {
+    return getRecurringChargeDisplayMode(item, invoice.tenant);
+  }
+
+  return invoice.tenant.invoiceDescriptionDateDisplayDefault;
+}
+
+export function resolveInvoiceItemDescription(
+  invoice: InvoiceDescriptionContext,
+  item: InvoiceDescriptionItemShape
+) {
+  if (item.descriptionMode === "CUSTOM" && item.customDescription?.trim()) {
+    return item.customDescription.trim();
+  }
+
+  const recurringChargeLabel = getRecurringChargeLineLabel(item);
+  const utilityReadingLabel =
+    item.itemType === "UTILITY_READING" && item.meterReading
+      ? `${UTILITY_TYPE_LABELS[item.meterReading.meter.utilityType]} Reading`
+      : null;
+
+  if (item.itemType === "RENT") {
+    if (invoice.origin !== "GENERATED") {
+      return item.description;
+    }
+
+    if (getResolvedInvoiceDateDisplayMode(invoice, item) === "SHOW") {
+      return `Coverage: ${formatDate(invoice.billingPeriodStart)} to ${formatDate(invoice.billingPeriodEnd)}`;
+    }
+
+    return stripTrailingBillingDateRange(item.description) ?? "Monthly rent";
+  }
+
+  if (item.itemType === "RECURRING_CHARGE") {
+    const recurringChargeDisplayMode = getResolvedInvoiceDateDisplayMode(
+      invoice,
+      item
+    );
+
+    if (recurringChargeDisplayMode === "SHOW") {
+      if (recurringChargeLabel) {
+        return `${recurringChargeLabel}: ${formatDate(invoice.billingPeriodStart)} to ${formatDate(invoice.billingPeriodEnd)}`;
+      }
+
+      const storedBaseDescription = stripTrailingBillingDateRange(item.description);
+      return storedBaseDescription
+        ? `${storedBaseDescription}: ${formatDate(invoice.billingPeriodStart)} to ${formatDate(invoice.billingPeriodEnd)}`
+        : item.description;
+    }
+
+    return (
+      item.contractRecurringCharge?.label ??
+      stripTrailingBillingDateRange(item.description) ??
+      item.description
+    );
+  }
+
+  if (item.itemType === "UTILITY_READING" && utilityReadingLabel) {
+    return utilityReadingLabel;
+  }
+
+  if (item.itemType === "COSA") {
+    return normalizeLegacyCosaDescription(item.description);
+  }
+
+  return item.description;
+}
+
 export function buildInvoicePresentationModel(
   invoice: InternalInvoiceShape | PublicInvoiceShape
 ): InvoicePresentationModel {
@@ -380,40 +467,35 @@ export function buildInvoicePresentationModel(
         )
       : 0;
     const amount = toNumber(item.amount);
-    const recurringChargeLabel = item.contractRecurringCharge?.chargeType
-      ? RECURRING_CHARGE_TYPE_LABELS[item.contractRecurringCharge.chargeType]
-      : item.contractRecurringCharge?.label;
+    const recurringChargeLabel = getRecurringChargeLineLabel(item);
+    const cosaUnitCount = item.cosaAllocation?.unitCount ?? null;
+    const isPerUnitCosa = item.itemType === "COSA" && cosaUnitCount != null && cosaUnitCount > 0;
     const quantityDisplay =
       item.itemType === "UTILITY_READING" && item.meterReading
         ? `${formatInvoiceQuantity(toNumber(item.quantity))} ${getUtilityUnitLabel(item.meterReading.meter.utilityType)}`
+        : isPerUnitCosa
+          ? getCosaQuantityDisplay(cosaUnitCount)
         : item.quantity != null
           ? formatInvoiceQuantity(toNumber(item.quantity))
           : undefined;
     const typeLabel = item.itemType === "RECURRING_CHARGE" && recurringChargeLabel
       ? recurringChargeLabel
       : ITEM_TYPE_LABELS[item.itemType];
-    const utilityReadingLabel =
-      item.itemType === "UTILITY_READING" && item.meterReading
-        ? `${UTILITY_TYPE_LABELS[item.meterReading.meter.utilityType]} Reading`
-        : null;
-    const description = item.itemType === "RENT"
-      ? `Coverage: ${formatDate(invoice.billingPeriodStart)} to ${formatDate(invoice.billingPeriodEnd)}`
-      : item.itemType === "RECURRING_CHARGE" && recurringChargeLabel
-        ? `${recurringChargeLabel}: ${formatDate(invoice.billingPeriodStart)} to ${formatDate(invoice.billingPeriodEnd)}`
-        : item.itemType === "UTILITY_READING" && utilityReadingLabel
-          ? utilityReadingLabel
-        : item.itemType === "COSA"
-          ? normalizeLegacyCosaDescription(item.description)
-        : item.description;
+    const description = resolveInvoiceItemDescription(invoice, item);
+    const quantity = isPerUnitCosa ? cosaUnitCount : toNumber(item.quantity);
+    const unitPrice =
+      isPerUnitCosa && cosaUnitCount > 0
+        ? Number((amount / cosaUnitCount).toFixed(2))
+        : toNumber(item.unitPrice);
 
     return {
       id: item.id,
       itemType: item.itemType,
       typeLabel,
       description,
-      quantity: toNumber(item.quantity),
+      quantity,
       quantityDisplay,
-      unitPrice: toNumber(item.unitPrice),
+      unitPrice,
       amount,
       allocatedAmount,
       remainingAmount: Math.max(0, amount - allocatedAmount),

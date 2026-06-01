@@ -650,6 +650,7 @@ export async function getTenantForEdit(tenantId: string) {
       address: true,
       validIdType: true,
       validIdNumber: true,
+      invoiceDescriptionDateDisplayDefault: true,
       tenantPeople: {
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
         select: {

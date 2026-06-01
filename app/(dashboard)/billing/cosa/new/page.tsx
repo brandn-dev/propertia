@@ -4,6 +4,7 @@ import {
   CopyPlus,
   Droplets,
   Gauge,
+  Fuel,
   Share2,
   Shield,
   Users2,
@@ -29,6 +30,7 @@ const PRESET_ICONS = {
   "common-electricity": Gauge,
   "security-guard": Shield,
   "maintenance-staff": Wrench,
+  "generator-fuel": Fuel,
 } as const;
 
 type NewBillingCosaPageProps = {
@@ -163,7 +165,8 @@ export default async function NewBillingCosaPage({
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 Use these when you want the standard COSA setup you described:
                 water and electricity by percentage, security guard and maintenance
-                staff by unit count.
+                staff by unit count, or generator fuel as a manual shared cost with
+                an editable split mode.
               </p>
             </div>
             <Button
@@ -176,7 +179,7 @@ export default async function NewBillingCosaPage({
             </Button>
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             {COSA_TEMPLATE_PRESETS.map((preset) => {
               const Icon = PRESET_ICONS[preset.id];
 

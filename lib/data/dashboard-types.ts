@@ -3,6 +3,10 @@ export type DashboardTrendPoint = {
   value: number;
 };
 
+export type DashboardRangePreset = "30D" | "60D" | "90D" | "12M" | "ALL";
+
+export type DashboardSeriesByRange<TPoint> = Record<DashboardRangePreset, TPoint[]>;
+
 export type AdminDashboardKpiKey =
   | "openInvoices"
   | "outstandingBalance"
@@ -18,16 +22,31 @@ export type AdminDashboardKpi = {
 };
 
 export type DashboardCollectionsPoint = {
+  axisKey?: string;
   label: string;
+  tooltipLabel?: string;
   billed: number;
   collected: number;
   outstanding: number;
 };
 
 export type DashboardUtilityChargesPoint = {
+  axisKey?: string;
   label: string;
+  tooltipLabel?: string;
   charges: number;
   readings: number;
+};
+
+export type DashboardPaidEarningsPoint = {
+  axisKey?: string;
+  label: string;
+  tooltipLabel?: string;
+  rent: number;
+  charges: number;
+  cosa: number;
+  reading: number;
+  paidRevenue: number;
 };
 
 export type DashboardOccupancyPoint = {
@@ -43,6 +62,13 @@ export type DashboardInvoiceStatusPoint = {
   status: "PAID" | "ISSUED" | "PARTIALLY_PAID" | "OVERDUE";
   label: string;
   value: number;
+};
+
+export type DashboardInvoiceStatusSummary = {
+  totalVisible: number;
+  paid: number;
+  open: number;
+  byStatus: DashboardInvoiceStatusPoint[];
 };
 
 export type DashboardDueInvoice = {
@@ -81,12 +107,13 @@ export type DashboardNearestBillable = {
 export type AdminDashboardData = {
   kpis: AdminDashboardKpi[];
   series: {
-    collections: DashboardCollectionsPoint[];
-    utilityCharges: DashboardUtilityChargesPoint[];
+    collections: DashboardSeriesByRange<DashboardCollectionsPoint>;
+    utilityCharges: DashboardSeriesByRange<DashboardUtilityChargesPoint>;
+    paidEarnings: DashboardSeriesByRange<DashboardPaidEarningsPoint>;
   };
   breakdowns: {
     occupancyByBuilding: DashboardOccupancyPoint[];
-    invoiceStatusMix: DashboardInvoiceStatusPoint[];
+    invoiceStatusSummary: DashboardInvoiceStatusSummary;
   };
   queues: {
     dueSoon: DashboardDueInvoice[];

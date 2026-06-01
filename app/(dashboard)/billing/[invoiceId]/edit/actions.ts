@@ -22,6 +22,18 @@ export type BacklogInvoiceEditFormState = {
   redirectTo?: string;
 };
 
+export type GeneratedInvoiceDescriptionFormState = {
+  message?: string;
+  errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
+};
+
+type ParsedDescriptionOverrideItem = {
+  id: string;
+  descriptionMode: string;
+  customDescription?: string;
+};
+
 type ParsedEditableItem = {
   id: string;
   itemType: string;
@@ -92,9 +104,20 @@ class BacklogEditValidationError extends Error {
   }
 }
 
+class GeneratedInvoiceDescriptionValidationError extends Error {
+  errors?: Record<string, string[] | undefined>;
+
+  constructor(message: string, errors?: Record<string, string[] | undefined>) {
+    super(message);
+    this.name = "GeneratedInvoiceDescriptionValidationError";
+    this.errors = errors;
+  }
+}
+
 const AUTO_FREE_RENT_PREFIX = "Free rent concession · ";
 const AUTO_ADVANCE_RENT_CHARGE_PREFIX = "Advance rent charge · ";
 const AUTO_ADVANCE_RENT_CREDIT_PREFIX = "Advance rent applied · ";
+const GENERATED_DESCRIPTION_MODES = new Set(["AUTO", "SHOW", "HIDE", "CUSTOM"]);
 
 function toMoney(value: number) {
   return value.toFixed(2);
@@ -280,6 +303,38 @@ function parseEditableItems(rawValue: FormDataEntryValue | null) {
     return {
       items: [],
       error: "Invoice items could not be read. Try again.",
+    };
+  }
+}
+
+function parseDescriptionOverrideItems(rawValue: FormDataEntryValue | null) {
+  const raw = String(rawValue ?? "").trim();
+
+  if (!raw) {
+    return {
+      items: [],
+      error: "Invoice description overrides could not be read. Try again.",
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) {
+      return {
+        items: [],
+        error: "Invoice description overrides could not be read. Try again.",
+      };
+    }
+
+    return {
+      items: parsed,
+      error: null,
+    };
+  } catch {
+    return {
+      items: [],
+      error: "Invoice description overrides could not be read. Try again.",
     };
   }
 }
@@ -543,6 +598,176 @@ function revalidateBillingViews(invoiceId: string) {
     "/tenants",
     "/utilities/readings",
   ].forEach((path) => revalidatePath(path));
+}
+
+export async function updateGeneratedInvoiceDescriptionsAction(
+  _previousState: GeneratedInvoiceDescriptionFormState,
+  formData: FormData
+): Promise<GeneratedInvoiceDescriptionFormState> {
+  await requireCapability("MANAGE_BILLING");
+
+  const invoiceId = String(formData.get("invoiceId") ?? "").trim();
+  const parsedOverrides = parseDescriptionOverrideItems(
+    formData.get("descriptionOverrides")
+  );
+
+  if (!invoiceId) {
+    return {
+      message: "Invoice is missing.",
+      errors: {
+        invoiceId: ["Invoice is required."],
+      },
+    };
+  }
+
+  if (parsedOverrides.error) {
+    return {
+      message: parsedOverrides.error,
+      errors: {
+        descriptionOverrides: [parsedOverrides.error],
+      },
+    };
+  }
+
+  const normalizedOverrides: ParsedDescriptionOverrideItem[] =
+    parsedOverrides.items.map((item) => ({
+      id:
+        item && typeof item === "object" && "id" in item
+          ? String(item.id).trim()
+          : "",
+      descriptionMode:
+        item && typeof item === "object" && "descriptionMode" in item
+          ? String(item.descriptionMode).trim()
+          : "",
+      customDescription:
+        item && typeof item === "object" && "customDescription" in item
+          ? String(item.customDescription ?? "").trim() || undefined
+          : undefined,
+    }));
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: {
+      id: true,
+      origin: true,
+      items: {
+        orderBy: [{ createdAt: "asc" }],
+        select: {
+          id: true,
+          itemType: true,
+        },
+      },
+    },
+  });
+
+  if (!invoice || invoice.origin !== "GENERATED") {
+    return {
+      message: "Only generated invoices can edit description display here.",
+    };
+  }
+
+  const invoiceItemsById = new Map(invoice.items.map((item) => [item.id, item]));
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const item of normalizedOverrides) {
+        const invoiceItem = invoiceItemsById.get(item.id);
+
+        if (!invoiceItem) {
+          throw new GeneratedInvoiceDescriptionValidationError(
+            "One or more invoice lines are invalid."
+          );
+        }
+
+        if (!GENERATED_DESCRIPTION_MODES.has(item.descriptionMode)) {
+          throw new GeneratedInvoiceDescriptionValidationError(
+            "Description display mode is invalid.",
+            {
+              descriptionOverrides: ["Choose a valid description display mode."],
+            }
+          );
+        }
+
+        const supportsDateVisibilityOverride =
+          invoiceItem.itemType === "RENT" ||
+          invoiceItem.itemType === "RECURRING_CHARGE";
+
+        if (
+          (item.descriptionMode === "SHOW" || item.descriptionMode === "HIDE") &&
+          !supportsDateVisibilityOverride
+        ) {
+          throw new GeneratedInvoiceDescriptionValidationError(
+            "Date visibility can only be changed for generated rent and recurring charge lines.",
+            {
+              descriptionOverrides: [
+                "Only rent and recurring charge lines support show/hide dates.",
+              ],
+            }
+          );
+        }
+
+        if (item.descriptionMode === "CUSTOM") {
+          if (!item.customDescription) {
+            throw new GeneratedInvoiceDescriptionValidationError(
+              "Custom descriptions cannot be blank.",
+              {
+                descriptionOverrides: [
+                  "Enter a custom description before saving.",
+                ],
+              }
+            );
+          }
+
+          if (item.customDescription.length > 240) {
+            throw new GeneratedInvoiceDescriptionValidationError(
+              "Custom descriptions must stay short.",
+              {
+                descriptionOverrides: [
+                  "Custom descriptions must be 240 characters or fewer.",
+                ],
+              }
+            );
+          }
+        }
+
+        await tx.invoiceItem.update({
+          where: { id: item.id },
+          data: {
+            descriptionMode: item.descriptionMode as
+              | "AUTO"
+              | "SHOW"
+              | "HIDE"
+              | "CUSTOM",
+            customDescription:
+              item.descriptionMode === "CUSTOM"
+                ? item.customDescription ?? null
+                : null,
+          },
+        });
+      }
+    });
+  } catch (error) {
+    if (error instanceof GeneratedInvoiceDescriptionValidationError) {
+      return {
+        message: error.message,
+        errors: error.errors,
+      };
+    }
+
+    return {
+      message: "Invoice descriptions could not be updated. Try again.",
+    };
+  }
+
+  revalidateBillingViews(invoiceId);
+  return {
+    redirectTo: withToast(`/billing/${invoiceId}`, {
+      intent: "success",
+      title: "Invoice descriptions updated",
+      description:
+        "Saved invoice line visibility and custom description changes.",
+    }),
+  };
 }
 
 export async function updateBacklogInvoiceAction(

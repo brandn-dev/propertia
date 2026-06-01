@@ -37,6 +37,7 @@ type ParsedTenantPayload = {
   address: string;
   validIdType: string;
   validIdNumber: string;
+  invoiceDescriptionDateDisplayDefault: string;
   people: ParsedPerson[];
   peopleParseError: string | null;
 };
@@ -90,6 +91,9 @@ function getTenantPayload(formData: FormData): ParsedTenantPayload {
     address: String(formData.get("address") ?? ""),
     validIdType: String(formData.get("validIdType") ?? ""),
     validIdNumber: String(formData.get("validIdNumber") ?? ""),
+    invoiceDescriptionDateDisplayDefault: String(
+      formData.get("invoiceDescriptionDateDisplayDefault") ?? ""
+    ),
     people: normalizePeoplePayload(peopleResult.people),
     peopleParseError: peopleResult.error,
   };

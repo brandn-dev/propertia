@@ -2,11 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FilePenLine, ReceiptText, Trash2 } from "lucide-react";
 import { deleteBacklogInvoiceAction } from "@/app/(dashboard)/billing/[invoiceId]/actions";
-import { updateBacklogInvoiceAction } from "@/app/(dashboard)/billing/[invoiceId]/edit/actions";
+import {
+  updateBacklogInvoiceAction,
+  updateGeneratedInvoiceDescriptionsAction,
+} from "@/app/(dashboard)/billing/[invoiceId]/edit/actions";
 import { BacklogInvoiceEditForm } from "@/components/billing/backlog-invoice-edit-form";
+import { GeneratedInvoiceDescriptionForm } from "@/components/billing/generated-invoice-description-form";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { Button } from "@/components/ui/button";
 import { requireCapability } from "@/lib/auth/user";
+import { buildInvoicePresentationModel } from "@/lib/billing/invoice-presenter";
 import { getInvoiceForView } from "@/lib/data/billing";
 import { toDateInputValue, toNumber } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
@@ -24,8 +29,60 @@ export default async function BacklogInvoiceEditPage({
   const { invoiceId } = await params;
   const invoice = await getInvoiceForView(invoiceId);
 
-  if (!invoice || invoice.origin !== "BACKLOG") {
+  if (!invoice) {
     notFound();
+  }
+
+  if (invoice.origin === "GENERATED") {
+    const presentationModel = buildInvoicePresentationModel(invoice);
+    const descriptionByItemId = new Map(
+      presentationModel.items.map((item) => [item.id, item.description])
+    );
+
+    return (
+      <div className="space-y-6">
+        <DashboardPageHero
+          eyebrow="Operations / Billing"
+          title="Edit invoice descriptions"
+          description="Override line-item wording on this generated invoice. You can keep defaults, force show or hide dates on supported rows, or save custom descriptions."
+          icon={FilePenLine}
+          badges={["Generated invoice", invoice.invoiceNumber]}
+          action={
+            <Button
+              render={<Link href={`/billing/${invoice.id}`} />}
+              variant="outline"
+              className="button-blank rounded-full"
+            >
+              <ReceiptText />
+              Back to invoice
+            </Button>
+          }
+        />
+
+        <GeneratedInvoiceDescriptionForm
+          invoiceId={invoice.id}
+          formAction={updateGeneratedInvoiceDescriptionsAction}
+          initialValues={{
+            items: invoice.items.map((item) => ({
+              id: item.id,
+              itemType: item.itemType,
+              typeLabel:
+                presentationModel.items.find(
+                  (presentationItem) => presentationItem.id === item.id
+                )?.typeLabel ?? item.itemType.replaceAll("_", " "),
+              currentDescription:
+                descriptionByItemId.get(item.id) ?? item.description,
+              descriptionMode: item.descriptionMode,
+              customDescription:
+                item.customDescription ??
+                (descriptionByItemId.get(item.id) ?? item.description),
+              supportsDateVisibilityOverride:
+                item.itemType === "RENT" || item.itemType === "RECURRING_CHARGE",
+            })),
+          }}
+        />
+      </div>
+    );
   }
 
   if (invoice.payments.length > 0) {

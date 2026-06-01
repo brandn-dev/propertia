@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@prisma/client";
 import {
   filterCyclesWithoutInvoicedMonths,
   findNextCompletedBillingCycles,
@@ -13,7 +14,12 @@ import { usesAdminWorkspace, type AppRole } from "@/lib/auth/roles";
 import { APP_TIME_ZONE, getDatePartsInAppTimeZone, toNumber } from "@/lib/format";
 import type {
   AdminDashboardData,
+  DashboardCollectionsPoint,
   DashboardInvoiceStatusPoint,
+  DashboardPaidEarningsPoint,
+  DashboardRangePreset,
+  DashboardSeriesByRange,
+  DashboardUtilityChargesPoint,
 } from "@/lib/data/dashboard-types";
 
 type OpenInvoiceStatus = "ISSUED" | "PARTIALLY_PAID" | "OVERDUE";
@@ -28,6 +34,13 @@ const STATUS_MIX_ORDER: DashboardInvoiceStatusPoint["status"][] = [
   "PARTIALLY_PAID",
   "ISSUED",
   "PAID",
+];
+const DASHBOARD_RANGE_PRESETS: DashboardRangePreset[] = [
+  "30D",
+  "60D",
+  "90D",
+  "12M",
+  "ALL",
 ];
 
 function startOfDay(date: Date) {
@@ -73,6 +86,14 @@ function getMonthLabel(date: Date) {
   }).format(date);
 }
 
+function getMonthYearLabel(date: Date) {
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: APP_TIME_ZONE,
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
 function getMonthKey(value: Date | string) {
   const parts = getDatePartsInAppTimeZone(value);
 
@@ -98,6 +119,61 @@ function createMonthBuckets(count: number) {
   });
 }
 
+function createMonthBucketsBetween(start: Date, end: Date) {
+  const firstMonth = startOfMonth(start);
+  const lastMonth = startOfMonth(end);
+  const buckets: Array<{ key: string; label: string; start: Date }> = [];
+
+  for (
+    let month = firstMonth;
+    month.getTime() <= lastMonth.getTime();
+    month = addMonths(month, 1)
+  ) {
+    buckets.push({
+      key: getMonthKey(month) ?? `${month.getFullYear()}-${month.getMonth() + 1}`,
+      label: getMonthLabel(month),
+      start: month,
+    });
+  }
+
+  return buckets;
+}
+
+function getPresetStart(
+  preset: DashboardRangePreset,
+  today: Date,
+  earliestDate: Date
+) {
+  switch (preset) {
+    case "30D":
+      return addDays(today, -29);
+    case "60D":
+      return addDays(today, -59);
+    case "90D":
+      return addDays(today, -89);
+    case "12M":
+      return addMonths(startOfMonth(today), -11);
+    case "ALL":
+    default:
+      return earliestDate;
+  }
+}
+
+function getEarliestDashboardDate(
+  dates: Array<Date | null | undefined>,
+  fallback: Date
+) {
+  const values = dates
+    .filter((value): value is Date => value instanceof Date)
+    .map((value) => value.getTime());
+
+  if (values.length === 0) {
+    return fallback;
+  }
+
+  return new Date(Math.min(...values));
+}
+
 function isOpenInvoiceStatus(status: string): status is OpenInvoiceStatus {
   return (
     status === "ISSUED" ||
@@ -106,67 +182,297 @@ function isOpenInvoiceStatus(status: string): status is OpenInvoiceStatus {
   );
 }
 
+function getVisibleDashboardInvoiceWhere(
+  extraWhere: Prisma.InvoiceWhereInput = {}
+): Prisma.InvoiceWhereInput {
+  return {
+    AND: [
+      extraWhere,
+      {
+        OR: [
+          {
+            tenant: {
+              status: "ACTIVE",
+            },
+          },
+          {
+            tenant: {
+              status: "ARCHIVED",
+            },
+            status: "PAID",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+type DashboardInvoiceSeriesRow = {
+  issueDate: Date;
+  dueDate: Date;
+  totalAmount: Prisma.Decimal | number;
+  balanceDue: Prisma.Decimal | number;
+  status: string;
+};
+
+type DashboardPaymentSeriesRow = {
+  amountPaid: Prisma.Decimal | number;
+  invoice: {
+    issueDate: Date;
+  };
+  allocations: Array<{
+    amountAllocated: Prisma.Decimal | number;
+    invoiceItem: {
+      itemType: string;
+    };
+  }>;
+};
+
+type DashboardReadingSeriesRow = {
+  readingDate: Date;
+  totalAmount: Prisma.Decimal | number;
+};
+
+type DashboardCollectionsBucketRow = DashboardCollectionsPoint & {
+  openInvoices: number;
+};
+
+function buildCollectionsBuckets(
+  start: Date,
+  end: Date,
+  invoices: DashboardInvoiceSeriesRow[],
+  payments: DashboardPaymentSeriesRow[]
+) {
+  const buckets = createMonthBucketsBetween(start, end);
+  const bucketMap = new Map(
+    buckets.map((bucket) => [
+      bucket.key,
+      {
+        axisKey: bucket.key,
+        label: bucket.label,
+        tooltipLabel: getMonthYearLabel(bucket.start),
+        billed: 0,
+        collected: 0,
+        outstanding: 0,
+        openInvoices: 0,
+      } satisfies DashboardCollectionsBucketRow,
+    ])
+  );
+
+  for (const invoice of invoices) {
+    if (invoice.issueDate.getTime() < start.getTime()) {
+      continue;
+    }
+
+    const key = getMonthKey(invoice.issueDate);
+
+    if (!key) {
+      continue;
+    }
+
+    const bucket = bucketMap.get(key);
+
+    if (!bucket) {
+      continue;
+    }
+
+    bucket.billed += toNumber(invoice.totalAmount);
+
+    if (isOpenInvoiceStatus(invoice.status)) {
+      bucket.outstanding += toNumber(invoice.balanceDue);
+      bucket.openInvoices += 1;
+    }
+  }
+
+  for (const payment of payments) {
+    if (payment.invoice.issueDate.getTime() < start.getTime()) {
+      continue;
+    }
+
+    const key = getMonthKey(payment.invoice.issueDate);
+
+    if (!key) {
+      continue;
+    }
+
+    const bucket = bucketMap.get(key);
+
+    if (bucket) {
+      bucket.collected += toNumber(payment.amountPaid);
+    }
+  }
+
+  return buckets.map((bucket) => {
+    return (
+      bucketMap.get(bucket.key) ?? {
+        axisKey: bucket.key,
+        label: bucket.label,
+        tooltipLabel: getMonthYearLabel(bucket.start),
+        billed: 0,
+        collected: 0,
+        outstanding: 0,
+        openInvoices: 0,
+      }
+    );
+  });
+}
+
+function buildUtilityBuckets(
+  start: Date,
+  end: Date,
+  readings: DashboardReadingSeriesRow[]
+) {
+  const buckets = createMonthBucketsBetween(start, end);
+  const bucketMap = new Map(
+    buckets.map((bucket) => [
+      bucket.key,
+      {
+        axisKey: bucket.key,
+        label: bucket.label,
+        tooltipLabel: getMonthYearLabel(bucket.start),
+        charges: 0,
+        readings: 0,
+      } satisfies DashboardUtilityChargesPoint,
+    ])
+  );
+
+  for (const reading of readings) {
+    if (reading.readingDate.getTime() < start.getTime()) {
+      continue;
+    }
+
+    const key = getMonthKey(reading.readingDate);
+
+    if (!key) {
+      continue;
+    }
+
+    const bucket = bucketMap.get(key);
+
+    if (!bucket) {
+      continue;
+    }
+
+    bucket.charges += toNumber(reading.totalAmount);
+    bucket.readings += 1;
+  }
+
+  return buckets.map((bucket) => {
+    return (
+      bucketMap.get(bucket.key) ?? {
+        axisKey: bucket.key,
+        label: bucket.label,
+        tooltipLabel: getMonthYearLabel(bucket.start),
+        charges: 0,
+        readings: 0,
+      }
+    );
+  });
+}
+
+function buildPaidEarningsBuckets(
+  start: Date,
+  end: Date,
+  payments: DashboardPaymentSeriesRow[]
+) {
+  const buckets = createMonthBucketsBetween(start, end);
+  const bucketMap = new Map(
+    buckets.map((bucket) => [
+      bucket.key,
+      {
+        axisKey: bucket.key,
+        label: bucket.label,
+        tooltipLabel: getMonthYearLabel(bucket.start),
+        rent: 0,
+        charges: 0,
+        cosa: 0,
+        reading: 0,
+        paidRevenue: 0,
+      } satisfies DashboardPaidEarningsPoint,
+    ])
+  );
+
+  for (const payment of payments) {
+    if (payment.invoice.issueDate.getTime() < start.getTime()) {
+      continue;
+    }
+
+    const key = getMonthKey(payment.invoice.issueDate);
+
+    if (!key) {
+      continue;
+    }
+
+    const bucket = bucketMap.get(key);
+
+    if (!bucket) {
+      continue;
+    }
+
+    if (payment.allocations.length === 0) {
+      const fallbackAmount = toNumber(payment.amountPaid);
+      bucket.charges += fallbackAmount;
+      bucket.paidRevenue += fallbackAmount;
+      continue;
+    }
+
+    for (const allocation of payment.allocations) {
+      const allocatedAmount = toNumber(allocation.amountAllocated);
+
+      switch (allocation.invoiceItem.itemType) {
+        case "RENT":
+          bucket.rent += allocatedAmount;
+          break;
+        case "COSA":
+          bucket.cosa += allocatedAmount;
+          break;
+        case "UTILITY_READING":
+          bucket.reading += allocatedAmount;
+          break;
+        default:
+          bucket.charges += allocatedAmount;
+          break;
+      }
+
+      bucket.paidRevenue += allocatedAmount;
+    }
+  }
+
+  return buckets.map((bucket) => {
+    return (
+      bucketMap.get(bucket.key) ?? {
+        axisKey: bucket.key,
+        label: bucket.label,
+        tooltipLabel: getMonthYearLabel(bucket.start),
+        rent: 0,
+        charges: 0,
+        cosa: 0,
+        reading: 0,
+        paidRevenue: 0,
+      }
+    );
+  });
+}
+
 export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   const today = startOfDay(new Date());
   const next60Days = addDays(today, 60);
+  const nextSevenDays = addDays(today, 7);
   const cutoffDate = getHistoricalBacklogCutoffDate();
-  const monthBuckets = createMonthBuckets(6);
-  const monthWindowStart = monthBuckets[0]?.start ?? startOfMonth(new Date());
 
   const [
-    openInvoices,
-    receivables,
-    overdueInvoicesCount,
-    dueThisWeekCount,
-    invoicesForSeries,
+    visibleInvoices,
     paymentsForSeries,
-    statusMixRows,
     readingsForSeries,
     occupancyProperties,
     dueSoonInvoices,
     contractsExpiringSoonCount,
     expiringContracts,
     activeContractsForBilling,
+    allActiveContracts,
   ] = await Promise.all([
-    prisma.invoice.count({
-      where: {
-        status: {
-          in: OPEN_INVOICE_STATUSES,
-        },
-      },
-    }),
-    prisma.invoice.aggregate({
-      _sum: {
-        balanceDue: true,
-      },
-      where: {
-        status: {
-          in: OPEN_INVOICE_STATUSES,
-        },
-      },
-    }),
-    prisma.invoice.count({
-      where: {
-        status: "OVERDUE",
-      },
-    }),
-    prisma.invoice.count({
-      where: {
-        status: {
-          in: OPEN_INVOICE_STATUSES,
-        },
-        dueDate: {
-          gte: today,
-          lte: addDays(today, 7),
-        },
-      },
-    }),
     prisma.invoice.findMany({
-      where: {
-        issueDate: {
-          gte: monthWindowStart,
-        },
-      },
+      where: getVisibleDashboardInvoiceWhere(),
       orderBy: {
         issueDate: "asc",
       },
@@ -181,33 +487,29 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     prisma.payment.findMany({
       where: {
         status: "SETTLED",
-        paymentDate: {
-          gte: monthWindowStart,
-        },
+        invoice: getVisibleDashboardInvoiceWhere(),
       },
-      orderBy: {
-        paymentDate: "asc",
-      },
+      orderBy: [{ invoice: { issueDate: "asc" } }, { paymentDate: "asc" }],
       select: {
-        paymentDate: true,
         amountPaid: true,
+        invoice: {
+          select: {
+            issueDate: true,
+          },
+        },
+        allocations: {
+          select: {
+            amountAllocated: true,
+            invoiceItem: {
+              select: {
+                itemType: true,
+              },
+            },
+          },
+        },
       },
     }),
-    Promise.all(
-      STATUS_MIX_ORDER.map((status) =>
-        prisma.invoice.count({
-          where: {
-            status,
-          },
-        })
-      )
-    ),
     prisma.meterReading.findMany({
-      where: {
-        readingDate: {
-          gte: monthWindowStart,
-        },
-      },
       orderBy: [{ readingDate: "asc" }, { createdAt: "asc" }],
       select: {
         readingDate: true,
@@ -252,11 +554,11 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     }),
     prisma.invoice.findMany({
       take: 6,
-      where: {
+      where: getVisibleDashboardInvoiceWhere({
         status: {
           in: OPEN_INVOICE_STATUSES,
         },
-      },
+      }),
       orderBy: [{ dueDate: "asc" }, { issueDate: "asc" }],
       select: {
         id: true,
@@ -369,79 +671,102 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
         },
       },
     }),
+    prisma.contract.findMany({
+      where: {
+        status: "ACTIVE",
+        endDate: {
+          gte: today,
+          lt: addMonths(startOfMonth(today), 6),
+        },
+      },
+      select: {
+        endDate: true,
+      },
+    }),
   ] as const);
 
-  const collectionsMap = new Map(
-    monthBuckets.map((bucket) => [
-      bucket.key,
-      {
-        label: bucket.label,
-        billed: 0,
-        collected: 0,
-        outstanding: 0,
-        openInvoices: 0,
-        expiringContracts: 0,
-        utilityCharges: 0,
-        readings: 0,
-      },
-    ])
+  const earliestSeriesDate = startOfMonth(
+    getEarliestDashboardDate(
+      [
+        visibleInvoices[0]?.issueDate,
+        paymentsForSeries[0]?.invoice.issueDate,
+        readingsForSeries[0]?.readingDate,
+      ],
+      today
+    )
   );
 
-  for (const invoice of invoicesForSeries) {
-    const key = getMonthKey(invoice.issueDate);
+  const collectionsByRange = {} as DashboardSeriesByRange<DashboardCollectionsPoint>;
+  const utilityByRange = {} as DashboardSeriesByRange<DashboardUtilityChargesPoint>;
+  const paidEarningsByRange = {} as DashboardSeriesByRange<DashboardPaidEarningsPoint>;
+  const collectionBucketsByRange = new Map<
+    DashboardRangePreset,
+    DashboardCollectionsBucketRow[]
+  >();
 
-    if (!key) {
+  for (const preset of DASHBOARD_RANGE_PRESETS) {
+    const rangeStart = getPresetStart(preset, today, earliestSeriesDate);
+    const collectionBuckets = buildCollectionsBuckets(
+      rangeStart,
+      today,
+      visibleInvoices,
+      paymentsForSeries
+    );
+
+    collectionBucketsByRange.set(preset, collectionBuckets);
+    collectionsByRange[preset] = collectionBuckets.map((bucket) => ({
+      label: bucket.label,
+      billed: bucket.billed,
+      collected: bucket.collected,
+      outstanding: bucket.outstanding,
+    }));
+    utilityByRange[preset] = buildUtilityBuckets(
+      rangeStart,
+      today,
+      readingsForSeries
+    );
+    paidEarningsByRange[preset] = buildPaidEarningsBuckets(
+      rangeStart,
+      today,
+      paymentsForSeries
+    );
+  }
+
+  let openInvoices = 0;
+  let outstandingBalance = 0;
+  let overdueInvoicesCount = 0;
+  let dueThisWeekCount = 0;
+  const statusCounts = new Map<DashboardInvoiceStatusPoint["status"], number>(
+    STATUS_MIX_ORDER.map((status) => [status, 0])
+  );
+
+  for (const invoice of visibleInvoices) {
+    const invoiceStatus = invoice.status as DashboardInvoiceStatusPoint["status"];
+    statusCounts.set(invoiceStatus, (statusCounts.get(invoiceStatus) ?? 0) + 1);
+
+    if (!isOpenInvoiceStatus(invoice.status)) {
       continue;
     }
 
-    const bucket = collectionsMap.get(key);
+    openInvoices += 1;
+    outstandingBalance += toNumber(invoice.balanceDue);
 
-    if (!bucket) {
-      continue;
+    if (invoice.status === "OVERDUE") {
+      overdueInvoicesCount += 1;
     }
 
-    bucket.billed += toNumber(invoice.totalAmount);
+    const dueDateMs = invoice.dueDate.getTime();
 
-    if (isOpenInvoiceStatus(invoice.status)) {
-      bucket.outstanding += toNumber(invoice.balanceDue);
-      bucket.openInvoices += 1;
+    if (dueDateMs >= today.getTime() && dueDateMs <= nextSevenDays.getTime()) {
+      dueThisWeekCount += 1;
     }
   }
 
-  for (const payment of paymentsForSeries) {
-    if (!payment.paymentDate) {
-      continue;
-    }
-
-    const key = getMonthKey(payment.paymentDate);
-
-    if (!key) {
-      continue;
-    }
-
-    const bucket = collectionsMap.get(key);
-
-    if (bucket) {
-      bucket.collected += toNumber(payment.amountPaid);
-    }
-  }
-
-  for (const reading of readingsForSeries) {
-    const key = getMonthKey(reading.readingDate);
-
-    if (!key) {
-      continue;
-    }
-
-    const bucket = collectionsMap.get(key);
-
-    if (!bucket) {
-      continue;
-    }
-
-    bucket.utilityCharges += toNumber(reading.totalAmount);
-    bucket.readings += 1;
-  }
+  const invoiceStatusMix = STATUS_MIX_ORDER.map((status) => ({
+    status,
+    label: status.replaceAll("_", " "),
+    value: statusCounts.get(status) ?? 0,
+  })).filter((row) => row.value > 0);
 
   const occupancyMap = new Map<
     string,
@@ -516,19 +841,6 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
 
   const expiringTrendMap = new Map(nextSixMonths.map((bucket) => [bucket.key, bucket]));
 
-  const allActiveContracts = await prisma.contract.findMany({
-    where: {
-      status: "ACTIVE",
-      endDate: {
-        gte: today,
-        lt: addMonths(startOfMonth(today), 6),
-      },
-    },
-    select: {
-      endDate: true,
-    },
-  });
-
   for (const contract of allActiveContracts) {
     const key = getMonthKey(contract.endDate);
 
@@ -542,41 +854,11 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
       bucket.value += 1;
     }
   }
-
-  const collections = monthBuckets.map((bucket) => {
-    const row = collectionsMap.get(bucket.key);
-
-    return {
-      label: bucket.label,
-      billed: row?.billed ?? 0,
-      collected: row?.collected ?? 0,
-      outstanding: row?.outstanding ?? 0,
-    };
-  });
-
-  const utilityCharges = monthBuckets.map((bucket) => {
-    const row = collectionsMap.get(bucket.key);
-
-    return {
-      label: bucket.label,
-      charges: row?.utilityCharges ?? 0,
-      readings: row?.readings ?? 0,
-    };
-  });
-
-  const invoiceStatusMix = STATUS_MIX_ORDER.map((status, index) => {
-    return {
-      status,
-      label: status.replaceAll("_", " "),
-      value: statusMixRows[index] ?? 0,
-    };
-  }).filter((row) => row.value > 0);
-
-  const outstandingBalance = toNumber(receivables._sum.balanceDue ?? 0);
   const occupiedTrend = occupancyByBuilding.slice(0, 6).map((building) => ({
     label: building.buildingLabel,
     value: building.occupied,
   }));
+  const kpiCollectionTrend = collectionBucketsByRange.get("12M") ?? [];
 
   const nearestBillables = activeContractsForBilling
     .map((contract) => {
@@ -643,20 +925,26 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
         label: "Open invoices",
         value: openInvoices,
         detail: "Awaiting settlement",
-        trend: monthBuckets.map((bucket) => ({
-          label: bucket.label,
-          value: collectionsMap.get(bucket.key)?.openInvoices ?? 0,
-        })),
+        trend:
+          kpiCollectionTrend.length > 0
+            ? kpiCollectionTrend.map((bucket) => ({
+                label: bucket.label,
+                value: bucket.openInvoices,
+              }))
+            : [{ label: "None", value: 0 }],
       },
       {
         key: "outstandingBalance",
         label: "Outstanding balance",
         value: outstandingBalance,
         detail: "Across unpaid invoices",
-        trend: monthBuckets.map((bucket) => ({
-          label: bucket.label,
-          value: collectionsMap.get(bucket.key)?.outstanding ?? 0,
-        })),
+        trend:
+          kpiCollectionTrend.length > 0
+            ? kpiCollectionTrend.map((bucket) => ({
+                label: bucket.label,
+                value: bucket.outstanding,
+              }))
+            : [{ label: "None", value: 0 }],
       },
       {
         key: "occupiedSpaces",
@@ -680,12 +968,18 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
       },
     ],
     series: {
-      collections,
-      utilityCharges,
+      collections: collectionsByRange,
+      utilityCharges: utilityByRange,
+      paidEarnings: paidEarningsByRange,
     },
     breakdowns: {
       occupancyByBuilding,
-      invoiceStatusMix,
+      invoiceStatusSummary: {
+        totalVisible: visibleInvoices.length,
+        paid: statusCounts.get("PAID") ?? 0,
+        open: openInvoices,
+        byStatus: invoiceStatusMix,
+      },
     },
     queues: {
       dueSoon: dueSoonInvoices.map((invoice) => ({
@@ -889,8 +1183,16 @@ export async function getUtilityMetersOverview() {
       },
       property: {
         select: {
+          id: true,
           name: true,
           propertyCode: true,
+          parent: {
+            select: {
+              id: true,
+              name: true,
+              propertyCode: true,
+            },
+          },
         },
       },
       _count: {
@@ -922,6 +1224,7 @@ export async function getMeterReadingsOverview() {
           firstName: true,
           lastName: true,
           businessName: true,
+          invoiceDescriptionDateDisplayDefault: true,
         },
       },
       meter: {
@@ -1248,8 +1551,7 @@ export async function getContractsOverview() {
         status: "ACTIVE",
       },
     },
-    take: 12,
-    orderBy: [{ status: "asc" }, { startDate: "desc" }],
+    orderBy: [{ startDate: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
       startDate: true,
@@ -1258,8 +1560,16 @@ export async function getContractsOverview() {
       status: true,
       property: {
         select: {
+          id: true,
           name: true,
           propertyCode: true,
+          parent: {
+            select: {
+              id: true,
+              name: true,
+              propertyCode: true,
+            },
+          },
         },
       },
       tenant: {
@@ -1305,6 +1615,7 @@ export async function getBillingOverview() {
           firstName: true,
           lastName: true,
           businessName: true,
+          invoiceDescriptionDateDisplayDefault: true,
         },
       },
       contract: {
@@ -1338,7 +1649,17 @@ export async function getBillingOverview() {
           id: true,
           itemType: true,
           description: true,
+          descriptionMode: true,
+          customDescription: true,
           amount: true,
+          contractRecurringCharge: {
+            select: {
+              id: true,
+              label: true,
+              chargeType: true,
+              descriptionDateDisplayOverride: true,
+            },
+          },
           allocations: {
             select: {
               amountAllocated: true,

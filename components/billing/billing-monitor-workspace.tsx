@@ -10,7 +10,11 @@ import {
   Store,
   Trash2,
 } from "lucide-react";
-import { recordPaymentAction } from "@/app/(dashboard)/billing/actions";
+import {
+  bulkRecordFullPaymentAction,
+  recordPaymentAction,
+} from "@/app/(dashboard)/billing/actions";
+import { BulkRecordPaymentSheet } from "@/components/billing/bulk-record-payment-sheet";
 import { deleteInvoiceAction } from "@/app/(dashboard)/billing/[invoiceId]/actions";
 import { RecordPaymentSheet } from "@/components/billing/record-payment-sheet";
 import { Badge } from "@/components/ui/badge";
@@ -103,6 +107,8 @@ type TenantGroup = {
   invoices: BillingInvoice[];
 };
 
+type PaymentStatusFilter = "all" | "paid" | "not_paid";
+
 const MONTH_OPTIONS = [
   { value: "01", label: "January" },
   { value: "02", label: "February" },
@@ -145,7 +151,7 @@ function getPayableItems(invoice: BillingInvoice) {
     .map((item) => {
       const allocatedAmount = item.allocations.reduce(
         (sum, allocation) => sum + allocation.amountAllocated,
-        0
+        0,
       );
       const remainingAmount = Math.max(0, item.amount - allocatedAmount);
 
@@ -165,6 +171,14 @@ function getInvoiceFilterParts(invoice: BillingInvoice) {
   return getDatePartsInAppTimeZone(invoice.billingPeriodStart);
 }
 
+function canInvoiceReceivePayment(invoice: BillingInvoice) {
+  return (
+    invoice.status !== "VOID" &&
+    invoice.balanceDue > 0 &&
+    getPayableItems(invoice).length > 0
+  );
+}
+
 function InvoiceActions({
   invoice,
   align = "end",
@@ -177,7 +191,7 @@ function InvoiceActions({
   const canDeleteInvoice = invoice._count.payments === 0;
   const deleteInvoice = deleteInvoiceAction.bind(null, invoice.id);
   const payableItems = getPayableItems(invoice);
-  const canRecordPayment = invoice.balanceDue > 0 && payableItems.length > 0;
+  const canRecordPayment = canInvoiceReceivePayment(invoice);
   const paymentAction = recordPaymentAction.bind(null, invoice.id);
 
   return (
@@ -249,118 +263,198 @@ function InvoiceActions({
   );
 }
 
-function InvoiceCards({ invoices }: { invoices: BillingInvoice[] }) {
+function InvoiceCards({
+  invoices,
+  selectedInvoiceIds,
+  onToggleInvoice,
+}: {
+  invoices: BillingInvoice[];
+  selectedInvoiceIds: Set<string>;
+  onToggleInvoice: (invoiceId: string, selected: boolean) => void;
+}) {
   return (
     <div className="space-y-3 md:hidden">
-      {invoices.map((invoice) => (
-        <div
-          key={invoice.id}
-          className="rounded-[1.4rem] border border-border/60 bg-background/60 p-4"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-medium">
-                {`Invoice for ${formatBillingCycleMonthLabel(invoice.billingPeriodStart)}`}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {invoice.invoiceNumber} · {INVOICE_ORIGIN_LABELS[invoice.origin]}
-              </p>
-            </div>
-            <Badge variant="outline" className="shrink-0 rounded-full">
-              {formatStatusLabel(invoice.status)}
-            </Badge>
-          </div>
+      {invoices.map((invoice) => {
+        const canSelect = canInvoiceReceivePayment(invoice);
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Business
-              </p>
-              <p className="mt-1 text-sm">{formatTenantName(invoice.tenant)}</p>
+        return (
+          <div
+            key={invoice.id}
+            className="rounded-[1.4rem] border border-border/60 bg-background/60 p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedInvoiceIds.has(invoice.id)}
+                  disabled={!canSelect}
+                  onChange={(event) =>
+                    onToggleInvoice(invoice.id, event.target.checked)
+                  }
+                  className="mt-1 size-4 rounded border-border text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={`Select ${invoice.invoiceNumber}`}
+                />
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    {`Invoice for ${formatBillingCycleMonthLabel(invoice.billingPeriodStart)}`}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {invoice.invoiceNumber} · {INVOICE_ORIGIN_LABELS[invoice.origin]}
+                  </p>
+                </div>
+              </div>
+              <Badge variant="outline" className="shrink-0 rounded-full">
+                {formatStatusLabel(invoice.status)}
+              </Badge>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Space
-              </p>
-              <p className="mt-1 text-sm">{invoice.contract.property.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {invoice.contract.property.propertyCode}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Issued / Balance
-              </p>
-              <p className="mt-1 text-sm">{formatDate(invoice.issueDate)}</p>
-              <p className="text-xs text-muted-foreground">
-                {formatCurrency(invoice.balanceDue)}
-              </p>
-            </div>
-          </div>
 
-          <div className="mt-4 border-t border-border/60 pt-4">
-            <InvoiceActions invoice={invoice} align="start" />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Business
+                </p>
+                <p className="mt-1 text-sm">{formatTenantName(invoice.tenant)}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Space
+                </p>
+                <p className="mt-1 text-sm">{invoice.contract.property.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {invoice.contract.property.propertyCode}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Issued / Balance
+                </p>
+                <p className="mt-1 text-sm">{formatDate(invoice.issueDate)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatCurrency(invoice.balanceDue)}
+                </p>
+              </div>
+            </div>
+
+            {!canSelect ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Only invoices with remaining balance can be bulk fully paid.
+              </p>
+            ) : null}
+
+            <div className="mt-4 border-t border-border/60 pt-4">
+              <InvoiceActions invoice={invoice} align="start" />
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function InvoiceTable({ invoices }: { invoices: BillingInvoice[] }) {
+function InvoiceTable({
+  invoices,
+  selectedInvoiceIds,
+  allPayableInvoicesSelected,
+  payableInvoiceCount,
+  onToggleInvoice,
+  onToggleAllInvoices,
+}: {
+  invoices: BillingInvoice[];
+  selectedInvoiceIds: Set<string>;
+  allPayableInvoicesSelected: boolean;
+  payableInvoiceCount: number;
+  onToggleInvoice: (invoiceId: string, selected: boolean) => void;
+  onToggleAllInvoices: (selected: boolean) => void;
+}) {
   return (
     <>
-      <InvoiceCards invoices={invoices} />
+      <InvoiceCards
+        invoices={invoices}
+        selectedInvoiceIds={selectedInvoiceIds}
+        onToggleInvoice={onToggleInvoice}
+      />
 
       <div className="hidden w-full md:block">
         <Table className="w-full table-fixed">
           <TableHeader>
             <TableRow className="border-border/60">
-              <TableHead className="w-[22%]">Invoice</TableHead>
+              <TableHead className="w-[5%] text-center">
+                <input
+                  type="checkbox"
+                  checked={allPayableInvoicesSelected}
+                  disabled={payableInvoiceCount === 0}
+                  onChange={(event) =>
+                    onToggleAllInvoices(event.target.checked)
+                  }
+                  className="size-4 rounded border-border text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Select all payable invoices on this page"
+                />
+              </TableHead>
+              <TableHead className="w-[20%]">Invoice</TableHead>
               <TableHead className="w-[14%]">Business</TableHead>
-              <TableHead className="w-[15%]">Space</TableHead>
+              <TableHead className="w-[14%]">Space</TableHead>
               <TableHead className="w-[10%]">Issued Date</TableHead>
               <TableHead className="w-[8%]">Status</TableHead>
               <TableHead className="w-[6%] text-right">Payments</TableHead>
               <TableHead className="w-[8%] text-right">Balance</TableHead>
-              <TableHead className="w-[9%] text-right">Action</TableHead>
+              <TableHead className="w-[15%] text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {invoices.map((invoice) => (
-              <TableRow key={invoice.id} className="border-border/60">
-                <TableCell className="align-top font-medium">
-                  <p className="truncate">
-                    {`Invoice for ${formatBillingCycleMonthLabel(invoice.billingPeriodStart)}`}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {invoice.invoiceNumber} · {invoice._count.items} items
-                  </p>
-                </TableCell>
-                <TableCell className="align-top">
-                  <p className="truncate">{formatTenantName(invoice.tenant)}</p>
-                </TableCell>
-                <TableCell className="align-top">
-                  <p className="truncate">{invoice.contract.property.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {invoice.contract.property.propertyCode}
-                  </p>
-                </TableCell>
-                <TableCell className="align-top">{formatDate(invoice.issueDate)}</TableCell>
-                <TableCell className="align-top">
-                  <Badge variant="outline" className="rounded-full">
-                    {formatStatusLabel(invoice.status)}
-                  </Badge>
-                </TableCell>
-                <TableCell className="align-top text-right">{invoice._count.payments}</TableCell>
-                <TableCell className="align-top text-right whitespace-nowrap">
-                  {formatCurrency(invoice.balanceDue)}
-                </TableCell>
-                <TableCell className="align-top text-right">
-                  <InvoiceActions invoice={invoice} />
-                </TableCell>
-              </TableRow>
-            ))}
+            {invoices.map((invoice) => {
+              const canSelect = canInvoiceReceivePayment(invoice);
+
+              return (
+                <TableRow key={invoice.id} className="border-border/60">
+                  <TableCell className="align-top text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedInvoiceIds.has(invoice.id)}
+                      disabled={!canSelect}
+                      onChange={(event) =>
+                        onToggleInvoice(invoice.id, event.target.checked)
+                      }
+                      className="mt-1 size-4 rounded border-border text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={`Select ${invoice.invoiceNumber}`}
+                    />
+                  </TableCell>
+                  <TableCell className="align-top font-medium">
+                    <p className="truncate">
+                      {`Invoice for ${formatBillingCycleMonthLabel(invoice.billingPeriodStart)}`}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {invoice.invoiceNumber} · {invoice._count.items} items
+                    </p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <p className="truncate">{formatTenantName(invoice.tenant)}</p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <p className="truncate">{invoice.contract.property.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {invoice.contract.property.propertyCode}
+                    </p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    {formatDate(invoice.issueDate)}
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <Badge variant="outline" className="rounded-full">
+                      {formatStatusLabel(invoice.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="align-top text-right">
+                    {invoice._count.payments}
+                  </TableCell>
+                  <TableCell className="align-top text-right whitespace-nowrap">
+                    {formatCurrency(invoice.balanceDue)}
+                  </TableCell>
+                  <TableCell className="align-top text-right">
+                    <InvoiceActions invoice={invoice} />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
@@ -375,6 +469,9 @@ export function BillingMonitorWorkspace({
   const [selectedTenantId, setSelectedTenantId] = useState("all");
   const [selectedYear, setSelectedYear] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState<MonthValue | "all">("all");
+  const [selectedPaymentStatus, setSelectedPaymentStatus] =
+    useState<PaymentStatusFilter>("all");
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const pageSize = 8;
 
@@ -382,7 +479,8 @@ export function BillingMonitorWorkspace({
     () =>
       [...invoices].sort((left, right) => {
         const billingDelta =
-          right.billingPeriodStart.getTime() - left.billingPeriodStart.getTime();
+          right.billingPeriodStart.getTime() -
+          left.billingPeriodStart.getTime();
 
         if (billingDelta !== 0) {
           return billingDelta;
@@ -394,18 +492,23 @@ export function BillingMonitorWorkspace({
           return issueDelta;
         }
 
-        return right.invoiceNumber.localeCompare(left.invoiceNumber, undefined, {
-          numeric: true,
-        });
+        return right.invoiceNumber.localeCompare(
+          left.invoiceNumber,
+          undefined,
+          {
+            numeric: true,
+          },
+        );
       }),
-    [invoices]
+    [invoices],
   );
 
   const buildingGroups = useMemo<BuildingGroup[]>(() => {
     const grouped = new Map<string, BuildingGroup>();
 
     for (const invoice of sortedInvoices) {
-      const building = invoice.contract.property.parent ?? invoice.contract.property;
+      const building =
+        invoice.contract.property.parent ?? invoice.contract.property;
       const existing = grouped.get(building.id);
 
       if (existing) {
@@ -422,7 +525,7 @@ export function BillingMonitorWorkspace({
     }
 
     return [...grouped.values()].sort((left, right) =>
-      left.label.localeCompare(right.label, undefined, { numeric: true })
+      left.label.localeCompare(right.label, undefined, { numeric: true }),
     );
   }, [sortedInvoices]);
 
@@ -430,8 +533,9 @@ export function BillingMonitorWorkspace({
     () =>
       selectedBuildingId === "all"
         ? sortedInvoices
-        : buildingGroups.find((group) => group.id === selectedBuildingId)?.invoices ?? [],
-    [buildingGroups, selectedBuildingId, sortedInvoices]
+        : (buildingGroups.find((group) => group.id === selectedBuildingId)
+            ?.invoices ?? []),
+    [buildingGroups, selectedBuildingId, sortedInvoices],
   );
 
   const tenantGroups = useMemo<TenantGroup[]>(() => {
@@ -453,12 +557,13 @@ export function BillingMonitorWorkspace({
     }
 
     return [...grouped.values()].sort((left, right) =>
-      left.label.localeCompare(right.label, undefined, { numeric: true })
+      left.label.localeCompare(right.label, undefined, { numeric: true }),
     );
   }, [buildingInvoices]);
 
   const effectiveTenantId =
-    selectedTenantId === "all" || tenantGroups.some((group) => group.id === selectedTenantId)
+    selectedTenantId === "all" ||
+    tenantGroups.some((group) => group.id === selectedTenantId)
       ? selectedTenantId
       : "all";
 
@@ -466,22 +571,27 @@ export function BillingMonitorWorkspace({
     () =>
       effectiveTenantId === "all"
         ? buildingInvoices
-        : tenantGroups.find((group) => group.id === effectiveTenantId)?.invoices ?? [],
-    [buildingInvoices, effectiveTenantId, tenantGroups]
+        : (tenantGroups.find((group) => group.id === effectiveTenantId)
+            ?.invoices ?? []),
+    [buildingInvoices, effectiveTenantId, tenantGroups],
   );
 
   const yearOptions = useMemo(
     () =>
-      [...new Set(
-        tenantScopedInvoices
-          .map((invoice) => getInvoiceFilterParts(invoice)?.year ?? null)
-          .filter((value): value is string => value !== null)
-      )].sort((left, right) => Number(right) - Number(left)),
-    [tenantScopedInvoices]
+      [
+        ...new Set(
+          tenantScopedInvoices
+            .map((invoice) => getInvoiceFilterParts(invoice)?.year ?? null)
+            .filter((value): value is string => value !== null),
+        ),
+      ].sort((left, right) => Number(right) - Number(left)),
+    [tenantScopedInvoices],
   );
 
   const effectiveYear =
-    selectedYear === "all" || yearOptions.includes(selectedYear) ? selectedYear : "all";
+    selectedYear === "all" || yearOptions.includes(selectedYear)
+      ? selectedYear
+      : "all";
 
   const monthOptions = useMemo(
     () =>
@@ -498,9 +608,9 @@ export function BillingMonitorWorkspace({
           }
 
           return parts.month === value;
-        })
+        }),
       ),
-    [effectiveYear, tenantScopedInvoices]
+    [effectiveYear, tenantScopedInvoices],
   );
 
   const monthOptionValues = monthOptions.map((option) => option.value);
@@ -514,15 +624,25 @@ export function BillingMonitorWorkspace({
     const parts = getInvoiceFilterParts(invoice);
 
     if (!parts) {
-      return effectiveYear === "all" && effectiveMonth === "all";
+      if (!(effectiveYear === "all" && effectiveMonth === "all")) {
+        return false;
+      }
+    } else {
+      if (effectiveYear !== "all" && parts.year !== effectiveYear) {
+        return false;
+      }
+
+      if (effectiveMonth !== "all" && parts.month !== effectiveMonth) {
+        return false;
+      }
     }
 
-    if (effectiveYear !== "all" && parts.year !== effectiveYear) {
-      return false;
+    if (selectedPaymentStatus === "paid") {
+      return invoice.status === "PAID" || invoice.balanceDue <= 0;
     }
 
-    if (effectiveMonth !== "all" && parts.month !== effectiveMonth) {
-      return false;
+    if (selectedPaymentStatus === "not_paid") {
+      return invoice.status !== "VOID" && invoice.balanceDue > 0;
     }
 
     return true;
@@ -534,8 +654,64 @@ export function BillingMonitorWorkspace({
   const pagedInvoices = filteredInvoices.slice(pageStart, pageStart + pageSize);
   const selectedBalance = filteredInvoices.reduce(
     (sum, invoice) => sum + invoice.balanceDue,
+    0,
+  );
+  const selectedInvoiceIdSet = useMemo(
+    () => new Set(selectedInvoiceIds),
+    [selectedInvoiceIds]
+  );
+  const payableFilteredInvoices = filteredInvoices.filter(canInvoiceReceivePayment);
+  const payablePagedInvoices = pagedInvoices.filter(canInvoiceReceivePayment);
+  const selectedPayableInvoices = filteredInvoices.filter(
+    (invoice) =>
+      selectedInvoiceIdSet.has(invoice.id) && canInvoiceReceivePayment(invoice)
+  );
+  const allPayableFilteredSelected =
+    payableFilteredInvoices.length > 0 &&
+    selectedPayableInvoices.length === payableFilteredInvoices.length;
+  const allPayablePageSelected =
+    payablePagedInvoices.length > 0 &&
+    payablePagedInvoices.every((invoice) => selectedInvoiceIdSet.has(invoice.id));
+  const selectedPayableBalance = selectedPayableInvoices.reduce(
+    (sum, invoice) => sum + invoice.balanceDue,
     0
   );
+  const bulkSelectedInvoices = selectedPayableInvoices.map((invoice) => ({
+    id: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    tenantLabel: formatTenantName(invoice.tenant),
+    propertyLabel: invoice.contract.property.name,
+    balanceDue: invoice.balanceDue,
+  }));
+
+  function clearSelection() {
+    setSelectedInvoiceIds([]);
+  }
+
+  function updateInvoiceSelection(invoiceIds: string[], selected: boolean) {
+    setSelectedInvoiceIds((current) => {
+      const next = new Set(current);
+
+      for (const invoiceId of invoiceIds) {
+        if (selected) {
+          next.add(invoiceId);
+        } else {
+          next.delete(invoiceId);
+        }
+      }
+
+      return [...next];
+    });
+  }
+
+  function toggleInvoiceSelection(invoiceId: string, selected: boolean) {
+    updateInvoiceSelection([invoiceId], selected);
+  }
+
+  function resetSelectionForScopeChange() {
+    clearSelection();
+    setPage(1);
+  }
 
   return (
     <div className="space-y-4">
@@ -547,13 +723,13 @@ export function BillingMonitorWorkspace({
               onClick={() => {
                 setSelectedBuildingId("all");
                 setSelectedTenantId("all");
-                setPage(1);
+                resetSelectionForScopeChange();
               }}
               className={cn(
                 "inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                 selectedBuildingId === "all"
                   ? "border-chart-4/40 bg-chart-4/12 text-chart-4"
-                  : "border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  : "border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
               )}
             >
               <Building2 className="size-3.5" />
@@ -570,13 +746,13 @@ export function BillingMonitorWorkspace({
                 onClick={() => {
                   setSelectedBuildingId(group.id);
                   setSelectedTenantId("all");
-                  setPage(1);
+                  resetSelectionForScopeChange();
                 }}
                 className={cn(
                   "inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                   selectedBuildingId === group.id
                     ? "border-chart-4/40 bg-chart-4/12 text-chart-4"
-                    : "border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                    : "border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                 )}
               >
                 <Building2 className="size-3.5" />
@@ -595,13 +771,13 @@ export function BillingMonitorWorkspace({
               type="button"
               onClick={() => {
                 setSelectedTenantId("all");
-                setPage(1);
+                resetSelectionForScopeChange();
               }}
               className={cn(
                 "inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                 effectiveTenantId === "all"
                   ? "border-primary/35 bg-primary/12 text-primary"
-                  : "border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  : "border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
               )}
             >
               <Store className="size-3.5" />
@@ -617,13 +793,13 @@ export function BillingMonitorWorkspace({
                 type="button"
                 onClick={() => {
                   setSelectedTenantId(group.id);
-                  setPage(1);
+                  resetSelectionForScopeChange();
                 }}
                 className={cn(
                   "inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                   effectiveTenantId === group.id
                     ? "border-primary/35 bg-primary/12 text-primary"
-                    : "border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                    : "border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                 )}
               >
                 <Store className="size-3.5" />
@@ -636,29 +812,7 @@ export function BillingMonitorWorkspace({
           </div>
         </div>
 
-        <div className="grid gap-3 pb-1 sm:grid-cols-2">
-          <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Year
-            </p>
-            <select
-              value={effectiveYear}
-              onChange={(event) => {
-                setSelectedYear(event.target.value);
-                setSelectedMonth("all");
-                setPage(1);
-              }}
-              className="select-blank"
-            >
-              <option value="all">All years</option>
-              {yearOptions.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </div>
-
+        <div className="grid gap-3 pb-1 sm:grid-cols-2 xl:grid-cols-3">
           <div className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Month
@@ -667,8 +821,12 @@ export function BillingMonitorWorkspace({
               value={effectiveMonth}
               onChange={(event) => {
                 const nextMonth = event.target.value;
-                setSelectedMonth(nextMonth === "all" || isMonthValue(nextMonth) ? nextMonth : "all");
-                setPage(1);
+                setSelectedMonth(
+                  nextMonth === "all" || isMonthValue(nextMonth)
+                    ? nextMonth
+                    : "all",
+                );
+                resetSelectionForScopeChange();
               }}
               className="select-blank"
             >
@@ -680,6 +838,49 @@ export function BillingMonitorWorkspace({
               ))}
             </select>
           </div>
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Year
+            </p>
+            <select
+              value={effectiveYear}
+              onChange={(event) => {
+                setSelectedYear(event.target.value);
+                setSelectedMonth("all");
+                resetSelectionForScopeChange();
+              }}
+              className="select-blank"
+            >
+              <option value="all">All years</option>
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Payment state
+            </p>
+            <select
+              value={selectedPaymentStatus}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setSelectedPaymentStatus(
+                  nextValue === "paid" || nextValue === "not_paid"
+                    ? nextValue
+                    : "all"
+                );
+                resetSelectionForScopeChange();
+              }}
+              className="select-blank"
+            >
+              <option value="all">All invoices</option>
+              <option value="not_paid">Not paid</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -689,11 +890,15 @@ export function BillingMonitorWorkspace({
             <CardTitle className="text-sm font-medium">
               {selectedBuildingId === "all"
                 ? "All buildings"
-                : buildingGroups.find((group) => group.id === selectedBuildingId)?.label}
+                : buildingGroups.find(
+                    (group) => group.id === selectedBuildingId,
+                  )?.label}
             </CardTitle>
             <p className="mt-1 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-              {filteredInvoices.length} invoice{filteredInvoices.length === 1 ? "" : "s"} ·{" "}
-              {formatCurrency(selectedBalance)} due
+              {filteredInvoices.length} invoice
+              {filteredInvoices.length === 1 ? "" : "s"} ·{" "}
+              {formatCurrency(selectedBalance)} due ·{" "}
+              {selectedPayableInvoices.length} selected
             </p>
           </div>
           <Badge variant="outline" className="rounded-full">
@@ -707,11 +912,87 @@ export function BillingMonitorWorkspace({
             </div>
           ) : (
             <>
-              <InvoiceTable invoices={pagedInvoices} />
+              <div className="flex flex-col gap-3 rounded-[1.2rem] border border-border/60 bg-background/60 px-4 py-4 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[0.72rem] uppercase tracking-[0.22em] text-muted-foreground">
+                    Bulk full payment
+                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {selectedPayableInvoices.length} selected of{" "}
+                    {payableFilteredInvoices.length} payable invoice
+                    {payableFilteredInvoices.length === 1 ? "" : "s"} ·{" "}
+                    {formatCurrency(selectedPayableBalance)} remaining
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() =>
+                      updateInvoiceSelection(
+                        payablePagedInvoices.map((invoice) => invoice.id),
+                        true
+                      )
+                    }
+                    disabled={payablePagedInvoices.length === 0 || allPayablePageSelected}
+                  >
+                    Select page
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() =>
+                      updateInvoiceSelection(
+                        payableFilteredInvoices.map((invoice) => invoice.id),
+                        true
+                      )
+                    }
+                    disabled={
+                      payableFilteredInvoices.length === 0 ||
+                      allPayableFilteredSelected
+                    }
+                  >
+                    Select filtered
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={clearSelection}
+                    disabled={selectedPayableInvoices.length === 0}
+                  >
+                    Clear
+                  </Button>
+                  <BulkRecordPaymentSheet
+                    action={bulkRecordFullPaymentAction}
+                    invoices={bulkSelectedInvoices}
+                  />
+                </div>
+              </div>
+
+              <InvoiceTable
+                invoices={pagedInvoices}
+                selectedInvoiceIds={selectedInvoiceIdSet}
+                allPayableInvoicesSelected={allPayablePageSelected}
+                payableInvoiceCount={payablePagedInvoices.length}
+                onToggleInvoice={toggleInvoiceSelection}
+                onToggleAllInvoices={(selected) =>
+                  updateInvoiceSelection(
+                    payablePagedInvoices.map((invoice) => invoice.id),
+                    selected
+                  )
+                }
+              />
 
               <div className="flex items-center justify-between gap-3 pt-2">
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                  Showing {pageStart + 1}-{Math.min(filteredInvoices.length, pageStart + pageSize)} of{" "}
+                  Showing {pageStart + 1}-
+                  {Math.min(filteredInvoices.length, pageStart + pageSize)} of{" "}
                   {filteredInvoices.length}
                 </p>
                 <div className="flex gap-2">
@@ -720,7 +1001,9 @@ export function BillingMonitorWorkspace({
                     variant="outline"
                     size="sm"
                     className="rounded-full"
-                    onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+                    onClick={() =>
+                      setPage((currentPage) => Math.max(1, currentPage - 1))
+                    }
                     disabled={currentPage === 1}
                   >
                     Previous
@@ -731,7 +1014,9 @@ export function BillingMonitorWorkspace({
                     size="sm"
                     className="rounded-full"
                     onClick={() =>
-                      setPage((currentPage) => Math.min(totalPages, currentPage + 1))
+                      setPage((currentPage) =>
+                        Math.min(totalPages, currentPage + 1),
+                      )
                     }
                     disabled={currentPage === totalPages}
                   >

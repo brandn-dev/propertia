@@ -5,6 +5,8 @@ import Link from "next/link";
 import { ArrowLeft, LoaderCircle, Save } from "lucide-react";
 import type { RecurringChargeFormState } from "@/app/(dashboard)/billing/actions";
 import {
+  INVOICE_DATE_DISPLAY_MODE_LABELS,
+  INVOICE_DATE_DISPLAY_MODES,
   RECURRING_CHARGE_TYPES,
   RECURRING_CHARGE_TYPE_LABELS,
 } from "@/lib/form-options";
@@ -44,6 +46,7 @@ type RecurringChargeFormProps = {
     chargeType: (typeof RECURRING_CHARGE_TYPES)[number];
     label: string;
     amount: string;
+    descriptionDateDisplayOverride: "" | (typeof INVOICE_DATE_DISPLAY_MODES)[number];
     effectiveStartDate: string;
     effectiveEndDate: string;
     isActive: boolean;
@@ -77,6 +80,7 @@ export function RecurringChargeForm({
     chargeType: "INTERNET",
     label: "",
     amount: "",
+    descriptionDateDisplayOverride: "",
     effectiveStartDate: "",
     effectiveEndDate: "",
     isActive: true,
@@ -155,6 +159,32 @@ export function RecurringChargeForm({
                 className="field-blank h-11"
               />
               <FieldError message={state.errors?.amount?.[0]} />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="descriptionDateDisplayOverride">
+                Invoice description dates
+              </Label>
+              <select
+                id="descriptionDateDisplayOverride"
+                name="descriptionDateDisplayOverride"
+                defaultValue={initialValues.descriptionDateDisplayOverride}
+                className={selectClassName}
+              >
+                <option value="">Use tenant default</option>
+                {INVOICE_DATE_DISPLAY_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    Always {INVOICE_DATE_DISPLAY_MODE_LABELS[mode].toLowerCase()}
+                  </option>
+                ))}
+              </select>
+              <FieldError
+                message={state.errors?.descriptionDateDisplayOverride?.[0]}
+              />
+              <p className="text-sm text-muted-foreground">
+                Override how this charge appears inside generated invoice line
+                descriptions. Leave unset to follow the tenant default.
+              </p>
             </div>
 
             <div className="space-y-2">

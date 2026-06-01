@@ -3,6 +3,7 @@ import {
   CopyPlus,
   Droplets,
   Eye,
+  Fuel,
   Gauge,
   Layers3,
   Plus,
@@ -59,6 +60,7 @@ const PRESET_ICONS = {
   "common-electricity": Gauge,
   "security-guard": Shield,
   "maintenance-staff": Wrench,
+  "generator-fuel": Fuel,
 } as const;
 
 export default async function BillingCosaTemplatesPage() {
@@ -76,7 +78,7 @@ export default async function BillingCosaTemplatesPage() {
       <DashboardPageHero
         eyebrow="Operations / Billing / COSA"
         title="COSA templates"
-        description="Store reusable tenant splits for common-area charges like shared water, shared electricity, security guard salary, or maintenance staff. Each month can start from one of these defaults instead of rebuilding the split."
+        description="Store reusable tenant splits for common-area charges like shared water, shared electricity, security guard salary, maintenance staff, or generator fuel. Each month can start from one of these defaults instead of rebuilding the split."
         icon={Layers3}
         badges={["Reusable defaults", "Template-based", "Admin only"]}
         action={
@@ -130,15 +132,16 @@ export default async function BillingCosaTemplatesPage() {
       <section className="border-blank rounded-xl p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.04em]">
-              Quick-start templates
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Security guard and maintenance staff are manual monthly salaries
-              split by unit count. Water and electricity are shared meters split
-              by percentage.
-            </p>
-          </div>
+              <h2 className="text-lg font-semibold tracking-[-0.04em]">
+                Quick-start templates
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Security guard and maintenance staff are manual monthly salaries
+                split by unit count. Water and electricity are shared meters split
+                by percentage. Generator fuel starts as a manual shared cost with
+                an editable split mode.
+              </p>
+            </div>
           <Button
             render={<Link href="/billing/cosa/templates/new" />}
             variant="outline"
@@ -149,7 +152,7 @@ export default async function BillingCosaTemplatesPage() {
           </Button>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {COSA_TEMPLATE_PRESETS.map((preset) => {
             const Icon = PRESET_ICONS[preset.id];
 

@@ -4,7 +4,12 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import type { TenantFormState } from "@/app/(dashboard)/tenants/actions";
-import { TENANT_TYPES, TENANT_TYPE_LABELS } from "@/lib/form-options";
+import {
+  INVOICE_DATE_DISPLAY_MODE_LABELS,
+  INVOICE_DATE_DISPLAY_MODES,
+  TENANT_TYPES,
+  TENANT_TYPE_LABELS,
+} from "@/lib/form-options";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +50,7 @@ type TenantFormProps = {
     address: string;
     validIdType: string;
     validIdNumber: string;
+    invoiceDescriptionDateDisplayDefault: (typeof INVOICE_DATE_DISPLAY_MODES)[number];
     people: PersonDraft[];
   };
 };
@@ -83,6 +89,7 @@ export function TenantForm({
     address: "",
     validIdType: "",
     validIdNumber: "",
+    invoiceDescriptionDateDisplayDefault: "SHOW",
     people: [],
   },
 }: TenantFormProps) {
@@ -259,6 +266,31 @@ export function TenantForm({
                 className="field-blank h-11"
               />
               <FieldError message={state.errors?.validIdNumber?.[0]} />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="invoiceDescriptionDateDisplayDefault">
+                Billing defaults
+              </Label>
+              <select
+                id="invoiceDescriptionDateDisplayDefault"
+                name="invoiceDescriptionDateDisplayDefault"
+                defaultValue={initialValues.invoiceDescriptionDateDisplayDefault}
+                className={selectClassName}
+              >
+                {INVOICE_DATE_DISPLAY_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {INVOICE_DATE_DISPLAY_MODE_LABELS[mode]} in invoice descriptions
+                  </option>
+                ))}
+              </select>
+              <FieldError
+                message={state.errors?.invoiceDescriptionDateDisplayDefault?.[0]}
+              />
+              <p className="text-sm text-muted-foreground">
+                Choose whether generated rent and recurring charge descriptions
+                show their billing date range by default.
+              </p>
             </div>
           </div>
 

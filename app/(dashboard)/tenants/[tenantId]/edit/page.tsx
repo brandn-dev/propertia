@@ -122,6 +122,8 @@ export default async function EditTenantPage({ params }: EditTenantPageProps) {
           address: tenant.address ?? "",
           validIdType: tenant.validIdType ?? "",
           validIdNumber: tenant.validIdNumber ?? "",
+          invoiceDescriptionDateDisplayDefault:
+            tenant.invoiceDescriptionDateDisplayDefault,
           people: tenant.people.map((person) => ({
             personId: person.personId,
             firstName: person.firstName,

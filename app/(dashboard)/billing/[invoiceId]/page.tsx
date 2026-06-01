@@ -42,9 +42,13 @@ export default async function InvoiceDetailPage({
     invoice.status !== "VOID" && toNumber(invoice.balanceDue) > 0;
   const canDeleteInvoice = invoice.payments.length === 0;
   const canEditBacklogInvoice = invoice.origin === "BACKLOG" && canDeleteInvoice;
+  const canEditGeneratedInvoice = invoice.origin === "GENERATED";
   const deleteBacklogInvoice = deleteBacklogInvoiceAction.bind(null, invoice.id);
   const paymentAction = recordPaymentAction.bind(null, invoice.id);
   const presentationModel = buildInvoicePresentationModel(invoice);
+  const descriptionByItemId = new Map(
+    presentationModel.items.map((item) => [item.id, item.description])
+  );
   let accessBlock:
     | {
         qrDataUrl: string;
@@ -115,6 +119,17 @@ export default async function InvoiceDetailPage({
                   <span className="sr-only">Edit backlog invoice</span>
                 </Button>
               ) : null}
+              {canEditGeneratedInvoice ? (
+                <Button
+                  render={<Link href={`/billing/${invoice.id}/edit`} />}
+                  variant="outline"
+                  size="icon"
+                  className="button-blank rounded-full shrink-0"
+                >
+                  <FilePenLine />
+                  <span className="sr-only">Edit invoice descriptions</span>
+                </Button>
+              ) : null}
               {canDeleteInvoice ? (
                 <form action={deleteBacklogInvoice} className="contents">
                   <Button type="submit" variant="destructive" size="icon" className="rounded-full shrink-0">
@@ -151,7 +166,8 @@ export default async function InvoiceDetailPage({
                       return {
                         id: item.id,
                         itemType: item.itemType,
-                        description: item.description,
+                        description:
+                          descriptionByItemId.get(item.id) ?? item.description,
                         amount: toNumber(item.amount),
                         allocatedAmount,
                         remainingAmount,

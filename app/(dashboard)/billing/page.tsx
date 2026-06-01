@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { requireCapability } from "@/lib/auth/user";
+import { resolveInvoiceItemDescription } from "@/lib/billing/invoice-presenter";
 import { getRecurringChargesOverview } from "@/lib/data/billing";
 import { getBillingOverview } from "@/lib/data/dashboard";
 import { BillingMonitorWorkspace } from "@/components/billing/billing-monitor-workspace";
@@ -56,6 +57,7 @@ export default async function BillingPage() {
     balanceDue: toNumber(invoice.balanceDue),
     items: invoice.items.map((item) => ({
       ...item,
+      description: resolveInvoiceItemDescription(invoice, item),
       amount: toNumber(item.amount),
       allocations: item.allocations.map((allocation) => ({
         ...allocation,

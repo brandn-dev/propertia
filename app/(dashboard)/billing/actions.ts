@@ -37,7 +37,10 @@ import { invoiceBrandingTemplateSchema } from "@/lib/validations/invoice-brandin
 import { cosaSchema } from "@/lib/validations/cosa";
 import { cosaTemplateSchema } from "@/lib/validations/cosa-template";
 import { invoiceGenerationSchema } from "@/lib/validations/invoice-generation";
-import { paymentRecordingSchema } from "@/lib/validations/payment-recording";
+import {
+  bulkPaymentRecordingSchema,
+  paymentRecordingSchema,
+} from "@/lib/validations/payment-recording";
 import { recurringChargeSchema } from "@/lib/validations/recurring-charge";
 import { formatDate, toDateInputValue } from "@/lib/format";
 
@@ -77,9 +80,16 @@ export type RecordPaymentFormState = {
   redirectTo?: string;
 };
 
+export type BulkRecordPaymentFormState = {
+  message?: string;
+  errors?: Record<string, string[] | undefined>;
+  redirectTo?: string;
+};
+
 const READING_SELECTION_SEPARATOR = "::";
 
 type ParsedPaymentPayload = ReturnType<typeof getPaymentPayload>;
+type ParsedBulkPaymentPayload = ReturnType<typeof getBulkPaymentPayload>;
 type ParsedCosaPayload = ReturnType<typeof getCosaPayload>;
 type ParsedCosaTemplatePayload = ReturnType<typeof getCosaTemplatePayload>;
 
@@ -125,6 +135,9 @@ function getRecurringChargePayload(formData: FormData) {
     chargeType: String(formData.get("chargeType") ?? ""),
     label: String(formData.get("label") ?? ""),
     amount: String(formData.get("amount") ?? ""),
+    descriptionDateDisplayOverride: String(
+      formData.get("descriptionDateDisplayOverride") ?? ""
+    ),
     effectiveStartDate: String(formData.get("effectiveStartDate") ?? ""),
     effectiveEndDate: String(formData.get("effectiveEndDate") ?? ""),
     isActive: formData.get("isActive") === "on",
@@ -248,6 +261,52 @@ function getPaymentPayload(formData: FormData) {
   };
 }
 
+function getBulkPaymentPayload(formData: FormData) {
+  const rawInvoiceIds = String(formData.get("invoiceIds") ?? "").trim();
+
+  if (!rawInvoiceIds) {
+    return {
+      paymentDate: String(formData.get("paymentDate") ?? ""),
+      referenceNumber: String(formData.get("referenceNumber") ?? ""),
+      notes: String(formData.get("notes") ?? ""),
+      invoiceIds: [],
+      invoiceIdsParseError: null,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(rawInvoiceIds);
+
+    if (!Array.isArray(parsed)) {
+      return {
+        paymentDate: String(formData.get("paymentDate") ?? ""),
+        referenceNumber: String(formData.get("referenceNumber") ?? ""),
+        notes: String(formData.get("notes") ?? ""),
+        invoiceIds: [],
+        invoiceIdsParseError: "Selected invoice data is invalid.",
+      };
+    }
+
+    return {
+      paymentDate: String(formData.get("paymentDate") ?? ""),
+      referenceNumber: String(formData.get("referenceNumber") ?? ""),
+      notes: String(formData.get("notes") ?? ""),
+      invoiceIds: parsed
+        .map((value) => String(value).trim())
+        .filter(Boolean),
+      invoiceIdsParseError: null,
+    };
+  } catch {
+    return {
+      paymentDate: String(formData.get("paymentDate") ?? ""),
+      referenceNumber: String(formData.get("referenceNumber") ?? ""),
+      notes: String(formData.get("notes") ?? ""),
+      invoiceIds: [],
+      invoiceIdsParseError: "Selected invoice data is invalid.",
+    };
+  }
+}
+
 function getPaymentParseError(
   payload: ParsedPaymentPayload
 ): RecordPaymentFormState | null {
@@ -260,6 +319,21 @@ function getPaymentParseError(
       allocations: [payload.allocationsParseError],
     },
     message: "Payment allocations could not be read. Try again.",
+  };
+}
+
+function getBulkPaymentParseError(
+  payload: ParsedBulkPaymentPayload
+): BulkRecordPaymentFormState | null {
+  if (!payload.invoiceIdsParseError) {
+    return null;
+  }
+
+  return {
+    errors: {
+      invoiceIds: [payload.invoiceIdsParseError],
+    },
+    message: "Selected invoices could not be read. Refresh and try again.",
   };
 }
 
@@ -628,6 +702,145 @@ function getInvoiceStatusFromBalance(balance: number, hasPayments: boolean) {
   }
 
   return hasPayments ? ("PARTIALLY_PAID" as const) : ("ISSUED" as const);
+}
+
+type PaymentEligibleInvoice = {
+  id: string;
+  invoiceNumber: string;
+  contractId: string;
+  dueDate: Date;
+  status: string;
+  items: {
+    id: string;
+    amount: { toString(): string };
+    allocations: {
+      amountAllocated: { toString(): string };
+    }[];
+  }[];
+  payments: {
+    id: string;
+  }[];
+};
+
+type NormalizedPaymentAllocation = {
+  invoiceItemId: string;
+  amount: number;
+};
+
+function buildInvoiceItemMap(invoice: PaymentEligibleInvoice) {
+  return new Map(
+    invoice.items.map((item) => {
+      const allocatedAmount = item.allocations.reduce(
+        (sum, allocation) => sum + Number(allocation.amountAllocated.toString()),
+        0
+      );
+
+      return [
+        item.id,
+        {
+          amount: Number(item.amount.toString()),
+          allocatedAmount,
+          remainingAmount: Number(item.amount.toString()) - allocatedAmount,
+        },
+      ];
+    })
+  );
+}
+
+function validatePaymentAllocations(
+  itemMap: ReturnType<typeof buildInvoiceItemMap>,
+  allocations: NormalizedPaymentAllocation[]
+) {
+  const allocationErrors: string[] = [];
+
+  for (const allocation of allocations) {
+    const invoiceItem = itemMap.get(allocation.invoiceItemId);
+
+    if (!invoiceItem) {
+      allocationErrors.push("One or more allocations do not belong to this invoice.");
+      continue;
+    }
+
+    if (allocation.amount > invoiceItem.remainingAmount + 0.001) {
+      allocationErrors.push(
+        "Allocation amounts cannot exceed the remaining balance of an item."
+      );
+    }
+  }
+
+  return allocationErrors;
+}
+
+function buildFullRemainingAllocations(invoice: PaymentEligibleInvoice) {
+  return invoice.items
+    .map((item) => {
+      const allocatedAmount = item.allocations.reduce(
+        (sum, allocation) => sum + Number(allocation.amountAllocated.toString()),
+        0
+      );
+      const remainingAmount = Math.max(
+        0,
+        Number(item.amount.toString()) - allocatedAmount
+      );
+
+      return {
+        invoiceItemId: item.id,
+        amount: remainingAmount,
+      };
+    })
+    .filter((allocation) => allocation.amount > 0);
+}
+
+async function persistInvoicePayment(params: {
+  invoice: PaymentEligibleInvoice;
+  allocations: NormalizedPaymentAllocation[];
+  paymentDate: string;
+  referenceNumber?: string;
+  notes?: string;
+}) {
+  const { invoice, allocations, paymentDate, referenceNumber, notes } = params;
+  const itemMap = buildInvoiceItemMap(invoice);
+  const totalAllocated = allocations.reduce(
+    (sum, allocation) => sum + allocation.amount,
+    0
+  );
+  const totalRemaining = [...itemMap.values()].reduce(
+    (sum, item) => sum + item.remainingAmount,
+    0
+  );
+  const nextBalance = Math.max(0, totalRemaining - totalAllocated);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.payment.create({
+      data: {
+        invoiceId: invoice.id,
+        contractId: invoice.contractId,
+        amountPaid: toMoney(totalAllocated),
+        dueDate: invoice.dueDate,
+        paymentDate: new Date(paymentDate),
+        status: "SETTLED",
+        referenceNumber: referenceNumber ?? null,
+        notes: notes ?? null,
+        allocations: {
+          create: allocations.map((allocation) => ({
+            invoiceItemId: allocation.invoiceItemId,
+            amountAllocated: toMoney(allocation.amount),
+          })),
+        },
+      },
+    });
+
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: {
+        balanceDue: toMoney(nextBalance),
+        status: getInvoiceStatusFromBalance(
+          nextBalance,
+          invoice.payments.length > 0 || allocations.length > 0
+        ),
+      },
+    });
+  });
 }
 
 export async function generateInvoicesAction(
@@ -2029,6 +2242,8 @@ export async function createRecurringChargeAction(
         chargeType: validatedFields.data.chargeType,
         label: validatedFields.data.label,
         amount: validatedFields.data.amount,
+        descriptionDateDisplayOverride:
+          validatedFields.data.descriptionDateDisplayOverride ?? null,
         effectiveStartDate: new Date(validatedFields.data.effectiveStartDate),
         effectiveEndDate: validatedFields.data.effectiveEndDate
           ? new Date(validatedFields.data.effectiveEndDate)
@@ -2100,6 +2315,8 @@ export async function updateRecurringChargeAction(
         chargeType: validatedFields.data.chargeType,
         label: validatedFields.data.label,
         amount: validatedFields.data.amount,
+        descriptionDateDisplayOverride:
+          validatedFields.data.descriptionDateDisplayOverride ?? null,
         effectiveStartDate: new Date(validatedFields.data.effectiveStartDate),
         effectiveEndDate: validatedFields.data.effectiveEndDate
           ? new Date(validatedFields.data.effectiveEndDate)
@@ -2236,23 +2453,7 @@ export async function recordPaymentAction(
     };
   }
 
-  const itemMap = new Map(
-    invoice.items.map((item) => {
-      const allocatedAmount = item.allocations.reduce(
-        (sum, allocation) => sum + Number(allocation.amountAllocated.toString()),
-        0
-      );
-
-      return [
-        item.id,
-        {
-          amount: Number(item.amount.toString()),
-          allocatedAmount,
-          remainingAmount: Number(item.amount.toString()) - allocatedAmount,
-        },
-      ];
-    })
-  );
+  const itemMap = buildInvoiceItemMap(invoice);
 
   const normalizedAllocations = validatedFields.data.allocations
     .map((allocation) => ({
@@ -2261,20 +2462,10 @@ export async function recordPaymentAction(
     }))
     .filter((allocation) => allocation.amount > 0);
 
-  const allocationErrors: string[] = [];
-
-  for (const allocation of normalizedAllocations) {
-    const invoiceItem = itemMap.get(allocation.invoiceItemId);
-
-    if (!invoiceItem) {
-      allocationErrors.push("One or more allocations do not belong to this invoice.");
-      continue;
-    }
-
-    if (allocation.amount > invoiceItem.remainingAmount + 0.001) {
-      allocationErrors.push("Allocation amounts cannot exceed the remaining balance of an item.");
-    }
-  }
+  const allocationErrors = validatePaymentAllocations(
+    itemMap,
+    normalizedAllocations
+  );
 
   if (allocationErrors.length > 0) {
     return {
@@ -2285,47 +2476,13 @@ export async function recordPaymentAction(
     };
   }
 
-  const totalAllocated = normalizedAllocations.reduce(
-    (sum, allocation) => sum + allocation.amount,
-    0
-  );
-  const totalRemaining = [...itemMap.values()].reduce(
-    (sum, item) => sum + item.remainingAmount,
-    0
-  );
-  const nextBalance = Math.max(0, totalRemaining - totalAllocated);
-
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.payment.create({
-        data: {
-          invoiceId: invoice.id,
-          contractId: invoice.contractId,
-          amountPaid: toMoney(totalAllocated),
-          dueDate: invoice.dueDate,
-          paymentDate: new Date(validatedFields.data.paymentDate),
-          status: "SETTLED",
-          referenceNumber: validatedFields.data.referenceNumber ?? null,
-          notes: validatedFields.data.notes ?? null,
-          allocations: {
-            create: normalizedAllocations.map((allocation) => ({
-              invoiceItemId: allocation.invoiceItemId,
-              amountAllocated: toMoney(allocation.amount),
-            })),
-          },
-        },
-      });
-
-      await tx.invoice.update({
-        where: { id: invoice.id },
-        data: {
-          balanceDue: toMoney(nextBalance),
-          status: getInvoiceStatusFromBalance(
-            nextBalance,
-            invoice.payments.length > 0 || normalizedAllocations.length > 0
-          ),
-        },
-      });
+    await persistInvoicePayment({
+      invoice,
+      allocations: normalizedAllocations,
+      paymentDate: validatedFields.data.paymentDate,
+      referenceNumber: validatedFields.data.referenceNumber,
+      notes: validatedFields.data.notes,
     });
   } catch {
     return {
@@ -2339,6 +2496,127 @@ export async function recordPaymentAction(
       intent: "success",
       title: "Payment recorded",
       description: `Recorded payment for ${invoice.invoiceNumber}.`,
+    }),
+  };
+}
+
+export async function bulkRecordFullPaymentAction(
+  _previousState: BulkRecordPaymentFormState,
+  formData: FormData
+): Promise<BulkRecordPaymentFormState> {
+  await requireCapability("MANAGE_BILLING");
+
+  const payload = getBulkPaymentPayload(formData);
+  const parseError = getBulkPaymentParseError(payload);
+
+  if (parseError) {
+    return parseError;
+  }
+
+  const validatedFields = bulkPaymentRecordingSchema.safeParse(payload);
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Fix the highlighted bulk payment fields and try again.",
+    };
+  }
+
+  const uniqueInvoiceIds = [...new Set(validatedFields.data.invoiceIds)];
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      id: {
+        in: uniqueInvoiceIds,
+      },
+    },
+    select: {
+      id: true,
+      invoiceNumber: true,
+      contractId: true,
+      dueDate: true,
+      status: true,
+      items: {
+        select: {
+          id: true,
+          amount: true,
+          allocations: {
+            select: {
+              amountAllocated: true,
+            },
+          },
+        },
+      },
+      payments: {
+        select: { id: true },
+      },
+    },
+  });
+
+  if (invoices.length !== uniqueInvoiceIds.length) {
+    return {
+      message: "Some selected invoices no longer exist. Refresh and try again.",
+    };
+  }
+
+  const invoicesById = new Map(invoices.map((invoice) => [invoice.id, invoice]));
+  const orderedInvoices = uniqueInvoiceIds
+    .map((invoiceId) => invoicesById.get(invoiceId))
+    .filter((invoice): invoice is NonNullable<typeof invoice> => Boolean(invoice));
+
+  for (const invoice of orderedInvoices) {
+    if (invoice.status === "VOID") {
+      return {
+        message: `Invoice ${invoice.invoiceNumber} is void and cannot receive payments.`,
+      };
+    }
+
+    const fullAllocations = buildFullRemainingAllocations(invoice);
+
+    if (fullAllocations.length === 0) {
+      return {
+        message: `Invoice ${invoice.invoiceNumber} no longer has a remaining balance.`,
+      };
+    }
+
+    const allocationErrors = validatePaymentAllocations(
+      buildInvoiceItemMap(invoice),
+      fullAllocations
+    );
+
+    if (allocationErrors.length > 0) {
+      return {
+        errors: {
+          invoiceIds: allocationErrors,
+        },
+        message: `Invoice ${invoice.invoiceNumber} could not be settled fully.`,
+      };
+    }
+  }
+
+  try {
+    for (const invoice of orderedInvoices) {
+      await persistInvoicePayment({
+        invoice,
+        allocations: buildFullRemainingAllocations(invoice),
+        paymentDate: validatedFields.data.paymentDate,
+        referenceNumber: validatedFields.data.referenceNumber,
+        notes: validatedFields.data.notes,
+      });
+    }
+  } catch {
+    return {
+      message: "Bulk full payment could not be recorded. Try again.",
+    };
+  }
+
+  revalidateBillingViews();
+  return {
+    redirectTo: withToast("/billing", {
+      intent: "success",
+      title: "Invoices fully paid",
+      description: `Recorded full payments for ${orderedInvoices.length} invoice${
+        orderedInvoices.length === 1 ? "" : "s"
+      }.`,
     }),
   };
 }

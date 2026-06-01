@@ -102,6 +102,8 @@ export default async function EditBillingChargePage({
           chargeType: charge.chargeType,
           label: charge.label,
           amount: charge.amount.toString(),
+          descriptionDateDisplayOverride:
+            charge.descriptionDateDisplayOverride ?? "",
           effectiveStartDate: toDateInputValue(charge.effectiveStartDate),
           effectiveEndDate: toDateInputValue(charge.effectiveEndDate),
           isActive: charge.isActive,

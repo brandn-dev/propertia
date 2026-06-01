@@ -14,6 +14,13 @@ export const PROPERTY_STATUSES = [
 ] as const;
 export const TENANT_TYPES = ["INDIVIDUAL", "BUSINESS"] as const;
 export const TENANT_STATUSES = ["ACTIVE", "ARCHIVED"] as const;
+export const INVOICE_DATE_DISPLAY_MODES = ["SHOW", "HIDE"] as const;
+export const INVOICE_ITEM_DESCRIPTION_MODES = [
+  "AUTO",
+  "SHOW",
+  "HIDE",
+  "CUSTOM",
+] as const;
 export const RECURRING_CHARGE_TYPES = [
   "INTERNET",
   "PARKING",
@@ -83,6 +90,18 @@ export const TENANT_TYPE_LABELS = {
 export const TENANT_STATUS_LABELS = {
   ACTIVE: "Active",
   ARCHIVED: "Archived",
+} as const;
+
+export const INVOICE_DATE_DISPLAY_MODE_LABELS = {
+  SHOW: "Show dates",
+  HIDE: "Hide dates",
+} as const;
+
+export const INVOICE_ITEM_DESCRIPTION_MODE_LABELS = {
+  AUTO: "Use default behavior",
+  SHOW: "Show dates",
+  HIDE: "Hide dates",
+  CUSTOM: "Custom description",
 } as const;
 
 export const RECURRING_CHARGE_TYPE_LABELS = {

@@ -4,6 +4,7 @@ import {
   CopyPlus,
   Droplets,
   Eye,
+  Fuel,
   Plus,
   Rows4,
   Share2,
@@ -60,6 +61,7 @@ const PRESET_ICONS = {
   "common-electricity": Gauge,
   "security-guard": Shield,
   "maintenance-staff": Wrench,
+  "generator-fuel": Fuel,
 } as const;
 
 export default async function BillingCosaPage() {
@@ -135,15 +137,16 @@ export default async function BillingCosaPage() {
       <section className="border-blank rounded-xl p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.04em]">
-              Standard COSA starters
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Start security guard and maintenance staff as manual monthly salaries
-              shared by unit count. Start common water and common electricity as
-              shared-meter charges split by percentage.
-            </p>
-          </div>
+              <h2 className="text-lg font-semibold tracking-[-0.04em]">
+                Standard COSA starters
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Start security guard and maintenance staff as manual monthly salaries
+                shared by unit count. Start common water and common electricity as
+                shared-meter charges split by percentage. Start generator fuel as
+                a manual shared charge, then choose whichever split mode fits.
+              </p>
+            </div>
           <Button
             render={<Link href="/billing/cosa/templates" />}
             variant="outline"
@@ -154,7 +157,7 @@ export default async function BillingCosaPage() {
           </Button>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {COSA_TEMPLATE_PRESETS.map((preset) => {
             const Icon = PRESET_ICONS[preset.id];
 
@@ -214,7 +217,7 @@ export default async function BillingCosaPage() {
             <DashboardEmptyState
               icon={Share2}
               title="No COSA records yet"
-              description="Create the first shared-charge record here, or start from a reusable template for Common Water, Common Electricity, Security Guard, or Maintenance Staff."
+              description="Create the first shared-charge record here, or start from a reusable template for Common Water, Common Electricity, Security Guard, Maintenance Staff, or Generator Fuel."
               action={
                 <div className="flex flex-wrap gap-2">
                   <Button

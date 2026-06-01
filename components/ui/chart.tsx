@@ -110,6 +110,10 @@ type ChartTooltipContentProps = Partial<
   RechartsPrimitive.TooltipContentProps<number, string>
 > & {
   hideLabel?: boolean;
+  labelFormatter?: (
+    label: React.ReactNode,
+    payload: RechartsPrimitive.TooltipContentProps<number, string>["payload"]
+  ) => React.ReactNode;
   valueFormatter?: (value: number, key: string) => React.ReactNode;
 };
 
@@ -118,6 +122,7 @@ export function ChartTooltipContent({
   payload,
   label,
   hideLabel = false,
+  labelFormatter,
   valueFormatter,
 }: ChartTooltipContentProps) {
   const { config } = useChart();
@@ -130,7 +135,7 @@ export function ChartTooltipContent({
     <div className="min-w-[180px] rounded-xl border border-border/70 bg-popover/95 px-3 py-2.5 text-xs shadow-2xl backdrop-blur">
       {!hideLabel ? (
         <div className="mb-2 text-[0.7rem] font-medium tracking-[0.18em] text-muted-foreground uppercase">
-          {label}
+          {labelFormatter ? labelFormatter(label, payload) : label}
         </div>
       ) : null}
 

@@ -81,6 +81,7 @@ export default async function NewBillingChargePage({
           chargeType: "INTERNET",
           label: "",
           amount: "",
+          descriptionDateDisplayOverride: "",
           effectiveStartDate:
             selectedContract?.paymentStartDate ?? toDateInputValue(new Date()),
           effectiveEndDate: "",

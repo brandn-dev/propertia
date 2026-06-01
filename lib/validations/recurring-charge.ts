@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { RECURRING_CHARGE_TYPES } from "@/lib/form-options";
+import {
+  INVOICE_DATE_DISPLAY_MODES,
+  RECURRING_CHARGE_TYPES,
+} from "@/lib/form-options";
 
 function isValidDate(value: string) {
   return !Number.isNaN(new Date(value).getTime());
@@ -23,6 +26,13 @@ export const recurringChargeSchema = z
       .trim()
       .min(1, "Amount is required.")
       .refine(isValidMoney, "Amount must be a valid non-negative number."),
+    descriptionDateDisplayOverride: z.preprocess(
+      (value) =>
+        typeof value === "string" && value.trim().length > 0
+          ? value
+          : undefined,
+      z.enum(INVOICE_DATE_DISPLAY_MODES).optional()
+    ),
     effectiveStartDate: z
       .string()
       .trim()

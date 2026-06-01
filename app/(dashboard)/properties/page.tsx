@@ -189,15 +189,20 @@ function MetricPill({
   icon: LucideIcon;
 }) {
   return (
-    <div className="rounded-2xl border border-border/60 bg-card px-4 py-3 shadow-sm">
-      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </p>
-      <div className="mt-2 flex items-center gap-2">
-        <div className="flex size-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
+    <div className="rounded-2xl border border-border/60 bg-card/95 px-4 py-4 shadow-sm">
+      <div className="flex items-center gap-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background/80 text-primary shadow-sm">
           <Icon className="size-4" />
         </div>
-        <span className="text-xl font-semibold tracking-[-0.04em]">{value}</span>
+        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          {label}
+        </p>
+      </div>
+
+      <div className="my-4 border-t border-dashed border-border/60" />
+
+      <div className="text-[2.15rem] leading-none font-semibold tracking-[-0.07em]">
+        {value}
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import { PaymentForm } from "@/components/billing/payment-form";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { requireCapability } from "@/lib/auth/user";
+import { buildInvoicePresentationModel } from "@/lib/billing/invoice-presenter";
 import { formatBillingCycleMonthLabel } from "@/lib/billing/cycles";
 import { getInvoiceForView } from "@/lib/data/billing";
 import { formatCurrency, formatDate, toDateInputValue, toNumber } from "@/lib/format";
@@ -39,6 +40,10 @@ export default async function InvoicePaymentPage({
     notFound();
   }
 
+  const presentationModel = buildInvoicePresentationModel(invoice);
+  const descriptionByItemId = new Map(
+    presentationModel.items.map((item) => [item.id, item.description])
+  );
   const payableItems = invoice.items
     .map((item) => {
       const allocatedAmount = item.allocations.reduce(
@@ -50,7 +55,7 @@ export default async function InvoicePaymentPage({
       return {
         id: item.id,
         itemType: item.itemType,
-        description: item.description,
+        description: descriptionByItemId.get(item.id) ?? item.description,
         amount: toNumber(item.amount),
         allocatedAmount,
         remainingAmount,

@@ -50,4 +50,25 @@ export const paymentRecordingSchema = z
     }
   });
 
+export const bulkPaymentRecordingSchema = z.object({
+  paymentDate: z
+    .string()
+    .trim()
+    .min(1, "Payment date is required.")
+    .refine(isValidDate, "Enter a valid payment date."),
+  referenceNumber: z
+    .string()
+    .trim()
+    .max(120, "Reference number must be 120 characters or fewer.")
+    .transform((value) => value || undefined),
+  notes: z
+    .string()
+    .trim()
+    .max(500, "Notes must be 500 characters or fewer.")
+    .transform((value) => value || undefined),
+  invoiceIds: z
+    .array(z.string().trim().min(1, "Invoice is required."))
+    .min(1, "Select at least one invoice."),
+});
+
 export type PaymentRecordingInput = z.infer<typeof paymentRecordingSchema>;

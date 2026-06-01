@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { TENANT_TYPES } from "@/lib/form-options";
+import {
+  INVOICE_DATE_DISPLAY_MODES,
+  TENANT_TYPES,
+} from "@/lib/form-options";
 
 function optionalStringField(max: number, message: string) {
   return z.preprocess(
@@ -75,6 +78,7 @@ export const tenantSchema = z
       80,
       "ID number must be 80 characters or fewer."
     ),
+    invoiceDescriptionDateDisplayDefault: z.enum(INVOICE_DATE_DISPLAY_MODES),
     people: z.array(tenantPersonSchema).max(20, "Add up to 20 people per tenant record."),
   })
   .superRefine((value, ctx) => {

@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Card, CardContent, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 
 type DashboardMetricCardProps = {
   label: string;
@@ -15,16 +15,24 @@ export function DashboardMetricCard({
   icon: Icon,
 }: DashboardMetricCardProps) {
   return (
-    <Card className="rounded-xl border-border/60 bg-card shadow-sm">
-      <CardContent className="flex items-start justify-between gap-4 p-4">
-        <div className="space-y-1.5">
-          <CardDescription>{label}</CardDescription>
-          <div className="text-2xl font-semibold tracking-[-0.04em]">{value}</div>
-          <p className="text-sm leading-5 text-muted-foreground">{detail}</p>
+    <Card className="rounded-2xl border-border/60 bg-card/95 shadow-sm">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background/80 text-primary shadow-sm">
+            <Icon className="size-4.5" />
+          </div>
+          <div className="min-w-0 text-lg font-semibold tracking-[-0.04em]">
+            {label}
+          </div>
         </div>
 
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon className="size-4.5" />
+        <div className="my-4 border-t border-dashed border-border/60" />
+
+        <div className="space-y-1">
+          <div className="text-[2.15rem] leading-none font-semibold tracking-[-0.07em]">
+            {value}
+          </div>
+          <p className="text-sm leading-5 text-muted-foreground">{detail}</p>
         </div>
       </CardContent>
     </Card>
