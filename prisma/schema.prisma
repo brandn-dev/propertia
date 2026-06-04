@@ -113,6 +113,12 @@ enum InvoiceItemType {
   ARREARS
 }
 
+enum DeferredInvoiceBalanceStatus {
+  OPEN
+  APPLIED
+  CANCELLED
+}
+
 enum RecurringChargeType {
   INTERNET
   PARKING
@@ -314,6 +320,7 @@ model Tenant {
   updatedAt       DateTime               @updatedAt
   contracts       Contract[]
   invoices        Invoice[]
+  deferredInvoiceBalances DeferredInvoiceBalance[]
   utilityMeters   UtilityMeter[]
   meterReadings   MeterReading[]
   representatives TenantRepresentative[]
@@ -398,6 +405,7 @@ model Contract {
   cosaTemplateAllocations CosaTemplateAllocation[]
   invoices         Invoice[]
   payments         Payment[]
+  deferredInvoiceBalances DeferredInvoiceBalance[]
 
   @@index([propertyId])
   @@index([tenantId])
@@ -466,6 +474,8 @@ model Invoice {
   tenant             Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   items              InvoiceItem[]
   payments           Payment[]
+  sourcedDeferredBalances DeferredInvoiceBalance[] @relation("DeferredBalanceSourceInvoice")
+  resolvedDeferredBalances DeferredInvoiceBalance[] @relation("DeferredBalanceResolvedInvoice")
 
   @@unique([contractId, billingPeriodStart, billingPeriodEnd])
   @@index([contractId])
@@ -495,10 +505,41 @@ model InvoiceItem {
   meterReading            MeterReading?           @relation(fields: [meterReadingId], references: [id], onDelete: SetNull)
   cosaAllocation          COSAAllocation?         @relation(fields: [cosaAllocationId], references: [id], onDelete: SetNull)
   allocations             PaymentAllocation[]
+  sourcedDeferredBalances DeferredInvoiceBalance[] @relation("DeferredBalanceSourceItem")
+  resolvedDeferredBalance DeferredInvoiceBalance?  @relation("DeferredBalanceResolvedItem")
 
   @@index([invoiceId])
   @@index([contractRecurringChargeId])
   @@index([cosaAllocationId])
+}
+
+model DeferredInvoiceBalance {
+  id                  String                      @id @default(cuid())
+  contractId          String
+  tenantId            String
+  sourceInvoiceId     String
+  sourceInvoiceItemId String
+  resolvedInvoiceId   String?
+  resolvedInvoiceItemId String?                   @unique
+  sourceDescription   String
+  sourceItemType      InvoiceItemType
+  originalAmount      Decimal                     @db.Decimal(12, 2)
+  deferredAmount      Decimal                     @db.Decimal(12, 2)
+  status              DeferredInvoiceBalanceStatus @default(OPEN)
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+  contract            Contract                    @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  tenant              Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  sourceInvoice       Invoice                     @relation("DeferredBalanceSourceInvoice", fields: [sourceInvoiceId], references: [id], onDelete: Cascade)
+  sourceInvoiceItem   InvoiceItem                 @relation("DeferredBalanceSourceItem", fields: [sourceInvoiceItemId], references: [id], onDelete: Cascade)
+  resolvedInvoice     Invoice?                    @relation("DeferredBalanceResolvedInvoice", fields: [resolvedInvoiceId], references: [id], onDelete: SetNull)
+  resolvedInvoiceItem InvoiceItem?                @relation("DeferredBalanceResolvedItem", fields: [resolvedInvoiceItemId], references: [id], onDelete: SetNull)
+
+  @@index([contractId, status])
+  @@index([tenantId, status])
+  @@index([sourceInvoiceId])
+  @@index([sourceInvoiceItemId])
+  @@index([resolvedInvoiceId])
 }
 
 model Payment {

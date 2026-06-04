@@ -30,8 +30,10 @@ export default async function GenerateBillingPage() {
   const contractOptions = rawContractOptions.map((contract) => ({
     id: contract.id,
     tenantId: contract.tenantId,
+    monthlyRent: contract.monthlyRent,
     paymentAnchorDate: contract.paymentStartDate.toISOString(),
     contractEndDate: contract.endDate.toISOString(),
+    rentAdjustments: contract.rentAdjustments,
     existingPeriods: contract.invoices.map((invoice) => ({
       start: invoice.billingPeriodStart.toISOString(),
       end: invoice.billingPeriodEnd.toISOString(),
@@ -74,6 +76,15 @@ export default async function GenerateBillingPage() {
       unitCount: allocation.unitCount,
       computedAmount: allocation.computedAmount,
       cosa: allocation.cosa,
+    })),
+    deferredBalances: contract.deferredBalances.map((balance) => ({
+      id: balance.id,
+      sourceDescription: balance.sourceDescription,
+      sourceItemType: balance.sourceItemType,
+      deferredAmount: balance.deferredAmount,
+      sourceInvoiceNumber: balance.sourceInvoiceNumber,
+      sourceBillingPeriodStart: balance.sourceBillingPeriodStart,
+      sourceBillingPeriodEnd: balance.sourceBillingPeriodEnd,
     })),
     property: contract.property,
     tenant: contract.tenant,

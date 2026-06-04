@@ -1,9 +1,21 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, CalendarRange, LoaderCircle, Save } from "lucide-react";
 import type { InvoiceGenerationFormState } from "@/app/(dashboard)/billing/actions";
+import {
+  buildCarryForwardAssignments,
+  buildInvoiceGenerationLineId,
+  buildPersistedCarryForwardKey,
+  buildSyntheticCarryForwardKey,
+  calculateInvoiceGenerationLineOutcome,
+  type InvoiceGenerationAdjustmentAction,
+  type InvoiceGenerationAdjustmentValueType,
+  type InvoiceGenerationBillableLineType,
+  type InvoiceGenerationCarryForwardSource,
+  type InvoiceGenerationLinePreview,
+} from "@/lib/billing/invoice-generation-adjustments";
 import {
   cycleOverlapsRange,
   filterCyclesWithoutInvoicedMonths,
@@ -16,8 +28,11 @@ import {
   isReadingInUtilityBillingWindow,
 } from "@/lib/billing/cycles";
 import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
+import { calculateAdjustedMonthlyRent } from "@/lib/billing/rent-adjustments";
 import {
   ALLOCATION_TYPE_LABELS,
+  INVOICE_GENERATION_ADJUSTMENT_ACTION_LABELS,
+  INVOICE_GENERATION_ADJUSTMENT_VALUE_TYPE_LABELS,
   RECURRING_CHARGE_TYPE_LABELS,
   UTILITY_TYPE_LABELS,
 } from "@/lib/form-options";
@@ -29,9 +44,7 @@ import { Label } from "@/components/ui/label";
 import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 
-const selectClassName =
-  "select-blank";
-
+const selectClassName = "select-blank";
 const initialState: InvoiceGenerationFormState = {};
 
 type InvoiceGenerationFormProps = {
@@ -42,8 +55,16 @@ type InvoiceGenerationFormProps = {
   contractOptions: {
     id: string;
     tenantId: string;
+    monthlyRent: string;
     paymentAnchorDate: string;
     contractEndDate: string;
+    rentAdjustments: {
+      effectiveDate: string;
+      increaseType: "FIXED" | "PERCENTAGE";
+      increaseValue: string;
+      calculationType: "SIMPLE" | "COMPOUND";
+      basedOn: "BASE_RENT" | "PREVIOUS_RENT";
+    }[];
     existingPeriods: {
       start: string;
       end: string;
@@ -82,6 +103,15 @@ type InvoiceGenerationFormProps = {
         allocationType: keyof typeof ALLOCATION_TYPE_LABELS;
       };
     }[];
+    deferredBalances: {
+      id: string;
+      sourceDescription: string;
+      sourceItemType: InvoiceGenerationBillableLineType | "ADJUSTMENT" | "ARREARS";
+      deferredAmount: string;
+      sourceInvoiceNumber: string;
+      sourceBillingPeriodStart: string;
+      sourceBillingPeriodEnd: string;
+    }[];
     readings: {
       id: string;
       readingDate: string;
@@ -108,13 +138,61 @@ type InvoiceGenerationFormProps = {
   };
 };
 
+type LineAdjustmentDraft = {
+  action: InvoiceGenerationAdjustmentAction;
+  valueType: InvoiceGenerationAdjustmentValueType;
+  value: string;
+};
+
+type DeferredBalancePreviewOption = {
+  carryForwardKey: string;
+  amount: number;
+  amountLabel: string;
+  sourceDescription: string;
+  sourceInvoiceNumber: string;
+  sourceBillingPeriodStart: string;
+  sourceBillingPeriodEnd: string;
+};
+
 type PendingCycleOption = {
   id: string;
+  contractId: string;
   label: string;
   meta: string;
-  readingOptions: ReadingSelectionOption[];
-  recurringChargeOptions: RecurringChargePreviewOption[];
-  cosaOptions: CosaPreviewOption[];
+  cycleStart: string;
+  cycleEnd: string;
+  rentLine: InvoiceGenerationLinePreview;
+  readingOptions: Array<
+    InvoiceGenerationLinePreview & {
+      id: string;
+      selectionKey: string;
+      meterCode: string;
+      utilityTypeLabel: string;
+      readingDateLabel: string;
+      serviceCoverageLabel: string;
+      consumptionLabel: string;
+      rateLabel: string;
+      amountLabel: string;
+    }
+  >;
+  recurringChargeOptions: Array<
+    InvoiceGenerationLinePreview & {
+      id: string;
+      chargeTypeLabel: string;
+      amountLabel: string;
+      effectiveLabel: string;
+    }
+  >;
+  cosaOptions: Array<
+    InvoiceGenerationLinePreview & {
+      id: string;
+      billingDateLabel: string;
+      allocationTypeLabel: string;
+      basisLabel: string;
+      amountLabel: string;
+    }
+  >;
+  deferredBalanceOptions: DeferredBalancePreviewOption[];
 };
 
 type PendingTenantGroup = {
@@ -122,35 +200,6 @@ type PendingTenantGroup = {
   label: string;
   contractCount: number;
   cycles: PendingCycleOption[];
-};
-
-type ReadingSelectionOption = {
-  id: string;
-  selectionKey: string;
-  meterCode: string;
-  utilityTypeLabel: string;
-  readingDateLabel: string;
-  serviceCoverageLabel: string;
-  consumptionLabel: string;
-  rateLabel: string;
-  amountLabel: string;
-};
-
-type RecurringChargePreviewOption = {
-  id: string;
-  label: string;
-  chargeTypeLabel: string;
-  amountLabel: string;
-  effectiveLabel: string;
-};
-
-type CosaPreviewOption = {
-  id: string;
-  description: string;
-  billingDateLabel: string;
-  allocationTypeLabel: string;
-  basisLabel: string;
-  amountLabel: string;
 };
 
 function FieldError({ message }: { message?: string }) {
@@ -178,8 +227,13 @@ function formatMoney(value: number) {
   }).format(value)}`;
 }
 
-function formatAllocationBasisLabel(allocation: InvoiceGenerationFormProps["contractOptions"][number]["cosaAllocations"][number]) {
-  if (allocation.cosa.allocationType === "PER_UNIT" && allocation.unitCount != null) {
+function formatAllocationBasisLabel(
+  allocation: InvoiceGenerationFormProps["contractOptions"][number]["cosaAllocations"][number]
+) {
+  if (
+    allocation.cosa.allocationType === "PER_UNIT" &&
+    allocation.unitCount != null
+  ) {
     return `${allocation.unitCount} unit${allocation.unitCount === 1 ? "" : "s"}`;
   }
 
@@ -208,6 +262,12 @@ export function InvoiceGenerationForm({
   >({});
   const [selectedReadingKeysByCycle, setSelectedReadingKeysByCycle] = useState<
     Record<string, string[]>
+  >({});
+  const [lineAdjustmentDraftsByCycle, setLineAdjustmentDraftsByCycle] = useState<
+    Record<string, Record<string, LineAdjustmentDraft>>
+  >({});
+  const [carryForwardEnabledByCycle, setCarryForwardEnabledByCycle] = useState<
+    Record<string, Record<string, boolean>>
   >({});
   const [issueDate, setIssueDate] = useState(initialValues.issueDate);
   const cutoffDate = getHistoricalBacklogCutoffDate();
@@ -248,6 +308,17 @@ export function InvoiceGenerationForm({
             cycle.start,
             cycle.end
           );
+          const rentAmount = calculateAdjustedMonthlyRent({
+            baseMonthlyRent: Number(contract.monthlyRent),
+            cycleStart: cycle.start,
+            adjustments: contract.rentAdjustments.map((adjustment) => ({
+              effectiveDate: new Date(adjustment.effectiveDate),
+              increaseType: adjustment.increaseType,
+              increaseValue: Number(adjustment.increaseValue),
+              calculationType: adjustment.calculationType,
+              basedOn: adjustment.basedOn,
+            })),
+          });
           const utilityBillingWindow = getUtilityBillingWindowForCycle({
             anchorDate: new Date(contract.paymentAnchorDate),
             cycleStart: cycle.start,
@@ -264,13 +335,26 @@ export function InvoiceGenerationForm({
                 })
                 .map((reading) => ({
                   id: reading.id,
+                  lineId: buildInvoiceGenerationLineId({
+                    cycleSelectionKey,
+                    lineType: "reading",
+                    sourceId: reading.id,
+                  }),
+                  cycleSelectionKey,
+                  contractId: contract.id,
+                  type: "UTILITY_READING" as const,
+                  label: `${UTILITY_TYPE_LABELS[reading.meter.utilityType]} · ${reading.meter.meterCode}`,
+                  description: `${UTILITY_TYPE_LABELS[reading.meter.utilityType]} reading`,
+                  amount: Number(reading.totalAmount),
                   selectionKey: `${cycleSelectionKey}::${reading.id}`,
                   meterCode: reading.meter.meterCode,
                   utilityTypeLabel: UTILITY_TYPE_LABELS[reading.meter.utilityType],
                   readingDateLabel: formatLongDate(reading.readingDate),
                   serviceCoverageLabel: `${formatLongDate(
                     utilityBillingWindow.serviceCycle.start
-                  )} to ${formatLongDate(utilityBillingWindow.serviceCycle.end)}`,
+                  )} to ${formatLongDate(
+                    utilityBillingWindow.serviceCycle.end
+                  )}`,
                   consumptionLabel: `${Number(reading.consumption)} ${getUtilityUnitLabel(reading.meter.utilityType)}`,
                   rateLabel: `${formatMoney(Number(reading.ratePerUnit))} / ${getUtilityUnitLabel(reading.meter.utilityType)}`,
                   amountLabel: formatMoney(Number(reading.totalAmount)),
@@ -286,7 +370,17 @@ export function InvoiceGenerationForm({
             )
             .map((charge) => ({
               id: charge.id,
+              lineId: buildInvoiceGenerationLineId({
+                cycleSelectionKey,
+                lineType: "recurring",
+                sourceId: charge.id,
+              }),
+              cycleSelectionKey,
+              contractId: contract.id,
+              type: "RECURRING_CHARGE" as const,
               label: charge.label,
+              description: `${charge.label} charge`,
+              amount: Number(charge.amount),
               chargeTypeLabel: RECURRING_CHARGE_TYPE_LABELS[charge.chargeType],
               amountLabel: formatMoney(Number(charge.amount)),
               effectiveLabel: `Effective ${formatLongDate(charge.effectiveStartDate)}${
@@ -298,13 +392,25 @@ export function InvoiceGenerationForm({
           const cosaOptions = contract.cosaAllocations
             .filter((allocation) => {
               const billingDate = new Date(allocation.cosa.billingDate);
-              return billingDate <= issueDateValue &&
+              return (
+                billingDate <= issueDateValue &&
                 billingDate >= cycle.start &&
-                billingDate <= cycle.end;
+                billingDate <= cycle.end
+              );
             })
             .map((allocation) => ({
               id: allocation.id,
+              lineId: buildInvoiceGenerationLineId({
+                cycleSelectionKey,
+                lineType: "cosa",
+                sourceId: allocation.id,
+              }),
+              cycleSelectionKey,
+              contractId: contract.id,
+              type: "COSA" as const,
+              label: allocation.cosa.description,
               description: allocation.cosa.description,
+              amount: Number(allocation.computedAmount),
               billingDateLabel: formatLongDate(allocation.cosa.billingDate),
               allocationTypeLabel:
                 ALLOCATION_TYPE_LABELS[allocation.cosa.allocationType],
@@ -314,11 +420,35 @@ export function InvoiceGenerationForm({
 
           return {
             id: cycleSelectionKey,
+            contractId: contract.id,
             label: formatBillingCycleLabel(cycle),
             meta: `${contract.property.propertyCode} · ${contract.property.name}`,
+            cycleStart: cycle.start.toISOString(),
+            cycleEnd: cycle.end.toISOString(),
+            rentLine: {
+              lineId: buildInvoiceGenerationLineId({
+                cycleSelectionKey,
+                lineType: "rent",
+              }),
+              cycleSelectionKey,
+              contractId: contract.id,
+              type: "RENT" as const,
+              label: "Rent",
+              description: `Rent for ${formatBillingCycleLabel(cycle)}`,
+              amount: rentAmount,
+            },
             readingOptions,
             recurringChargeOptions,
             cosaOptions,
+            deferredBalanceOptions: contract.deferredBalances.map((balance) => ({
+              carryForwardKey: buildPersistedCarryForwardKey(balance.id),
+              amount: Number(balance.deferredAmount),
+              amountLabel: formatMoney(Number(balance.deferredAmount)),
+              sourceDescription: balance.sourceDescription,
+              sourceInvoiceNumber: balance.sourceInvoiceNumber,
+              sourceBillingPeriodStart: balance.sourceBillingPeriodStart,
+              sourceBillingPeriodEnd: balance.sourceBillingPeriodEnd,
+            })),
           };
         }),
       };
@@ -344,9 +474,18 @@ export function InvoiceGenerationForm({
     });
   }
 
-  const tenantGroups = Array.from(tenantGroupsMap.values()).sort((a, b) =>
-    a.label.localeCompare(b.label)
-  );
+  const tenantGroups = Array.from(tenantGroupsMap.values())
+    .map((tenant) => ({
+      ...tenant,
+      cycles: [...tenant.cycles].sort((left, right) => {
+        if (left.cycleStart !== right.cycleStart) {
+          return left.cycleStart.localeCompare(right.cycleStart);
+        }
+
+        return left.meta.localeCompare(right.meta);
+      }),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
   const currentTenantId = tenantGroups.some(
     (tenant) => tenant.id === selectedTenantId
   )
@@ -354,23 +493,126 @@ export function InvoiceGenerationForm({
     : tenantGroups[0]?.id ?? "";
   const currentTenant =
     tenantGroups.find((tenant) => tenant.id === currentTenantId) ?? null;
-  const visibleCycleLabels = currentTenant?.cycles ?? [];
+  const visibleCycles = currentTenant?.cycles ?? [];
   const effectiveSelectedCycleKeys = currentTenant
     ? (
         selectedCycleKeysByTenant[currentTenantId] ??
         currentTenant.cycles.map((cycle) => cycle.id)
-      ).filter((cycleId) => visibleCycleLabels.some((cycle) => cycle.id === cycleId))
+      ).filter((cycleId) => visibleCycles.some((cycle) => cycle.id === cycleId))
     : [];
-  const selectedVisibleCycles = visibleCycleLabels.filter((cycle) =>
+
+  function getEffectiveReadingSelection(cycle: PendingCycleOption) {
+    return (
+      selectedReadingKeysByCycle[cycle.id] ??
+      cycle.readingOptions.map((reading) => reading.selectionKey)
+    ).filter((selectionKey) =>
+      cycle.readingOptions.some((reading) => reading.selectionKey === selectionKey)
+    );
+  }
+
+  function getBillableLines(cycle: PendingCycleOption) {
+    const selectedReadingKeys = new Set(getEffectiveReadingSelection(cycle));
+
+    return [
+      cycle.rentLine,
+      ...cycle.recurringChargeOptions,
+      ...cycle.readingOptions.filter((reading) =>
+        selectedReadingKeys.has(reading.selectionKey)
+      ),
+      ...cycle.cosaOptions,
+    ] satisfies InvoiceGenerationLinePreview[];
+  }
+
+  function getLineAdjustmentDraft(
+    cycleId: string,
+    lineId: string
+  ): LineAdjustmentDraft {
+    return (
+      lineAdjustmentDraftsByCycle[cycleId]?.[lineId] ?? {
+        action: "FULL",
+        valueType: "FIXED",
+        value: "",
+      }
+    );
+  }
+
+  function getLineOutcome(cycleId: string, line: InvoiceGenerationLinePreview) {
+    const draft = getLineAdjustmentDraft(cycleId, line.lineId);
+
+    return calculateInvoiceGenerationLineOutcome({
+      lineAmount: line.amount,
+      adjustment:
+        draft.action === "FULL"
+          ? null
+          : {
+              cycleSelectionKey: cycleId,
+              lineId: line.lineId,
+              action: draft.action,
+              valueType: draft.valueType,
+              value: Number(draft.value || 0),
+            },
+    });
+  }
+
+  const selectedVisibleCycles = visibleCycles.filter((cycle) =>
     effectiveSelectedCycleKeys.includes(cycle.id)
   );
+  const selectedCyclesForAssignments = selectedVisibleCycles.map((cycle) => ({
+    cycleSelectionKey: cycle.id,
+    contractId: cycle.contractId,
+    start: new Date(cycle.cycleStart),
+    end: new Date(cycle.cycleEnd),
+  }));
+  const persistedCarryForwardSources = Array.from(
+    new Map(
+      visibleCycles.flatMap((cycle) =>
+        cycle.deferredBalanceOptions.map((balance) => [
+          balance.carryForwardKey,
+          {
+            carryForwardKey: balance.carryForwardKey,
+            contractId: cycle.contractId,
+            availableAfter: new Date(balance.sourceBillingPeriodEnd),
+            amount: balance.amount,
+            sourceLabel: `${balance.sourceDescription} · ${balance.sourceInvoiceNumber}`,
+          } satisfies InvoiceGenerationCarryForwardSource,
+        ])
+      )
+    ).values()
+  );
+  const syntheticCarryForwardSources = selectedVisibleCycles.flatMap((cycle) =>
+    getBillableLines(cycle).flatMap((line) => {
+      const outcome = getLineOutcome(cycle.id, line);
+
+      if (outcome.deferredAmount <= 0) {
+        return [];
+      }
+
+      return [
+        {
+          carryForwardKey: buildSyntheticCarryForwardKey(line.lineId),
+          contractId: cycle.contractId,
+          availableAfter: new Date(cycle.cycleEnd),
+          amount: outcome.deferredAmount,
+          sourceLabel: `${line.label} · ${cycle.label}`,
+        } satisfies InvoiceGenerationCarryForwardSource,
+      ];
+    })
+  );
+  const carryForwardAssignments = buildCarryForwardAssignments({
+    selectedCycles: selectedCyclesForAssignments,
+    sources: [...persistedCarryForwardSources, ...syntheticCarryForwardSources],
+  });
+
+  function getAssignedCarryForwards(cycleId: string) {
+    return carryForwardAssignments.get(cycleId) ?? [];
+  }
+
+  function isCarryForwardEnabled(cycleId: string, carryForwardKey: string) {
+    return carryForwardEnabledByCycle[cycleId]?.[carryForwardKey] ?? true;
+  }
+
   const utilityReadingSelectionCount = selectedVisibleCycles.reduce(
-    (sum, cycle) => {
-      const effectiveReadingSelection =
-        selectedReadingKeysByCycle[cycle.id] ??
-        cycle.readingOptions.map((reading) => reading.selectionKey);
-      return sum + effectiveReadingSelection.length;
-    },
+    (sum, cycle) => sum + getEffectiveReadingSelection(cycle).length,
     0
   );
   const selectedRecurringChargeCount = selectedVisibleCycles.reduce(
@@ -380,6 +622,56 @@ export function InvoiceGenerationForm({
   const selectedCosaCount = selectedVisibleCycles.reduce(
     (sum, cycle) => sum + cycle.cosaOptions.length,
     0
+  );
+  const selectedAdjustmentCount = selectedVisibleCycles.reduce(
+    (sum, cycle) =>
+      sum +
+      getBillableLines(cycle).filter(
+        (line) => getLineAdjustmentDraft(cycle.id, line.lineId).action !== "FULL"
+      ).length,
+    0
+  );
+  const selectedCarryForwardCount = selectedVisibleCycles.reduce(
+    (sum, cycle) =>
+      sum +
+      getAssignedCarryForwards(cycle.id).filter((source) =>
+        isCarryForwardEnabled(cycle.id, source.carryForwardKey)
+      ).length,
+    0
+  );
+
+  const serializedLineAdjustments = JSON.stringify(
+    selectedVisibleCycles.flatMap((cycle) =>
+      getBillableLines(cycle)
+        .map((line) => {
+          const draft = getLineAdjustmentDraft(cycle.id, line.lineId);
+
+          if (draft.action === "FULL") {
+            return null;
+          }
+
+          return {
+            cycleSelectionKey: cycle.id,
+            lineId: line.lineId,
+            action: draft.action,
+            valueType: draft.valueType,
+            value: Number(draft.value || 0),
+          };
+        })
+        .filter((value) => value !== null)
+    )
+  );
+  const serializedCarryForwardSelections = JSON.stringify(
+    selectedVisibleCycles.flatMap((cycle) =>
+      getAssignedCarryForwards(cycle.id)
+        .filter((source) =>
+          isCarryForwardEnabled(cycle.id, source.carryForwardKey)
+        )
+        .map((source) => ({
+          cycleSelectionKey: cycle.id,
+          carryForwardKey: source.carryForwardKey,
+        }))
+    )
   );
 
   function handleTenantChange(nextTenantId: string) {
@@ -411,7 +703,7 @@ export function InvoiceGenerationForm({
 
     setSelectedCycleKeysByTenant((current) => ({
       ...current,
-      [currentTenantId]: visibleCycleLabels.map((cycle) => cycle.id),
+      [currentTenantId]: visibleCycles.map((cycle) => cycle.id),
     }));
   }
 
@@ -427,7 +719,7 @@ export function InvoiceGenerationForm({
   }
 
   function toggleReading(cycleId: string, readingSelectionKey: string) {
-    const cycle = visibleCycleLabels.find((candidate) => candidate.id === cycleId);
+    const cycle = visibleCycles.find((candidate) => candidate.id === cycleId);
 
     if (!cycle) {
       return;
@@ -446,8 +738,146 @@ export function InvoiceGenerationForm({
     });
   }
 
+  function updateLineAdjustment(
+    cycleId: string,
+    lineId: string,
+    changes: Partial<LineAdjustmentDraft>
+  ) {
+    setLineAdjustmentDraftsByCycle((current) => ({
+      ...current,
+      [cycleId]: {
+        ...(current[cycleId] ?? {}),
+        [lineId]: {
+          ...getLineAdjustmentDraft(cycleId, lineId),
+          ...changes,
+        },
+      },
+    }));
+  }
+
+  function toggleCarryForward(cycleId: string, carryForwardKey: string) {
+    setCarryForwardEnabledByCycle((current) => ({
+      ...current,
+      [cycleId]: {
+        ...(current[cycleId] ?? {}),
+        [carryForwardKey]: !isCarryForwardEnabled(cycleId, carryForwardKey),
+      },
+    }));
+  }
+
+  function renderLineAdjustmentCard(
+    cycle: PendingCycleOption,
+    line: InvoiceGenerationLinePreview,
+    details?: ReactNode
+  ) {
+    const draft = getLineAdjustmentDraft(cycle.id, line.lineId);
+    const outcome = getLineOutcome(cycle.id, line);
+
+    return (
+      <div
+        key={line.lineId}
+        className="rounded-[0.9rem] border border-border/55 bg-background/60 px-3 py-3"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium">{line.label}</p>
+          <p className="text-sm font-semibold">{formatMoney(line.amount)}</p>
+        </div>
+        {details ? <div className="mt-1 text-xs text-muted-foreground">{details}</div> : null}
+
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem_10rem]">
+          <div className="space-y-2">
+            <Label htmlFor={`${cycle.id}-${line.lineId}-action`}>Billing action</Label>
+            <select
+              id={`${cycle.id}-${line.lineId}-action`}
+              value={draft.action}
+              onChange={(event) =>
+                updateLineAdjustment(cycle.id, line.lineId, {
+                  action: event.target.value as InvoiceGenerationAdjustmentAction,
+                })
+              }
+              className={selectClassName}
+            >
+              <option value="FULL">
+                {INVOICE_GENERATION_ADJUSTMENT_ACTION_LABELS.FULL}
+              </option>
+              <option value="DISCOUNT">
+                {INVOICE_GENERATION_ADJUSTMENT_ACTION_LABELS.DISCOUNT}
+              </option>
+              <option value="DEFER">
+                {INVOICE_GENERATION_ADJUSTMENT_ACTION_LABELS.DEFER}
+              </option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${cycle.id}-${line.lineId}-value-type`}>Value mode</Label>
+            <select
+              id={`${cycle.id}-${line.lineId}-value-type`}
+              value={draft.valueType}
+              onChange={(event) =>
+                updateLineAdjustment(cycle.id, line.lineId, {
+                  valueType: event.target.value as InvoiceGenerationAdjustmentValueType,
+                })
+              }
+              className={selectClassName}
+              disabled={draft.action === "FULL"}
+            >
+              <option value="FIXED">
+                {INVOICE_GENERATION_ADJUSTMENT_VALUE_TYPE_LABELS.FIXED}
+              </option>
+              <option value="PERCENT">
+                {INVOICE_GENERATION_ADJUSTMENT_VALUE_TYPE_LABELS.PERCENT}
+              </option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${cycle.id}-${line.lineId}-value`}>
+              {draft.valueType === "PERCENT" ? "Percent" : "Amount"}
+            </Label>
+            <Input
+              id={`${cycle.id}-${line.lineId}-value`}
+              type="number"
+              min="0"
+              step={draft.valueType === "PERCENT" ? "0.01" : "0.01"}
+              value={draft.value}
+              onChange={(event) =>
+                updateLineAdjustment(cycle.id, line.lineId, {
+                  value: event.target.value,
+                })
+              }
+              className="field-blank h-11"
+              disabled={draft.action === "FULL"}
+              placeholder={draft.valueType === "PERCENT" ? "10" : "0.00"}
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 rounded-[0.8rem] border border-border/55 bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span>Bill now: {formatMoney(outcome.billedAmount)}</span>
+            {outcome.discountAmount > 0 ? (
+              <span>Discount: {formatMoney(outcome.discountAmount)}</span>
+            ) : null}
+            {outcome.deferredAmount > 0 ? (
+              <span>Bill later: {formatMoney(outcome.deferredAmount)}</span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form action={action} className="space-y-6">
+      <input type="hidden" name="lineAdjustments" value={serializedLineAdjustments} readOnly />
+      <input
+        type="hidden"
+        name="carryForwardSelections"
+        value={serializedCarryForwardSelections}
+        readOnly
+      />
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="border-blank space-y-6 rounded-xl p-6">
           <div className="rounded-[1.45rem] border border-border/60 bg-background/55 p-4">
@@ -458,11 +888,10 @@ export function InvoiceGenerationForm({
               <div className="space-y-2">
                 <p className="text-sm font-medium">Cycle billing is automatic</p>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Billing periods are derived from each contract&apos;s billing
-                  anchor. Pick the business first, then check only the invoice
-                  months you want to issue. Connected-meter utility readings
-                  appear under each selected cycle and stay preselected unless
-                  you remove them.
+                  Billing periods are derived from each contract&apos;s billing anchor.
+                  Pick the business first, then choose the invoice months to issue.
+                  For each selected line, you can bill in full, discount part now, or
+                  move part to a later invoice.
                 </p>
               </div>
             </div>
@@ -472,9 +901,10 @@ export function InvoiceGenerationForm({
             <p className="text-sm font-medium">What this run includes</p>
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-muted-foreground">
               <li>Base rent is added automatically from the contract cycle.</li>
-              <li>Active recurring charges are added automatically when effective in that cycle.</li>
-              <li>Dedicated-meter utility readings stay selectable under each cycle.</li>
-              <li>Saved uninvoiced COSA allocations are included automatically when COSA billing date falls inside the selected cycle.</li>
+              <li>Recurring charges appear when effective in that cycle.</li>
+              <li>Dedicated-meter utility readings stay selectable per cycle.</li>
+              <li>COSA allocations inside the cycle auto-attach once saved.</li>
+              <li>Deferred balances can be carried into the next selected invoice.</li>
             </ol>
           </div>
 
@@ -509,6 +939,8 @@ export function InvoiceGenerationForm({
                 generate here when still uninvoiced.
               </p>
               <FieldError message={state.errors?.readingSelections?.[0]} />
+              <FieldError message={state.errors?.lineAdjustments?.[0]} />
+              <FieldError message={state.errors?.carryForwardSelections?.[0]} />
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -517,9 +949,8 @@ export function InvoiceGenerationForm({
                   <div>
                     <p className="text-sm font-medium">Invoices to generate</p>
                     <p className="text-sm text-muted-foreground">
-                      Check the billing months you want to issue for the selected
-                      business, then keep or remove the utility readings under
-                      each chosen cycle.
+                      Check billing months, keep or remove utility readings, then set
+                      bill-in-full, discount, or bill-later for each line.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -548,20 +979,15 @@ export function InvoiceGenerationForm({
 
                 {!currentTenant ? (
                   <p className="text-sm leading-6 text-muted-foreground">
-                  No eligible invoice cycles are available for the selected
-                  issue date.
+                    No eligible invoice cycles are available for the selected issue
+                    date.
                   </p>
                 ) : (
-                  <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-                    {visibleCycleLabels.map((cycle) => {
-                      const isChecked = effectiveSelectedCycleKeys.includes(
-                        cycle.id
-                      );
-                      const effectiveReadingSelection =
-                        selectedReadingKeysByCycle[cycle.id] ??
-                        cycle.readingOptions.map(
-                          (readingOption) => readingOption.selectionKey
-                        );
+                  <div className="max-h-[42rem] space-y-2 overflow-y-auto pr-1">
+                    {visibleCycles.map((cycle) => {
+                      const isChecked = effectiveSelectedCycleKeys.includes(cycle.id);
+                      const effectiveReadingSelection = getEffectiveReadingSelection(cycle);
+                      const assignedCarryForwards = getAssignedCarryForwards(cycle.id);
 
                       return (
                         <div
@@ -589,8 +1015,24 @@ export function InvoiceGenerationForm({
                             </div>
                           </label>
 
-                          {isChecked && (
-                            <div className="mt-3 space-y-2">
+                          {isChecked ? (
+                            <div className="mt-3 space-y-3">
+                              <div className="rounded-[0.95rem] border border-border/60 bg-background/45 p-3">
+                                <div className="space-y-1">
+                                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                    Rent
+                                  </p>
+                                  <p className="text-xs leading-5 text-muted-foreground">
+                                    Base contract rent for this billing cycle.
+                                  </p>
+                                </div>
+                                <div className="mt-2">
+                                  {renderLineAdjustmentCard(cycle, cycle.rentLine, (
+                                    <p>{cycle.label}</p>
+                                  ))}
+                                </div>
+                              </div>
+
                               {cycle.recurringChargeOptions.length > 0 ? (
                                 <div className="rounded-[0.95rem] border border-border/60 bg-background/45 p-3">
                                   <div className="space-y-1">
@@ -603,24 +1045,11 @@ export function InvoiceGenerationForm({
                                   </div>
 
                                   <div className="mt-2 space-y-2">
-                                    {cycle.recurringChargeOptions.map((charge) => (
-                                      <div
-                                        key={charge.id}
-                                        className="rounded-[0.9rem] border border-border/55 bg-background/60 px-3 py-3"
-                                      >
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                          <p className="text-sm font-medium">
-                                            {charge.label} · {charge.chargeTypeLabel}
-                                          </p>
-                                          <p className="text-sm font-semibold">
-                                            {charge.amountLabel}
-                                          </p>
-                                        </div>
-                                        <p className="text-xs leading-5 text-muted-foreground">
-                                          {charge.effectiveLabel}
-                                        </p>
-                                      </div>
-                                    ))}
+                                    {cycle.recurringChargeOptions.map((charge) =>
+                                      renderLineAdjustmentCard(cycle, charge, (
+                                        <p>{charge.chargeTypeLabel} · {charge.effectiveLabel}</p>
+                                      ))
+                                    )}
                                   </div>
                                 </div>
                               ) : null}
@@ -637,27 +1066,17 @@ export function InvoiceGenerationForm({
                                   </div>
 
                                   <div className="mt-2 space-y-2">
-                                    {cycle.cosaOptions.map((allocation) => (
-                                      <div
-                                        key={allocation.id}
-                                        className="rounded-[0.9rem] border border-border/55 bg-background/60 px-3 py-3"
-                                      >
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                          <p className="text-sm font-medium">
-                                            {allocation.description}
-                                          </p>
-                                          <p className="text-sm font-semibold">
-                                            {allocation.amountLabel}
-                                          </p>
-                                        </div>
-                                        <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                                    {cycle.cosaOptions.map((allocation) =>
+                                      renderLineAdjustmentCard(cycle, allocation, (
+                                        <div className="grid gap-1 sm:grid-cols-2">
                                           <p>Billing date: {allocation.billingDateLabel}</p>
                                           <p>
-                                            Basis: {allocation.basisLabel} · {allocation.allocationTypeLabel}
+                                            Basis: {allocation.basisLabel} ·{" "}
+                                            {allocation.allocationTypeLabel}
                                           </p>
                                         </div>
-                                      </div>
-                                    ))}
+                                      ))
+                                    )}
                                   </div>
                                 </div>
                               ) : null}
@@ -669,7 +1088,8 @@ export function InvoiceGenerationForm({
                                       Utility readings
                                     </p>
                                     <p className="text-xs leading-5 text-muted-foreground">
-                                      Connected dedicated-meter readings for this cycle. Uncheck any line you do not want to bill now.
+                                      Connected dedicated-meter readings for this cycle. Uncheck
+                                      any line you do not want to bill now.
                                     </p>
                                   </div>
 
@@ -680,52 +1100,119 @@ export function InvoiceGenerationForm({
                                       );
 
                                       return (
-                                        <label
+                                        <div
                                           key={reading.selectionKey}
-                                          className={`flex items-start gap-3 rounded-[0.9rem] border px-3 py-3 transition-colors ${
+                                          className={`rounded-[0.9rem] border px-3 py-3 transition-colors ${
                                             isReadingChecked
                                               ? "border-primary/45 bg-primary/6"
                                               : "border-border/55 bg-background/60"
                                           }`}
                                         >
-                                          <input
-                                            type="checkbox"
-                                            name="readingSelections"
-                                            value={reading.selectionKey}
-                                            checked={isReadingChecked}
-                                            onChange={() =>
-                                              toggleReading(cycle.id, reading.selectionKey)
-                                            }
-                                            className="mt-1 size-4 rounded border border-border bg-background text-primary accent-primary"
-                                          />
-                                          <div className="min-w-0 flex-1 space-y-1">
-                                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                              <p className="text-sm font-medium">
-                                                {reading.utilityTypeLabel} · {reading.meterCode}
-                                              </p>
-                                              <p className="text-sm font-semibold">
-                                                {reading.amountLabel}
-                                              </p>
-                                            </div>
-                                            <p className="text-xs leading-5 text-muted-foreground">
-                                              Reading date: {reading.readingDateLabel}
-                                            </p>
-                                            <p className="text-xs leading-5 text-muted-foreground">
-                                              Service: {reading.serviceCoverageLabel}
-                                            </p>
-                                            <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-                                              <p>Consumption: {reading.consumptionLabel}</p>
-                                              <p>Rate: {reading.rateLabel}</p>
+                                          <div className="flex items-start gap-3">
+                                            <input
+                                              type="checkbox"
+                                              name="readingSelections"
+                                              value={reading.selectionKey}
+                                              checked={isReadingChecked}
+                                              onChange={() =>
+                                                toggleReading(cycle.id, reading.selectionKey)
+                                              }
+                                              className="mt-1 size-4 rounded border border-border bg-background text-primary accent-primary"
+                                            />
+                                            <div className="min-w-0 flex-1 space-y-3">
+                                              <div className="space-y-1">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                  <p className="text-sm font-medium">
+                                                    {reading.utilityTypeLabel} · {reading.meterCode}
+                                                  </p>
+                                                  <p className="text-sm font-semibold">
+                                                    {reading.amountLabel}
+                                                  </p>
+                                                </div>
+                                                <p className="text-xs leading-5 text-muted-foreground">
+                                                  Reading date: {reading.readingDateLabel}
+                                                </p>
+                                                <p className="text-xs leading-5 text-muted-foreground">
+                                                  Service: {reading.serviceCoverageLabel}
+                                                </p>
+                                                <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                                                  <p>Consumption: {reading.consumptionLabel}</p>
+                                                  <p>Rate: {reading.rateLabel}</p>
+                                                </div>
+                                              </div>
+
+                                              {isReadingChecked
+                                                ? renderLineAdjustmentCard(cycle, reading)
+                                                : null}
                                             </div>
                                           </div>
-                                        </label>
+                                        </div>
                                       );
                                     })}
                                   </div>
                                 </div>
                               ) : null}
+
+                              {assignedCarryForwards.length > 0 ? (
+                                <div className="rounded-[0.95rem] border border-border/60 bg-background/45 p-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                      Deferred balances
+                                    </p>
+                                    <p className="text-xs leading-5 text-muted-foreground">
+                                      These earlier billed-later amounts can attach as arrears on
+                                      this invoice. They stay selected unless you remove them.
+                                    </p>
+                                  </div>
+
+                                  <div className="mt-2 space-y-2">
+                                    {assignedCarryForwards.map((source) => (
+                                      <label
+                                        key={source.carryForwardKey}
+                                        className={`flex items-start gap-3 rounded-[0.9rem] border px-3 py-3 transition-colors ${
+                                          isCarryForwardEnabled(
+                                            cycle.id,
+                                            source.carryForwardKey
+                                          )
+                                            ? "border-primary/45 bg-primary/6"
+                                            : "border-border/55 bg-background/60"
+                                        }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isCarryForwardEnabled(
+                                            cycle.id,
+                                            source.carryForwardKey
+                                          )}
+                                          onChange={() =>
+                                            toggleCarryForward(
+                                              cycle.id,
+                                              source.carryForwardKey
+                                            )
+                                          }
+                                          className="mt-1 size-4 rounded border border-border bg-background text-primary accent-primary"
+                                        />
+                                        <div className="min-w-0 flex-1 space-y-1">
+                                          <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <p className="text-sm font-medium">
+                                              {source.sourceLabel}
+                                            </p>
+                                            <p className="text-sm font-semibold">
+                                              {formatMoney(source.amount)}
+                                            </p>
+                                          </div>
+                                          <p className="text-xs leading-5 text-muted-foreground">
+                                            Will be added as arrears on this invoice if kept
+                                            selected.
+                                          </p>
+                                        </div>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
-                          )}
+                          ) : null}
                         </div>
                       );
                     })}
@@ -778,9 +1265,9 @@ export function InvoiceGenerationForm({
             </h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
               Each cycle includes base rent, active recurring charges, any
-              uninvoiced COSA allocations, and whichever connected-meter
-              utility readings you keep selected for the run. Rent adjustments
-              effective before the cycle start are applied automatically.
+              uninvoiced COSA allocations, whichever connected-meter utility
+              readings you keep selected, and any deferred balances you choose to
+              carry forward.
             </p>
 
             <div className="mt-5 rounded-[1.2rem] border border-dashed border-border/75 bg-muted/35 px-4 py-3 text-sm text-muted-foreground">
@@ -806,18 +1293,15 @@ export function InvoiceGenerationForm({
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {visibleCycleLabels
-                    .filter((cycle) => effectiveSelectedCycleKeys.includes(cycle.id))
-                    .slice(0, 8)
-                    .map((cycle) => (
-                      <div
-                        key={cycle.id}
-                        className="rounded-lg border border-border/60 bg-muted/35 px-3 py-2 text-sm"
-                      >
-                        <p className="font-medium">{cycle.label}</p>
-                        <p className="text-xs text-muted-foreground">{cycle.meta}</p>
-                      </div>
-                    ))}
+                  {selectedVisibleCycles.slice(0, 8).map((cycle) => (
+                    <div
+                      key={cycle.id}
+                      className="rounded-lg border border-border/60 bg-muted/35 px-3 py-2 text-sm"
+                    >
+                      <p className="font-medium">{cycle.label}</p>
+                      <p className="text-xs text-muted-foreground">{cycle.meta}</p>
+                    </div>
+                  ))}
                   {effectiveSelectedCycleKeys.length > 8 ? (
                     <p className="text-xs text-muted-foreground">
                       {effectiveSelectedCycleKeys.length - 8} more cycle(s) will
@@ -826,17 +1310,30 @@ export function InvoiceGenerationForm({
                   ) : null}
                   {utilityReadingSelectionCount > 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      {utilityReadingSelectionCount} utility reading(s) currently selected.
+                      {utilityReadingSelectionCount} utility reading(s) currently
+                      selected.
                     </p>
                   ) : null}
                   {selectedRecurringChargeCount > 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      {selectedRecurringChargeCount} recurring charge line(s) auto-included.
+                      {selectedRecurringChargeCount} recurring charge line(s)
+                      auto-included.
                     </p>
                   ) : null}
                   {selectedCosaCount > 0 ? (
                     <p className="text-xs text-muted-foreground">
                       {selectedCosaCount} COSA allocation line(s) auto-included.
+                    </p>
+                  ) : null}
+                  {selectedAdjustmentCount > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedAdjustmentCount} line adjustment(s) configured.
+                    </p>
+                  ) : null}
+                  {selectedCarryForwardCount > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedCarryForwardCount} deferred balance line(s) will carry
+                      forward.
                     </p>
                   ) : null}
                 </div>

@@ -10,6 +10,19 @@ import {
 } from "@/lib/properties/logo-storage";
 import { prisma } from "@/lib/prisma";
 import {
+  buildCarryForwardAssignments,
+  buildInvoiceGenerationLineId,
+  buildPersistedCarryForwardKey,
+  buildSyntheticCarryForwardKey,
+  calculateInvoiceGenerationLineOutcome,
+  parseCarryForwardKey,
+  type InvoiceGenerationBillableLineType,
+  type InvoiceGenerationCarryForwardSource,
+  type InvoiceGenerationLineAdjustment,
+  type InvoiceGenerationLinePreview,
+  type InvoiceGenerationSelectedCycle,
+} from "@/lib/billing/invoice-generation-adjustments";
+import {
   filterCyclesWithoutInvoicedMonths,
   cycleOverlapsRange,
   findNextCompletedBillingCycles,
@@ -92,8 +105,18 @@ type ParsedPaymentPayload = ReturnType<typeof getPaymentPayload>;
 type ParsedBulkPaymentPayload = ReturnType<typeof getBulkPaymentPayload>;
 type ParsedCosaPayload = ReturnType<typeof getCosaPayload>;
 type ParsedCosaTemplatePayload = ReturnType<typeof getCosaTemplatePayload>;
+type ParsedInvoiceGenerationPayload = ReturnType<typeof getInvoiceGenerationPayload>;
 
 function getInvoiceGenerationPayload(formData: FormData) {
+  const lineAdjustmentsResult = parseJsonArray(
+    formData.get("lineAdjustments"),
+    "Invoice line adjustment data is invalid."
+  );
+  const carryForwardSelectionsResult = parseJsonArray(
+    formData.get("carryForwardSelections"),
+    "Deferred balance selection data is invalid."
+  );
+
   return {
     tenantId: String(formData.get("tenantId") ?? ""),
     cycleSelections: formData
@@ -106,6 +129,10 @@ function getInvoiceGenerationPayload(formData: FormData) {
       .filter(Boolean),
     issueDate: String(formData.get("issueDate") ?? ""),
     dueDate: String(formData.get("dueDate") ?? ""),
+    lineAdjustments: lineAdjustmentsResult.items,
+    lineAdjustmentsParseError: lineAdjustmentsResult.error,
+    carryForwardSelections: carryForwardSelectionsResult.items,
+    carryForwardSelectionsParseError: carryForwardSelectionsResult.error,
   };
 }
 
@@ -215,11 +242,23 @@ function parseAllocations(
   value: FormDataEntryValue | null,
   errorMessage = "Allocation data is invalid."
 ) {
+  const parsed = parseJsonArray(value, errorMessage);
+
+  return {
+    allocations: parsed.items,
+    error: parsed.error,
+  };
+}
+
+function parseJsonArray(
+  value: FormDataEntryValue | null,
+  errorMessage = "Data is invalid."
+) {
   const rawValue = String(value ?? "").trim();
 
   if (!rawValue) {
     return {
-      allocations: [],
+      items: [],
       error: null,
     };
   }
@@ -229,18 +268,18 @@ function parseAllocations(
 
     if (!Array.isArray(parsed)) {
       return {
-        allocations: [],
+        items: [],
         error: errorMessage,
       };
     }
 
     return {
-      allocations: parsed,
+      items: parsed,
       error: null,
     };
   } catch {
     return {
-      allocations: [],
+      items: [],
       error: errorMessage,
     };
   }
@@ -347,6 +386,26 @@ function getCosaParseError(payload: ParsedCosaPayload): CosaFormState | null {
       allocations: [payload.allocationsParseError],
     },
     message: "COSA allocation data could not be read. Refresh and try again.",
+  };
+}
+
+function getInvoiceGenerationParseError(
+  payload: ParsedInvoiceGenerationPayload
+): InvoiceGenerationFormState | null {
+  if (!payload.lineAdjustmentsParseError && !payload.carryForwardSelectionsParseError) {
+    return null;
+  }
+
+  return {
+    errors: {
+      lineAdjustments: payload.lineAdjustmentsParseError
+        ? [payload.lineAdjustmentsParseError]
+        : undefined,
+      carryForwardSelections: payload.carryForwardSelectionsParseError
+        ? [payload.carryForwardSelectionsParseError]
+        : undefined,
+    },
+    message: "Invoice generation options could not be read. Refresh and try again.",
   };
 }
 
@@ -497,6 +556,235 @@ function getContractCycleCount(anchorDate: Date, contractEndDate: Date) {
   }
 
   return count;
+}
+
+type InvoiceGenerationBaseLine = InvoiceGenerationLinePreview & {
+  quantity: number;
+  unitPrice: number;
+  description: string;
+  contractRecurringChargeId?: string;
+  meterReadingId?: string;
+  cosaAllocationId?: string;
+};
+
+type InvoiceGenerationPersistedDeferredBalance = {
+  id: string;
+  contractId: string;
+  tenantId: string;
+  sourceDescription: string;
+  deferredAmount: number;
+  sourceItemType: InvoiceGenerationBillableLineType | "ADJUSTMENT" | "ARREARS";
+  sourceInvoice: {
+    id: string;
+    invoiceNumber: string;
+    billingPeriodStart: Date;
+    billingPeriodEnd: Date;
+  };
+};
+
+type GeneratedDeferredBalanceRecord = {
+  id: string;
+  contractId: string;
+  tenantId: string;
+  sourceDescription: string;
+  deferredAmount: number;
+  sourceInvoice: {
+    id: string;
+    invoiceNumber: string;
+    billingPeriodStart: Date;
+    billingPeriodEnd: Date;
+  };
+};
+
+function formatMoneyForNote(value: number) {
+  return `₱${new Intl.NumberFormat("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)}`;
+}
+
+function buildInvoiceAdjustmentDescription(params: {
+  lineLabel: string;
+  cycleLabel: string;
+  action: "DISCOUNT" | "DEFER";
+}) {
+  return `${
+    params.action === "DISCOUNT" ? "Discount applied" : "Deferred balance"
+  } · ${params.lineLabel} · ${params.cycleLabel}`;
+}
+
+function buildDeferredBalanceNote(params: {
+  lineLabel: string;
+  cycleLabel: string;
+  deferredAmount: number;
+}) {
+  return `Deferred ${formatMoneyForNote(params.deferredAmount)} from ${params.lineLabel} for ${params.cycleLabel} to future invoice.`;
+}
+
+function buildDiscountNote(params: {
+  lineLabel: string;
+  cycleLabel: string;
+  discountAmount: number;
+}) {
+  return `Discounted ${formatMoneyForNote(params.discountAmount)} from ${params.lineLabel} for ${params.cycleLabel}.`;
+}
+
+function buildDeferredBalanceSourceDescription(params: {
+  lineLabel: string;
+  cycleLabel: string;
+}) {
+  return `${params.lineLabel} for ${params.cycleLabel}`;
+}
+
+function buildCarryForwardArrearsDescription(params: {
+  invoiceNumber: string;
+  sourceDescription: string;
+}) {
+  return `Arrears from ${params.invoiceNumber} ${params.sourceDescription.toLowerCase()}`;
+}
+
+function buildInvoiceGenerationBaseLines(params: {
+  cycleSelectionKey: string;
+  cycleLabel: string;
+  contractId: string;
+  propertyName: string;
+  cycleStart: Date;
+  cycleEnd: Date;
+  rentAmount: number;
+  utilityServiceCycle:
+    | {
+        start: Date;
+        end: Date;
+      }
+    | null;
+  cycleCharges: Array<{
+    id: string;
+    label: string;
+    amount: { toString(): string };
+  }>;
+  selectedCycleReadings: Array<{
+    id: string;
+    readingDate: Date;
+    consumption: { toString(): string };
+    ratePerUnit: { toString(): string };
+    totalAmount: { toString(): string };
+    meter: {
+      meterCode: string;
+      utilityType: keyof typeof UTILITY_TYPE_LABELS;
+    };
+  }>;
+  cycleCosaAllocations: Array<{
+    id: string;
+    computedAmount: { toString(): string };
+    cosa: {
+      description: string;
+    };
+  }>;
+}) {
+  return [
+    {
+      lineId: buildInvoiceGenerationLineId({
+        cycleSelectionKey: params.cycleSelectionKey,
+        lineType: "rent",
+      }),
+      cycleSelectionKey: params.cycleSelectionKey,
+      contractId: params.contractId,
+      type: "RENT" as const,
+      label: "Rent",
+      description: `Rent for ${params.cycleLabel} · ${params.propertyName} · ${toDateInputValue(params.cycleStart)} to ${toDateInputValue(params.cycleEnd)}`,
+      amount: params.rentAmount,
+      quantity: 1,
+      unitPrice: params.rentAmount,
+    },
+    ...params.cycleCharges.map((charge) => ({
+      lineId: buildInvoiceGenerationLineId({
+        cycleSelectionKey: params.cycleSelectionKey,
+        lineType: "recurring",
+        sourceId: charge.id,
+      }),
+      cycleSelectionKey: params.cycleSelectionKey,
+      contractId: params.contractId,
+      type: "RECURRING_CHARGE" as const,
+      label: charge.label,
+      description: `${charge.label} · ${toDateInputValue(params.cycleStart)} to ${toDateInputValue(params.cycleEnd)}`,
+      amount: Number(charge.amount.toString()),
+      quantity: 1,
+      unitPrice: Number(charge.amount.toString()),
+      contractRecurringChargeId: charge.id,
+    })),
+    ...params.selectedCycleReadings.map((reading) => ({
+      lineId: buildInvoiceGenerationLineId({
+        cycleSelectionKey: params.cycleSelectionKey,
+        lineType: "reading",
+        sourceId: reading.id,
+      }),
+      cycleSelectionKey: params.cycleSelectionKey,
+      contractId: params.contractId,
+      type: "UTILITY_READING" as const,
+      label: `${UTILITY_TYPE_LABELS[reading.meter.utilityType]} · ${reading.meter.meterCode}`,
+      description:
+        params.utilityServiceCycle != null
+          ? buildUtilityReadingDescription({
+              utilityType: reading.meter.utilityType,
+              meterCode: reading.meter.meterCode,
+              serviceStart: params.utilityServiceCycle.start,
+              serviceEnd: params.utilityServiceCycle.end,
+            })
+          : `${reading.meter.utilityType.replaceAll("_", " ")} reading · ${reading.meter.meterCode} · ${reading.readingDate.toISOString().slice(0, 10)}`,
+      amount: Number(reading.totalAmount.toString()),
+      quantity: Number(reading.consumption.toString()),
+      unitPrice: Number(reading.ratePerUnit.toString()),
+      meterReadingId: reading.id,
+    })),
+    ...params.cycleCosaAllocations.map((allocation) => ({
+      lineId: buildInvoiceGenerationLineId({
+        cycleSelectionKey: params.cycleSelectionKey,
+        lineType: "cosa",
+        sourceId: allocation.id,
+      }),
+      cycleSelectionKey: params.cycleSelectionKey,
+      contractId: params.contractId,
+      type: "COSA" as const,
+      label: allocation.cosa.description,
+      description: allocation.cosa.description,
+      amount: Number(allocation.computedAmount.toString()),
+      quantity: 1,
+      unitPrice: Number(allocation.computedAmount.toString()),
+      cosaAllocationId: allocation.id,
+    })),
+  ] satisfies InvoiceGenerationBaseLine[];
+}
+
+function groupLineAdjustmentsByCycle(
+  lineAdjustments: InvoiceGenerationLineAdjustment[]
+) {
+  const grouped = new Map<string, Map<string, InvoiceGenerationLineAdjustment>>();
+
+  for (const adjustment of lineAdjustments) {
+    const cycleAdjustments =
+      grouped.get(adjustment.cycleSelectionKey) ??
+      new Map<string, InvoiceGenerationLineAdjustment>();
+
+    cycleAdjustments.set(adjustment.lineId, adjustment);
+    grouped.set(adjustment.cycleSelectionKey, cycleAdjustments);
+  }
+
+  return grouped;
+}
+
+function groupCarryForwardSelectionsByCycle(
+  selections: Array<{ cycleSelectionKey: string; carryForwardKey: string }>
+) {
+  const grouped = new Map<string, Set<string>>();
+
+  for (const selection of selections) {
+    const cycleSelections =
+      grouped.get(selection.cycleSelectionKey) ?? new Set<string>();
+    cycleSelections.add(selection.carryForwardKey);
+    grouped.set(selection.cycleSelectionKey, cycleSelections);
+  }
+
+  return grouped;
 }
 
 async function validateRecurringChargeContract(
@@ -849,9 +1137,14 @@ export async function generateInvoicesAction(
 ): Promise<InvoiceGenerationFormState> {
   await requireCapability("MANAGE_BILLING");
 
-  const validatedFields = invoiceGenerationSchema.safeParse(
-    getInvoiceGenerationPayload(formData)
-  );
+  const payload = getInvoiceGenerationPayload(formData);
+  const parseError = getInvoiceGenerationParseError(payload);
+
+  if (parseError) {
+    return parseError;
+  }
+
+  const validatedFields = invoiceGenerationSchema.safeParse(payload);
 
   if (!validatedFields.success) {
     return {
@@ -922,6 +1215,12 @@ export async function generateInvoicesAction(
   const submittedReadingSelectionKeys = new Set(
     validatedFields.data.readingSelections
   );
+  const selectedLineAdjustmentsByCycle = groupLineAdjustmentsByCycle(
+    validatedFields.data.lineAdjustments as InvoiceGenerationLineAdjustment[]
+  );
+  const selectedCarryForwardKeysByCycle = groupCarryForwardSelectionsByCycle(
+    validatedFields.data.carryForwardSelections
+  );
   const selectedReadingIdsByCycle = new Map<string, Set<string>>();
 
   for (const readingSelection of submittedReadingSelectionKeys) {
@@ -945,7 +1244,13 @@ export async function generateInvoicesAction(
     selectedReadingIdsByCycle.set(parsedSelection.cycleSelectionKey, readingIds);
   }
 
-  const [existingInvoices, recurringCharges, readings, cosaAllocations] =
+  const [
+    existingInvoices,
+    recurringCharges,
+    readings,
+    cosaAllocations,
+    deferredBalances,
+  ] =
     await Promise.all([
     prisma.invoice.findMany({
       where: {
@@ -1042,6 +1347,31 @@ export async function generateInvoicesAction(
         },
       },
     }),
+    prisma.deferredInvoiceBalance.findMany({
+      where: {
+        contractId: {
+          in: contracts.map((contract) => contract.id),
+        },
+        status: "OPEN",
+      },
+      orderBy: [{ createdAt: "asc" }],
+      select: {
+        id: true,
+        contractId: true,
+        tenantId: true,
+        sourceDescription: true,
+        deferredAmount: true,
+        sourceItemType: true,
+        sourceInvoice: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            billingPeriodStart: true,
+            billingPeriodEnd: true,
+          },
+        },
+      },
+    }),
   ]);
 
   const existingPeriodsByContract = new Map<string, Set<string>>();
@@ -1061,9 +1391,25 @@ export async function generateInvoicesAction(
     existingMonthsByContract.set(invoice.contractId, months);
   }
 
-  const operations = [];
+  const selectedCycleEntries: Array<{
+    selectionKey: string;
+    contract: (typeof contracts)[number];
+    cycle: {
+      start: Date;
+      end: Date;
+    };
+    cycleLabel: string;
+    rentAmount: number;
+    baseLines: InvoiceGenerationBaseLine[];
+    lineAdjustmentsByLineId: Map<string, InvoiceGenerationLineAdjustment>;
+    oneTimeSecurityDepositCharge: number;
+    freeRentConcessionAmount: number;
+    advanceRentCreditAmount: number;
+    securityDepositMonths: number;
+  }> = [];
   const matchedSelectedCycleKeys = new Set<string>();
   const matchedSelectedReadingKeys = new Set<string>();
+  const matchedLineAdjustments = new Set<string>();
 
   for (const contract of contracts) {
     const missingCycles = filterCyclesWithoutInvoicedMonths(
@@ -1164,18 +1510,19 @@ export async function generateInvoicesAction(
       });
       const cycleLabel = formatBillingCycleLabel(cycle);
       const utilityServiceCycle = utilityBillingWindow?.serviceCycle ?? null;
-      const recurringChargeAmount = cycleCharges.reduce(
-        (sum, charge) => sum + Number(charge.amount.toString()),
-        0
-      );
-      const utilityAmount = selectedCycleReadings.reduce(
-        (sum, reading) => sum + Number(reading.totalAmount.toString()),
-        0
-      );
-      const cosaAmount = cycleCosaAllocations.reduce(
-        (sum, allocation) => sum + Number(allocation.computedAmount.toString()),
-        0
-      );
+      const baseLines = buildInvoiceGenerationBaseLines({
+        cycleSelectionKey: selectionKey,
+        cycleLabel,
+        contractId: contract.id,
+        propertyName: contract.property.name,
+        cycleStart: cycle.start,
+        cycleEnd: cycle.end,
+        rentAmount,
+        utilityServiceCycle,
+        cycleCharges,
+        selectedCycleReadings,
+        cycleCosaAllocations,
+      });
       const oneTimeSecurityDepositCharge =
         cycleIndex === 0 ? Number(contract.securityDeposit.toString()) : 0;
       const isFreeRentCycle =
@@ -1188,113 +1535,49 @@ export async function generateInvoicesAction(
       const advanceRentCreditAmount = isAdvanceRentApplicationCycle
         ? Math.min(baseRent, rentAmount)
         : 0;
-      const additionalCharges =
-        recurringChargeAmount +
-        utilityAmount +
-        cosaAmount +
-        oneTimeSecurityDepositCharge +
-        freeRentConcessionAmount -
-        advanceRentCreditAmount;
-      const totalAmount = rentAmount + additionalCharges;
-      const balanceDue = Math.max(0, totalAmount);
-      const status = getInvoiceStatusFromBalance(balanceDue, false);
+      const lineAdjustmentsByLineId =
+        selectedLineAdjustmentsByCycle.get(selectionKey) ??
+        new Map<string, InvoiceGenerationLineAdjustment>();
 
-      operations.push(
-        prisma.invoice.create({
-          data: {
-            invoiceNumber: buildInvoiceNumber(issueDate, contract.property.propertyCode),
-            contractId: contract.id,
-            tenantId: contract.tenantId,
-            publicAccessCode: generateInvoiceAccessCode(),
-            issueDate,
-            dueDate,
-            billingPeriodStart: cycle.start,
-            billingPeriodEnd: cycle.end,
-            subtotal: toMoney(rentAmount),
-            additionalCharges: toMoney(additionalCharges),
-            discount: toMoney(0),
-            totalAmount: toMoney(totalAmount),
-            balanceDue: toMoney(balanceDue),
-            status,
-            items: {
-              create: [
-                {
-                  itemType: "RENT",
-                  description: `Rent for ${cycleLabel} · ${contract.property.name} · ${toDateInputValue(cycle.start)} to ${toDateInputValue(cycle.end)}`,
-                  quantity: toMoney(1),
-                  unitPrice: toMoney(rentAmount),
-                  amount: toMoney(rentAmount),
-                },
-                ...(oneTimeSecurityDepositCharge > 0
-                  ? [
-                      {
-                        itemType: "ADJUSTMENT" as const,
-                        description: `Security deposit · ${securityDepositMonths} month(s)`,
-                        quantity: toMoney(1),
-                        unitPrice: toMoney(oneTimeSecurityDepositCharge),
-                        amount: toMoney(oneTimeSecurityDepositCharge),
-                      },
-                    ]
-                  : []),
-                ...cycleCharges.map((charge) => ({
-                  itemType: "RECURRING_CHARGE" as const,
-                  description: `${charge.label} · ${toDateInputValue(cycle.start)} to ${toDateInputValue(cycle.end)}`,
-                  quantity: toMoney(1),
-                  unitPrice: toMoney(Number(charge.amount.toString())),
-                  amount: toMoney(Number(charge.amount.toString())),
-                  contractRecurringChargeId: charge.id,
-                })),
-                ...selectedCycleReadings.map((reading) => ({
-                  itemType: "UTILITY_READING" as const,
-                  description:
-                    utilityServiceCycle != null
-                      ? buildUtilityReadingDescription({
-                          utilityType: reading.meter.utilityType,
-                          meterCode: reading.meter.meterCode,
-                          serviceStart: utilityServiceCycle.start,
-                          serviceEnd: utilityServiceCycle.end,
-                        })
-                      : `${reading.meter.utilityType.replaceAll("_", " ")} reading · ${reading.meter.meterCode} · ${reading.readingDate.toISOString().slice(0, 10)}`,
-                  quantity: toMoney(Number(reading.consumption.toString())),
-                  unitPrice: toMoney(Number(reading.ratePerUnit.toString())),
-                  amount: toMoney(Number(reading.totalAmount.toString())),
-                  meterReadingId: reading.id,
-                })),
-                ...cycleCosaAllocations.map((allocation) => ({
-                  itemType: "COSA" as const,
-                  description: allocation.cosa.description,
-                  quantity: toMoney(1),
-                  unitPrice: toMoney(Number(allocation.computedAmount.toString())),
-                  amount: toMoney(Number(allocation.computedAmount.toString())),
-                  cosaAllocationId: allocation.id,
-                })),
-                ...(freeRentConcessionAmount > 0
-                  ? [
-                      {
-                        itemType: "ADJUSTMENT" as const,
-                        description: `Free rent concession · ${cycleLabel}`,
-                        quantity: toMoney(1),
-                        unitPrice: toMoney(-freeRentConcessionAmount),
-                        amount: toMoney(-freeRentConcessionAmount),
-                      },
-                    ]
-                  : []),
-                ...(advanceRentCreditAmount > 0
-                  ? [
-                      {
-                        itemType: "ADJUSTMENT" as const,
-                        description: `Advance rent applied · ${cycleLabel}`,
-                        quantity: toMoney(1),
-                        unitPrice: toMoney(-advanceRentCreditAmount),
-                        amount: toMoney(-advanceRentCreditAmount),
-                      },
-                    ]
-                  : []),
+      for (const [lineId, lineAdjustment] of lineAdjustmentsByLineId) {
+        const baseLine = baseLines.find((line) => line.lineId === lineId);
+
+        if (!baseLine) {
+          continue;
+        }
+
+        const outcome = calculateInvoiceGenerationLineOutcome({
+          lineAmount: baseLine.amount,
+          adjustment: lineAdjustment,
+        });
+
+        if (lineAdjustment.action !== "FULL" && outcome.billedAmount <= 0) {
+          return {
+            errors: {
+              lineAdjustments: [
+                "Adjusted invoice lines must still leave some amount billed now.",
               ],
             },
-          },
-        })
-      );
+            message: "Invoice line reduction is too large.",
+          };
+        }
+
+        matchedLineAdjustments.add(`${selectionKey}::${lineId}`);
+      }
+
+      selectedCycleEntries.push({
+        selectionKey,
+        contract,
+        cycle,
+        cycleLabel,
+        rentAmount,
+        baseLines,
+        lineAdjustmentsByLineId,
+        oneTimeSecurityDepositCharge,
+        freeRentConcessionAmount,
+        advanceRentCreditAmount,
+        securityDepositMonths,
+      });
     }
   }
 
@@ -1320,15 +1603,399 @@ export async function generateInvoicesAction(
     };
   }
 
-  if (operations.length === 0) {
+  if (matchedLineAdjustments.size !== validatedFields.data.lineAdjustments.length) {
+    return {
+      errors: {
+        lineAdjustments: [
+          "One or more invoice line adjustments are no longer eligible. Refresh and try again.",
+        ],
+      },
+      message: "Invoice line selection is out of date.",
+    };
+  }
+
+  if (selectedCycleEntries.length === 0) {
     return {
       message:
         "No selected billing months were eligible for invoice generation.",
     };
   }
 
+  const selectedCycleInfo: InvoiceGenerationSelectedCycle[] = selectedCycleEntries.map(
+    (entry) => ({
+      cycleSelectionKey: entry.selectionKey,
+      contractId: entry.contract.id,
+      start: entry.cycle.start,
+      end: entry.cycle.end,
+    })
+  );
+  const persistedDeferredBalanceByKey = new Map(
+    deferredBalances.map((balance) => [
+      buildPersistedCarryForwardKey(balance.id),
+      {
+        ...balance,
+        deferredAmount: Number(balance.deferredAmount.toString()),
+      } satisfies InvoiceGenerationPersistedDeferredBalance,
+    ])
+  );
+  const persistedCarryForwardSources: InvoiceGenerationCarryForwardSource[] =
+    deferredBalances.map((balance) => ({
+      carryForwardKey: buildPersistedCarryForwardKey(balance.id),
+      contractId: balance.contractId,
+      availableAfter: balance.sourceInvoice.billingPeriodEnd,
+      amount: Number(balance.deferredAmount.toString()),
+      sourceLabel: `${balance.sourceDescription} · ${balance.sourceInvoice.invoiceNumber}`,
+    }));
+  const syntheticCarryForwardSources: InvoiceGenerationCarryForwardSource[] =
+    selectedCycleEntries.flatMap((entry) =>
+      entry.baseLines.flatMap((line) => {
+        const lineAdjustment = entry.lineAdjustmentsByLineId.get(line.lineId);
+
+        if (!lineAdjustment) {
+          return [];
+        }
+
+        const outcome = calculateInvoiceGenerationLineOutcome({
+          lineAmount: line.amount,
+          adjustment: lineAdjustment,
+        });
+
+        if (outcome.deferredAmount <= 0) {
+          return [];
+        }
+
+        return [
+          {
+            carryForwardKey: buildSyntheticCarryForwardKey(line.lineId),
+            contractId: entry.contract.id,
+            availableAfter: entry.cycle.end,
+            amount: outcome.deferredAmount,
+            sourceLabel: buildDeferredBalanceSourceDescription({
+              lineLabel: line.label,
+              cycleLabel: entry.cycleLabel,
+            }),
+          },
+        ];
+      })
+    );
+  const carryForwardAssignments = buildCarryForwardAssignments({
+    selectedCycles: selectedCycleInfo,
+    sources: [...persistedCarryForwardSources, ...syntheticCarryForwardSources],
+  });
+  const matchedCarryForwardSelections = new Set<string>();
+
+  for (const selection of validatedFields.data.carryForwardSelections) {
+    const assignedSources =
+      carryForwardAssignments.get(selection.cycleSelectionKey) ?? [];
+
+    if (
+      assignedSources.some(
+        (source) => source.carryForwardKey === selection.carryForwardKey
+      )
+    ) {
+      matchedCarryForwardSelections.add(
+        `${selection.cycleSelectionKey}::${selection.carryForwardKey}`
+      );
+    }
+  }
+
+  if (
+    matchedCarryForwardSelections.size !==
+    validatedFields.data.carryForwardSelections.length
+  ) {
+    return {
+      errors: {
+        carryForwardSelections: [
+          "One or more deferred balances are no longer eligible for this invoice run.",
+        ],
+      },
+      message: "Deferred balance selection is out of date.",
+    };
+  }
+
   try {
-    await prisma.$transaction(operations);
+    const sortedCycleEntries = [...selectedCycleEntries].sort((left, right) => {
+      if (left.cycle.start.getTime() !== right.cycle.start.getTime()) {
+        return left.cycle.start.getTime() - right.cycle.start.getTime();
+      }
+
+      return left.selectionKey.localeCompare(right.selectionKey);
+    });
+
+    await prisma.$transaction(async (tx) => {
+      const generatedDeferredBalanceByKey = new Map<
+        string,
+        GeneratedDeferredBalanceRecord
+      >();
+
+      for (const entry of sortedCycleEntries) {
+        const invoice = await tx.invoice.create({
+          data: {
+            invoiceNumber: buildInvoiceNumber(
+              issueDate,
+              entry.contract.property.propertyCode
+            ),
+            contractId: entry.contract.id,
+            tenantId: entry.contract.tenantId,
+            publicAccessCode: generateInvoiceAccessCode(),
+            issueDate,
+            dueDate,
+            billingPeriodStart: entry.cycle.start,
+            billingPeriodEnd: entry.cycle.end,
+            subtotal: toMoney(0),
+            additionalCharges: toMoney(0),
+            discount: toMoney(0),
+            totalAmount: toMoney(0),
+            balanceDue: toMoney(0),
+            status: "DRAFT",
+          },
+        });
+
+        const createdItemMeta: Array<{
+          itemType: string;
+          amount: number;
+        }> = [];
+        const createdBaseItemIdByLineId = new Map<string, string>();
+        const noteLines: string[] = [];
+        let discountTotal = 0;
+
+        for (const line of entry.baseLines) {
+          const createdItem = await tx.invoiceItem.create({
+            data: {
+              invoiceId: invoice.id,
+              itemType: line.type,
+              description: line.description,
+              quantity: toMoney(line.quantity),
+              unitPrice: toMoney(line.unitPrice),
+              amount: toMoney(line.amount),
+              contractRecurringChargeId: line.contractRecurringChargeId,
+              meterReadingId: line.meterReadingId,
+              cosaAllocationId: line.cosaAllocationId,
+            },
+          });
+
+          createdBaseItemIdByLineId.set(line.lineId, createdItem.id);
+          createdItemMeta.push({
+            itemType: line.type,
+            amount: line.amount,
+          });
+        }
+
+        if (entry.oneTimeSecurityDepositCharge > 0) {
+          await tx.invoiceItem.create({
+            data: {
+              invoiceId: invoice.id,
+              itemType: "ADJUSTMENT",
+              description: `Security deposit · ${entry.securityDepositMonths} month(s)`,
+              quantity: toMoney(1),
+              unitPrice: toMoney(entry.oneTimeSecurityDepositCharge),
+              amount: toMoney(entry.oneTimeSecurityDepositCharge),
+            },
+          });
+          createdItemMeta.push({
+            itemType: "ADJUSTMENT",
+            amount: entry.oneTimeSecurityDepositCharge,
+          });
+        }
+
+        const selectedCarryForwardKeys =
+          selectedCarryForwardKeysByCycle.get(entry.selectionKey) ?? new Set<string>();
+
+        for (const source of carryForwardAssignments.get(entry.selectionKey) ?? []) {
+          if (!selectedCarryForwardKeys.has(source.carryForwardKey)) {
+            continue;
+          }
+
+          const parsedKey = parseCarryForwardKey(source.carryForwardKey);
+
+          if (!parsedKey) {
+            continue;
+          }
+
+          const deferredBalanceRecord =
+            parsedKey.kind === "persisted"
+              ? persistedDeferredBalanceByKey.get(source.carryForwardKey) ?? null
+              : generatedDeferredBalanceByKey.get(source.carryForwardKey) ?? null;
+
+          if (!deferredBalanceRecord) {
+            continue;
+          }
+
+          const arrearsItem = await tx.invoiceItem.create({
+            data: {
+              invoiceId: invoice.id,
+              itemType: "ARREARS",
+              description: buildCarryForwardArrearsDescription({
+                invoiceNumber: deferredBalanceRecord.sourceInvoice.invoiceNumber,
+                sourceDescription: deferredBalanceRecord.sourceDescription,
+              }),
+              quantity: toMoney(1),
+              unitPrice: toMoney(deferredBalanceRecord.deferredAmount),
+              amount: toMoney(deferredBalanceRecord.deferredAmount),
+            },
+          });
+
+          await tx.deferredInvoiceBalance.update({
+            where: { id: deferredBalanceRecord.id },
+            data: {
+              status: "APPLIED",
+              resolvedInvoiceId: invoice.id,
+              resolvedInvoiceItemId: arrearsItem.id,
+            },
+          });
+
+          createdItemMeta.push({
+            itemType: "ARREARS",
+            amount: deferredBalanceRecord.deferredAmount,
+          });
+        }
+
+        if (entry.freeRentConcessionAmount > 0) {
+          await tx.invoiceItem.create({
+            data: {
+              invoiceId: invoice.id,
+              itemType: "ADJUSTMENT",
+              description: `Free rent concession · ${entry.cycleLabel}`,
+              quantity: toMoney(1),
+              unitPrice: toMoney(-entry.freeRentConcessionAmount),
+              amount: toMoney(-entry.freeRentConcessionAmount),
+            },
+          });
+          createdItemMeta.push({
+            itemType: "ADJUSTMENT",
+            amount: -entry.freeRentConcessionAmount,
+          });
+        }
+
+        if (entry.advanceRentCreditAmount > 0) {
+          await tx.invoiceItem.create({
+            data: {
+              invoiceId: invoice.id,
+              itemType: "ADJUSTMENT",
+              description: `Advance rent applied · ${entry.cycleLabel}`,
+              quantity: toMoney(1),
+              unitPrice: toMoney(-entry.advanceRentCreditAmount),
+              amount: toMoney(-entry.advanceRentCreditAmount),
+            },
+          });
+          createdItemMeta.push({
+            itemType: "ADJUSTMENT",
+            amount: -entry.advanceRentCreditAmount,
+          });
+        }
+
+        for (const line of entry.baseLines) {
+          const lineAdjustment = entry.lineAdjustmentsByLineId.get(line.lineId);
+
+          if (!lineAdjustment || lineAdjustment.action === "FULL") {
+            continue;
+          }
+
+          const outcome = calculateInvoiceGenerationLineOutcome({
+            lineAmount: line.amount,
+            adjustment: lineAdjustment,
+          });
+
+          await tx.invoiceItem.create({
+            data: {
+              invoiceId: invoice.id,
+              itemType: "ADJUSTMENT",
+              description: buildInvoiceAdjustmentDescription({
+                lineLabel: line.label,
+                cycleLabel: entry.cycleLabel,
+                action: lineAdjustment.action,
+              }),
+              quantity: toMoney(1),
+              unitPrice: toMoney(-outcome.reductionAmount),
+              amount: toMoney(-outcome.reductionAmount),
+            },
+          });
+
+          createdItemMeta.push({
+            itemType: "ADJUSTMENT",
+            amount: -outcome.reductionAmount,
+          });
+
+          if (outcome.discountAmount > 0) {
+            discountTotal += outcome.discountAmount;
+            noteLines.push(
+              buildDiscountNote({
+                lineLabel: line.label,
+                cycleLabel: entry.cycleLabel,
+                discountAmount: outcome.discountAmount,
+              })
+            );
+          }
+
+          if (outcome.deferredAmount > 0) {
+            noteLines.push(
+              buildDeferredBalanceNote({
+                lineLabel: line.label,
+                cycleLabel: entry.cycleLabel,
+                deferredAmount: outcome.deferredAmount,
+              })
+            );
+
+            const deferredBalance = await tx.deferredInvoiceBalance.create({
+              data: {
+                contractId: entry.contract.id,
+                tenantId: entry.contract.tenantId,
+                sourceInvoiceId: invoice.id,
+                sourceInvoiceItemId:
+                  createdBaseItemIdByLineId.get(line.lineId) ?? "",
+                sourceDescription: buildDeferredBalanceSourceDescription({
+                  lineLabel: line.label,
+                  cycleLabel: entry.cycleLabel,
+                }),
+                sourceItemType: line.type,
+                originalAmount: toMoney(line.amount),
+                deferredAmount: toMoney(outcome.deferredAmount),
+                status: "OPEN",
+              },
+            });
+
+            generatedDeferredBalanceByKey.set(
+              buildSyntheticCarryForwardKey(line.lineId),
+              {
+                id: deferredBalance.id,
+                contractId: entry.contract.id,
+                tenantId: entry.contract.tenantId,
+                sourceDescription: deferredBalance.sourceDescription,
+                deferredAmount: outcome.deferredAmount,
+                sourceInvoice: {
+                  id: invoice.id,
+                  invoiceNumber: invoice.invoiceNumber,
+                  billingPeriodStart: entry.cycle.start,
+                  billingPeriodEnd: entry.cycle.end,
+                },
+              }
+            );
+          }
+        }
+
+        const subtotal = createdItemMeta
+          .filter((item) => item.itemType === "RENT")
+          .reduce((sum, item) => sum + item.amount, 0);
+        const additionalCharges = createdItemMeta
+          .filter((item) => item.itemType !== "RENT")
+          .reduce((sum, item) => sum + item.amount, 0);
+        const totalAmount = subtotal + additionalCharges;
+        const balanceDue = Math.max(0, totalAmount);
+
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            subtotal: toMoney(subtotal),
+            additionalCharges: toMoney(additionalCharges),
+            discount: toMoney(discountTotal),
+            totalAmount: toMoney(totalAmount),
+            balanceDue: toMoney(balanceDue),
+            status: getInvoiceStatusFromBalance(balanceDue, false),
+            notes: noteLines.length > 0 ? noteLines.join("\n") : null,
+          },
+        });
+      }
+    });
   } catch {
     return {
       message:
@@ -1341,7 +2008,7 @@ export async function generateInvoicesAction(
     redirectTo: withToast("/billing", {
       intent: "success",
       title: "Invoices generated",
-      description: `Generated ${operations.length} invoice cycle(s).`,
+      description: `Generated ${selectedCycleEntries.length} invoice cycle(s).`,
     }),
   };
 }

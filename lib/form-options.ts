@@ -61,6 +61,15 @@ export const BACKLOG_PAYMENT_STATUSES = ["UNPAID", "PARTIAL", "PAID"] as const;
 export const BACKLOG_ADJUSTMENT_TYPES = ["ADJUSTMENT", "ARREARS"] as const;
 export const INVOICE_ORIGINS = ["GENERATED", "BACKLOG"] as const;
 export const METER_READING_ORIGINS = ["OPERATIONAL", "BACKLOG"] as const;
+export const INVOICE_GENERATION_ADJUSTMENT_ACTIONS = [
+  "FULL",
+  "DISCOUNT",
+  "DEFER",
+] as const;
+export const INVOICE_GENERATION_ADJUSTMENT_VALUE_TYPES = [
+  "PERCENT",
+  "FIXED",
+] as const;
 
 export const PROPERTY_OWNERSHIP_TYPE_LABELS = {
   OWNED: "Owned",
@@ -177,4 +186,15 @@ export const INVOICE_ORIGIN_LABELS = {
 export const METER_READING_ORIGIN_LABELS = {
   OPERATIONAL: "Operational",
   BACKLOG: "Backlog",
+} as const;
+
+export const INVOICE_GENERATION_ADJUSTMENT_ACTION_LABELS = {
+  FULL: "Bill in full",
+  DISCOUNT: "Discount now",
+  DEFER: "Bill later",
+} as const;
+
+export const INVOICE_GENERATION_ADJUSTMENT_VALUE_TYPE_LABELS = {
+  PERCENT: "Percent",
+  FIXED: "Fixed amount",
 } as const;

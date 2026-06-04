@@ -64,8 +64,19 @@ export async function getInvoiceGenerationContractOptions() {
     select: {
       id: true,
       tenantId: true,
+      monthlyRent: true,
       endDate: true,
       paymentStartDate: true,
+      rentAdjustments: {
+        orderBy: [{ effectiveDate: "asc" }],
+        select: {
+          effectiveDate: true,
+          increaseType: true,
+          increaseValue: true,
+          calculationType: true,
+          basedOn: true,
+        },
+      },
       property: {
         select: {
           id: true,
@@ -168,9 +179,38 @@ export async function getInvoiceGenerationContractOptions() {
         },
       })
     : [];
+  const deferredInvoiceBalances = contracts.length
+    ? await prisma.deferredInvoiceBalance.findMany({
+        where: {
+          contractId: {
+            in: contracts.map((contract) => contract.id),
+          },
+          status: "OPEN",
+        },
+        orderBy: [{ createdAt: "asc" }],
+        select: {
+          id: true,
+          contractId: true,
+          sourceDescription: true,
+          deferredAmount: true,
+          sourceItemType: true,
+          sourceInvoice: {
+            select: {
+              invoiceNumber: true,
+              billingPeriodStart: true,
+              billingPeriodEnd: true,
+            },
+          },
+        },
+      })
+    : [];
 
   const readingsByScope = new Map<string, typeof readings>();
   const cosaAllocationsByContractId = new Map<string, typeof cosaAllocations>();
+  const deferredBalancesByContractId = new Map<
+    string,
+    typeof deferredInvoiceBalances
+  >();
 
   for (const reading of readings) {
     const scopeKey = getContractScopeKey(
@@ -192,12 +232,27 @@ export async function getInvoiceGenerationContractOptions() {
     cosaAllocationsByContractId.set(allocation.contractId, entries);
   }
 
+  for (const deferredBalance of deferredInvoiceBalances) {
+    const entries =
+      deferredBalancesByContractId.get(deferredBalance.contractId) ?? [];
+    entries.push(deferredBalance);
+    deferredBalancesByContractId.set(deferredBalance.contractId, entries);
+  }
+
   return contracts.map((contract) => ({
     ...contract,
+    monthlyRent: contract.monthlyRent.toString(),
     readings:
       readingsByScope.get(
         getContractScopeKey(contract.property.id, contract.tenantId)
       ) ?? [],
+    rentAdjustments: contract.rentAdjustments.map((adjustment) => ({
+      effectiveDate: adjustment.effectiveDate.toISOString(),
+      increaseType: adjustment.increaseType,
+      increaseValue: adjustment.increaseValue.toString(),
+      calculationType: adjustment.calculationType,
+      basedOn: adjustment.basedOn,
+    })),
     recurringCharges: contract.recurringCharges.map((charge) => ({
       ...charge,
       amount: charge.amount.toString(),
@@ -216,6 +271,18 @@ export async function getInvoiceGenerationContractOptions() {
           billingDate: allocation.cosa.billingDate.toISOString(),
           allocationType: allocation.cosa.allocationType,
         },
+      })),
+    deferredBalances:
+      (deferredBalancesByContractId.get(contract.id) ?? []).map((balance) => ({
+        id: balance.id,
+        sourceDescription: balance.sourceDescription,
+        sourceItemType: balance.sourceItemType,
+        deferredAmount: balance.deferredAmount.toString(),
+        sourceInvoiceNumber: balance.sourceInvoice.invoiceNumber,
+        sourceBillingPeriodStart:
+          balance.sourceInvoice.billingPeriodStart.toISOString(),
+        sourceBillingPeriodEnd:
+          balance.sourceInvoice.billingPeriodEnd.toISOString(),
       })),
   }));
 }
