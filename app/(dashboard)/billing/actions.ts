@@ -57,7 +57,6 @@ import {
 import { recurringChargeSchema } from "@/lib/validations/recurring-charge";
 import {
   dateInputToAppEndOfDay,
-  dateInputToAppStartOfDay,
   formatDate,
   toDateInputValue,
 } from "@/lib/format";
@@ -1160,12 +1159,6 @@ export async function generateInvoicesAction(
     where: {
       status: "ACTIVE",
       tenantId: validatedFields.data.tenantId,
-      paymentStartDate: {
-        lte: issueDate,
-      },
-      endDate: {
-        gte: dateInputToAppStartOfDay(validatedFields.data.issueDate),
-      },
     },
     select: {
       id: true,

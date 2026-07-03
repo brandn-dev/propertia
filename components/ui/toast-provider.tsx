@@ -44,9 +44,12 @@ const DEFAULT_TITLES: Record<ToastIntent, string> = {
 };
 
 const TOAST_STYLES: Record<ToastIntent, string> = {
-  success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-50",
-  error: "border-red-500/30 bg-red-500/10 text-red-50",
-  info: "border-sky-500/30 bg-sky-500/10 text-sky-50",
+  success:
+    "border-emerald-600/25 bg-emerald-50 text-emerald-950 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-50",
+  error:
+    "border-red-600/25 bg-red-50 text-red-950 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-50",
+  info:
+    "border-sky-600/25 bg-sky-50 text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-50",
 };
 
 const TOAST_ICON_MAP = {
