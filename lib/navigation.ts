@@ -115,7 +115,6 @@ export const APP_ROUTES: AppRoute[] = [
     group: "Operations",
     capability: "MANAGE_BACKLOG",
     icon: Clock3,
-    badge: "History",
   },
   {
     title: "COSA",

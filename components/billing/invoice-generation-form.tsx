@@ -36,7 +36,7 @@ import {
   RECURRING_CHARGE_TYPE_LABELS,
   UTILITY_TYPE_LABELS,
 } from "@/lib/form-options";
-import { formatLongDate } from "@/lib/format";
+import { dateInputToAppEndOfDay, formatLongDate } from "@/lib/format";
 import { getUtilityUnitLabel } from "@/lib/utility-units";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -272,9 +272,7 @@ export function InvoiceGenerationForm({
   const [issueDate, setIssueDate] = useState(initialValues.issueDate);
   const cutoffDate = getHistoricalBacklogCutoffDate();
 
-  const issueDateValue = issueDate
-    ? new Date(`${issueDate}T23:59:59.999`)
-    : new Date();
+  const issueDateValue = issueDate ? dateInputToAppEndOfDay(issueDate) : new Date();
 
   const pendingContracts = contractOptions
     .map((contract) => {

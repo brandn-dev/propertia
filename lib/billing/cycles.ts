@@ -1,5 +1,7 @@
 import {
   APP_TIME_ZONE,
+  dateInputToAppEndOfDay,
+  dateInputToAppStartOfDay,
   getDatePartsInAppTimeZone,
   toDateInputValue,
 } from "@/lib/format";
@@ -16,15 +18,11 @@ export type UtilityBillingWindow = {
 };
 
 function startOfDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
+  return dateInputToAppStartOfDay(toDateInputValue(date));
 }
 
 function endOfDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value;
+  return dateInputToAppEndOfDay(toDateInputValue(date));
 }
 
 function getDaysInMonth(year: number, monthIndex: number) {
@@ -32,27 +30,32 @@ function getDaysInMonth(year: number, monthIndex: number) {
 }
 
 export function addMonthsClamped(date: Date, months: number) {
-  const year = date.getFullYear();
-  const monthIndex = date.getMonth() + months;
+  const parts = getDatePartsInAppTimeZone(date);
+
+  if (!parts) {
+    return new Date(date);
+  }
+
+  const year = Number(parts.year);
+  const monthIndex = Number(parts.month) - 1 + months;
   const targetYear = year + Math.floor(monthIndex / 12);
   const normalizedMonthIndex = ((monthIndex % 12) + 12) % 12;
   const targetDay = Math.min(
-    date.getDate(),
+    Number(parts.day),
     getDaysInMonth(targetYear, normalizedMonthIndex)
   );
 
-  const result = new Date(date);
-  result.setFullYear(targetYear, normalizedMonthIndex, targetDay);
-
-  return result;
+  return dateInputToAppStartOfDay(
+    `${targetYear}-${String(normalizedMonthIndex + 1).padStart(2, "0")}-${String(
+      targetDay
+    ).padStart(2, "0")}`
+  );
 }
 
 export function getBillingCycleAtIndex(anchorDate: Date, cycleIndex: number): BillingCycle {
   const start = startOfDay(addMonthsClamped(anchorDate, cycleIndex));
   const nextStart = startOfDay(addMonthsClamped(anchorDate, cycleIndex + 1));
-  const end = new Date(nextStart);
-  end.setDate(end.getDate() - 1);
-  end.setHours(23, 59, 59, 999);
+  const end = new Date(nextStart.getTime() - 1);
 
   return {
     start,

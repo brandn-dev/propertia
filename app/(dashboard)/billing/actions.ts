@@ -55,7 +55,12 @@ import {
   paymentRecordingSchema,
 } from "@/lib/validations/payment-recording";
 import { recurringChargeSchema } from "@/lib/validations/recurring-charge";
-import { formatDate, toDateInputValue } from "@/lib/format";
+import {
+  dateInputToAppEndOfDay,
+  dateInputToAppStartOfDay,
+  formatDate,
+  toDateInputValue,
+} from "@/lib/format";
 
 export type InvoiceGenerationFormState = {
   message?: string;
@@ -512,12 +517,6 @@ function buildUtilityReadingDescription(params: {
   serviceEnd: Date;
 }) {
   return `${UTILITY_TYPE_LABELS[params.utilityType]} reading · ${params.meterCode} · service ${formatDate(params.serviceStart)} to ${formatDate(params.serviceEnd)}`;
-}
-
-function startOfDay(value: Date) {
-  const next = new Date(value);
-  next.setHours(0, 0, 0, 0);
-  return next;
 }
 
 function endOfDay(value: Date) {
@@ -1153,8 +1152,8 @@ export async function generateInvoicesAction(
     };
   }
 
-  const issueDate = endOfDay(new Date(validatedFields.data.issueDate));
-  const dueDate = endOfDay(new Date(validatedFields.data.dueDate));
+  const issueDate = dateInputToAppEndOfDay(validatedFields.data.issueDate);
+  const dueDate = dateInputToAppEndOfDay(validatedFields.data.dueDate);
   const cutoffDate = getHistoricalBacklogCutoffDate();
 
   const contracts = await prisma.contract.findMany({
@@ -1165,7 +1164,7 @@ export async function generateInvoicesAction(
         lte: issueDate,
       },
       endDate: {
-        gte: startOfDay(new Date(validatedFields.data.issueDate)),
+        gte: dateInputToAppStartOfDay(validatedFields.data.issueDate),
       },
     },
     select: {
