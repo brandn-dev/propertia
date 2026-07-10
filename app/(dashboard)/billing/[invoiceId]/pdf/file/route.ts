@@ -1,5 +1,9 @@
 import { requireCapability } from "@/lib/auth/user";
-import { renderInvoiceBestPdfBuffer, buildInvoicePdfFilename } from "@/lib/billing/invoice-pdf";
+import {
+  buildInvoicePdfFilename,
+  buildInvoicePdfRenderErrorResponse,
+  renderInvoiceBestPdfBuffer,
+} from "@/lib/billing/invoice-pdf";
 import { buildInvoicePdfDebugHeaders } from "@/lib/billing/invoice-pdf-debug";
 import { parseInvoicePaperSize } from "@/lib/billing/invoice-pdf-options";
 import { generateInvoiceQrDataUrl } from "@/lib/billing/invoice-qr";
@@ -48,20 +52,34 @@ export async function GET(
     totalAmount: Number(invoice.totalAmount.toString()),
     balanceDue: Number(invoice.balanceDue.toString()),
   });
-  const { buffer: pdfBuffer, renderer } = await renderInvoiceBestPdfBuffer({
-    requestUrl: request.url,
-    invoiceId: invoice.id,
-    invoiceNumber: invoice.invoiceNumber,
-    model,
-    options: {
-      variant: "internal",
-      paperSize,
-      accessBlock: {
-        qrDataUrl,
-        publicAccessCode,
+  let pdfResult: Awaited<ReturnType<typeof renderInvoiceBestPdfBuffer>>;
+
+  try {
+    pdfResult = await renderInvoiceBestPdfBuffer({
+      requestUrl: request.url,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      model,
+      options: {
+        variant: "internal",
+        paperSize,
+        accessBlock: {
+          qrDataUrl,
+          publicAccessCode,
+        },
       },
-    },
-  });
+    });
+  } catch (error) {
+    const errorResponse = buildInvoicePdfRenderErrorResponse(error);
+
+    if (errorResponse) {
+      return errorResponse;
+    }
+
+    throw error;
+  }
+
+  const { buffer: pdfBuffer, renderer } = pdfResult;
   const filename = buildInvoicePdfFilename(invoice.invoiceNumber);
   const pdfBytes = new Uint8Array(pdfBuffer);
 

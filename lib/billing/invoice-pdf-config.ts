@@ -49,8 +49,10 @@ export function getInvoicePdfRenderMode() {
 }
 
 export function getInvoicePdfDebugHeadersEnabled() {
+  const configured = process.env.INVOICE_PDF_DEBUG_HEADERS?.trim().toLowerCase();
+
   return (
-    process.env.INVOICE_PDF_DEBUG_HEADERS === "1" ||
+    (configured ? configured !== "0" && configured !== "false" : false) ||
     process.env.NODE_ENV !== "production"
   );
 }

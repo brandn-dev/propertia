@@ -2,6 +2,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { InvoicePdfDocument } from "@/components/billing/invoice-pdf-document";
 import {
   getConfiguredInvoicePdfRenderMode,
+  getInvoicePdfDebugHeadersEnabled,
   getInvoicePdfRenderBaseUrl,
   getInvoicePdfRenderMode,
 } from "@/lib/billing/invoice-pdf-config";
@@ -14,6 +15,54 @@ import {
 } from "@/lib/billing/invoice-pdf-options";
 import { renderHtmlInvoicePdfBuffer as renderChromeInvoicePdfBuffer } from "@/lib/billing/invoice-pdf-browser";
 import { renderHtmlInvoicePdfBufferWithGotenberg } from "@/lib/billing/invoice-pdf-gotenberg";
+
+export class InvoicePdfRenderError extends Error {
+  readonly renderer: "gotenberg" | "chromium";
+  readonly htmlUrl: string;
+
+  constructor({
+    renderer,
+    htmlUrl,
+    cause,
+  }: {
+    renderer: "gotenberg" | "chromium";
+    htmlUrl: string;
+    cause: unknown;
+  }) {
+    super(buildInvoicePdfRenderErrorMessage(renderer, cause), { cause });
+    this.name = "InvoicePdfRenderError";
+    this.renderer = renderer;
+    this.htmlUrl = htmlUrl;
+  }
+}
+
+export function buildInvoicePdfRenderErrorResponse(error: unknown) {
+  if (!(error instanceof InvoicePdfRenderError)) {
+    return null;
+  }
+
+  return new Response(
+    [
+      "Invoice PDF render failed.",
+      `Renderer: ${error.renderer}`,
+      `Message: ${error.message}`,
+      "Check GOTENBERG_URL and INVOICE_PDF_RENDER_BASE_URL.",
+    ].join("\n"),
+    {
+      status: 502,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "private, no-store",
+        ...(getInvoicePdfDebugHeadersEnabled()
+          ? {
+              "X-Invoice-Renderer": error.renderer,
+              "X-Invoice-Html-Url": error.htmlUrl,
+            }
+          : {}),
+      },
+    }
+  );
+}
 
 export function buildInvoicePdfFilename(invoiceNumber: string) {
   const safeInvoiceNumber = invoiceNumber
@@ -89,15 +138,23 @@ export async function renderInvoiceBestPdfBuffer({
   const rendererMode = getInvoicePdfRenderMode();
 
   if (rendererMode === "gotenberg") {
-    return {
-      buffer: await renderHtmlInvoicePdfBufferWithGotenberg({
-        url,
-        paperSize: options.paperSize ?? DEFAULT_INVOICE_PAPER_SIZE,
-        invoiceNumber,
-      }),
-      renderer: "gotenberg",
-      htmlUrl: url,
-    };
+    try {
+      return {
+        buffer: await renderHtmlInvoicePdfBufferWithGotenberg({
+          url,
+          paperSize: options.paperSize ?? DEFAULT_INVOICE_PAPER_SIZE,
+          invoiceNumber,
+        }),
+        renderer: "gotenberg",
+        htmlUrl: url,
+      };
+    } catch (error) {
+      throw new InvoicePdfRenderError({
+        renderer: "gotenberg",
+        htmlUrl: url,
+        cause: error,
+      });
+    }
   }
 
   if (rendererMode === "chromium") {
@@ -109,10 +166,15 @@ export async function renderInvoiceBestPdfBuffer({
       };
     } catch (error) {
       if (configuredMode || process.env.NODE_ENV === "production") {
-        throw error;
+        throw new InvoicePdfRenderError({
+          renderer: "chromium",
+          htmlUrl: url,
+          cause: error,
+        });
       }
 
-      console.error("Chrome HTML PDF render failed, falling back to React PDF render.", error, {
+      logHtmlInvoicePdfFallback("Chrome", error, {
+        configuredMode,
         invoiceId,
         variant: options.variant,
         paperSize: options.paperSize,
@@ -159,6 +221,38 @@ async function renderReactInvoicePdfBuffer({
       paperSize={paperSize}
       accessBlock={accessBlock}
     />
+  );
+}
+
+function buildInvoicePdfRenderErrorMessage(
+  renderer: "gotenberg" | "chromium",
+  cause: unknown
+) {
+  const detail =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === "string"
+        ? cause
+        : "Unknown render failure.";
+
+  return `Invoice PDF render failed with ${renderer}: ${detail}`;
+}
+
+function logHtmlInvoicePdfFallback(
+  renderer: "Chrome" | "Gotenberg",
+  error: unknown,
+  context: {
+    configuredMode: ReturnType<typeof getConfiguredInvoicePdfRenderMode>;
+    invoiceId: string;
+    variant: InvoicePdfRenderVariant;
+    paperSize: InvoicePaperSize | undefined;
+    itemCount: number;
+  }
+) {
+  console.error(
+    `${renderer} HTML PDF render failed, falling back to React PDF render.`,
+    error,
+    context
   );
 }
 

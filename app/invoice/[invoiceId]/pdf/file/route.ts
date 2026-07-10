@@ -1,6 +1,10 @@
 import { getCurrentUser } from "@/lib/auth/user";
 import { buildInvoicePdfDebugHeaders } from "@/lib/billing/invoice-pdf-debug";
-import { renderInvoiceBestPdfBuffer, buildInvoicePdfFilename } from "@/lib/billing/invoice-pdf";
+import {
+  buildInvoicePdfFilename,
+  buildInvoicePdfRenderErrorResponse,
+  renderInvoiceBestPdfBuffer,
+} from "@/lib/billing/invoice-pdf";
 import { parseInvoicePaperSize } from "@/lib/billing/invoice-pdf-options";
 import { buildInvoicePresentationModel } from "@/lib/billing/invoice-presenter";
 import { hasGrantedInvoiceAccess } from "@/lib/billing/public-access";
@@ -34,16 +38,30 @@ export async function GET(
   const shouldDownload = url.searchParams.get("download") === "1";
   const paperSize = parseInvoicePaperSize(url.searchParams.get("paper"));
   const model = buildInvoicePresentationModel(invoice);
-  const { buffer: pdfBuffer, renderer } = await renderInvoiceBestPdfBuffer({
-    requestUrl: request.url,
-    invoiceId: invoice.id,
-    invoiceNumber: invoice.invoiceNumber,
-    model,
-    options: {
-      variant: "public",
-      paperSize,
-    },
-  });
+  let pdfResult: Awaited<ReturnType<typeof renderInvoiceBestPdfBuffer>>;
+
+  try {
+    pdfResult = await renderInvoiceBestPdfBuffer({
+      requestUrl: request.url,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      model,
+      options: {
+        variant: "public",
+        paperSize,
+      },
+    });
+  } catch (error) {
+    const errorResponse = buildInvoicePdfRenderErrorResponse(error);
+
+    if (errorResponse) {
+      return errorResponse;
+    }
+
+    throw error;
+  }
+
+  const { buffer: pdfBuffer, renderer } = pdfResult;
   const filename = buildInvoicePdfFilename(invoice.invoiceNumber);
   const pdfBytes = new Uint8Array(pdfBuffer);
 

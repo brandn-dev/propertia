@@ -46,9 +46,9 @@ Notes:
 - `DATABASE_URL` should point to your Neon or PostgreSQL database.
 - `SESSION_PASSWORD` must be at least 32 characters long.
 - `APP_URL` should be the public base URL used in generated invoice links and QR codes.
-- `INVOICE_PDF_RENDER_MODE` supports `gotenberg`, `chromium`, or `react-pdf`.
-- `INVOICE_PDF_RENDER_BASE_URL` is optional; set it to the URL that the PDF renderer can reach for this app, such as an internal Docker service URL.
-- `GOTENBERG_URL` is required when using `gotenberg`.
+- `INVOICE_PDF_RENDER_MODE` supports `gotenberg`, `chromium`, or `react-pdf`; use `gotenberg` in production.
+- `INVOICE_PDF_RENDER_BASE_URL` should be the URL that Gotenberg can reach for this app, such as `https://propertia.brandn.dev`.
+- `GOTENBERG_URL` is required when using `gotenberg`, such as `http://gotenberg:3000` on a shared Docker network.
 - `INVOICE_PDF_DEBUG_HEADERS=1` enables renderer/debug headers on invoice PDF responses.
 - the seed script creates or updates the initial admin and meter-reader accounts from these values.
 
@@ -56,15 +56,19 @@ Notes:
 
 Recommended production setup:
 
-- Vercel serves invoice HTML routes
-- Coolify-hosted Gotenberg renders PDF from those routes
+- the app serves invoice HTML routes
+- Coolify/Docker runs Gotenberg as a separate service reachable from the app container
+- `INVOICE_PDF_RENDER_MODE=gotenberg`
+- `GOTENBERG_URL=http://<gotenberg-service>:3000`
+- `INVOICE_PDF_RENDER_BASE_URL=https://propertia.brandn.dev`
+- `INVOICE_PDF_DEBUG_HEADERS=1` while debugging
 - local and deployed should share `DATABASE_URL` if you expect identical invoice output
 
 Debugging helpers:
 
 - protected render diagnostics: `/billing/:invoiceId/pdf/debug`
 - optional PDF debug headers via `INVOICE_PDF_DEBUG_HEADERS=1`
-- if a custom domain fails with HTTP 500, check `renderBaseUrl` in the debug route and set `INVOICE_PDF_RENDER_BASE_URL` to a reachable app URL for Gotenberg/Chromium
+- if PDF rendering fails, check `renderBaseUrl` in the debug route and verify Gotenberg can reach it
 
 If local and deployed output differs, check data parity first, then renderer/layout.
 
