@@ -1,5 +1,9 @@
 import { requireCapability } from "@/lib/auth/user";
-import { getInvoicePdfEnvironmentSnapshot } from "@/lib/billing/invoice-pdf-config";
+import { buildInvoiceHtmlPdfUrl } from "@/lib/billing/invoice-pdf";
+import {
+  getInvoicePdfEnvironmentSnapshot,
+  getInvoicePdfRenderBaseUrl,
+} from "@/lib/billing/invoice-pdf-config";
 import { getInvoiceForView } from "@/lib/data/billing";
 
 type InvoicePdfDebugRouteProps = {
@@ -20,8 +24,16 @@ export async function GET(
     return Response.json({ message: "Invoice not found" }, { status: 404 });
   }
 
+  const renderBaseUrl = getInvoicePdfRenderBaseUrl(request.url);
+
   return Response.json({
     requestUrl: request.url,
+    renderBaseUrl,
+    renderHtmlUrl: buildInvoiceHtmlPdfUrl({
+      requestUrl: renderBaseUrl,
+      invoiceId: invoice.id,
+      variant: "internal",
+    }),
     environment: getInvoicePdfEnvironmentSnapshot(),
     invoice: {
       id: invoice.id,

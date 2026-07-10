@@ -8,6 +8,20 @@ export const INVOICE_PDF_RENDER_MODES = [
 
 export type InvoicePdfRenderMode = (typeof INVOICE_PDF_RENDER_MODES)[number];
 
+function normalizeBaseUrl(value: string | null | undefined) {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return null;
+  }
+
+  try {
+    return new URL(trimmedValue).toString();
+  } catch {
+    return null;
+  }
+}
+
 export function parseInvoicePdfRenderMode(
   value: string | null | undefined
 ): InvoicePdfRenderMode | null {
@@ -41,6 +55,14 @@ export function getInvoicePdfDebugHeadersEnabled() {
   );
 }
 
+export function getInvoicePdfRenderBaseUrl(requestUrl: string) {
+  return (
+    normalizeBaseUrl(process.env.INVOICE_PDF_RENDER_BASE_URL) ??
+    normalizeBaseUrl(process.env.APP_URL) ??
+    requestUrl
+  );
+}
+
 export function getDatabaseSourceLabel() {
   const value = process.env.DATABASE_URL;
 
@@ -60,6 +82,7 @@ export function getInvoicePdfEnvironmentSnapshot() {
   return {
     nodeEnv: process.env.NODE_ENV ?? "development",
     appUrl: process.env.APP_URL ?? null,
+    invoicePdfRenderBaseUrl: process.env.INVOICE_PDF_RENDER_BASE_URL ?? null,
     rendererMode: getInvoicePdfRenderMode(),
     rendererModeConfigured: getConfiguredInvoicePdfRenderMode(),
     gotenbergUrl: process.env.GOTENBERG_URL ?? null,

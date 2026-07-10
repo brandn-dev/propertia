@@ -2,6 +2,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { InvoicePdfDocument } from "@/components/billing/invoice-pdf-document";
 import {
   getConfiguredInvoicePdfRenderMode,
+  getInvoicePdfRenderBaseUrl,
   getInvoicePdfRenderMode,
 } from "@/lib/billing/invoice-pdf-config";
 import type { InvoicePresentationModel } from "@/lib/billing/invoice-presenter";
@@ -77,8 +78,9 @@ export async function renderInvoiceBestPdfBuffer({
   renderer: "gotenberg" | "chromium" | "react-pdf";
   htmlUrl: string;
 }> {
+  const renderBaseUrl = getInvoicePdfRenderBaseUrl(requestUrl);
   const url = buildInvoiceHtmlPdfUrl({
-    requestUrl,
+    requestUrl: renderBaseUrl,
     invoiceId,
     variant: options.variant,
     paperSize: options.paperSize,
@@ -121,7 +123,7 @@ export async function renderInvoiceBestPdfBuffer({
 
   return {
     buffer: await renderReactInvoicePdfBuffer({
-      requestUrl,
+      requestUrl: renderBaseUrl,
       model,
       variant: options.variant,
       paperSize: options.paperSize,

@@ -30,6 +30,7 @@ DATABASE_URL=
 SESSION_PASSWORD=
 APP_URL=
 INVOICE_PDF_RENDER_MODE=
+INVOICE_PDF_RENDER_BASE_URL=
 GOTENBERG_URL=
 INVOICE_PDF_DEBUG_HEADERS=
 ADMIN_USERNAME=
@@ -44,7 +45,9 @@ Notes:
 
 - `DATABASE_URL` should point to your Neon or PostgreSQL database.
 - `SESSION_PASSWORD` must be at least 32 characters long.
+- `APP_URL` should be the public base URL used in generated invoice links and QR codes.
 - `INVOICE_PDF_RENDER_MODE` supports `gotenberg`, `chromium`, or `react-pdf`.
+- `INVOICE_PDF_RENDER_BASE_URL` is optional; set it to the URL that the PDF renderer can reach for this app, such as an internal Docker service URL.
 - `GOTENBERG_URL` is required when using `gotenberg`.
 - `INVOICE_PDF_DEBUG_HEADERS=1` enables renderer/debug headers on invoice PDF responses.
 - the seed script creates or updates the initial admin and meter-reader accounts from these values.
@@ -61,6 +64,7 @@ Debugging helpers:
 
 - protected render diagnostics: `/billing/:invoiceId/pdf/debug`
 - optional PDF debug headers via `INVOICE_PDF_DEBUG_HEADERS=1`
+- if a custom domain fails with HTTP 500, check `renderBaseUrl` in the debug route and set `INVOICE_PDF_RENDER_BASE_URL` to a reachable app URL for Gotenberg/Chromium
 
 If local and deployed output differs, check data parity first, then renderer/layout.
 
