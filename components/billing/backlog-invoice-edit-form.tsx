@@ -8,7 +8,6 @@ import { formatCurrency } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 import {
   Table,
@@ -180,7 +179,6 @@ export function BacklogInvoiceEditForm({
   formAction,
 }: BacklogInvoiceEditFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
-  useActionRedirect(state.redirectTo);
   useActionToast({
     message: state.message,
     title: "Backlog invoice blocked",

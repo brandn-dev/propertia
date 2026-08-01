@@ -1,0 +1,109 @@
+/*
+ * Propertia color theme
+ *
+ * Change palette here only. Components consume semantic tokens, never raw colors.
+ * Keep light and dark values paired. OKLCH makes perceived lightness predictable.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Neutral surfaces */
+  --background: oklch(0.982 0.006 232);
+  --foreground: oklch(0.205 0.022 252);
+  --card: oklch(0.997 0.003 232);
+  --card-foreground: oklch(0.205 0.022 252);
+  --popover: oklch(0.997 0.003 232);
+  --popover-foreground: oklch(0.205 0.022 252);
+  --secondary: oklch(0.952 0.012 228);
+  --secondary-foreground: oklch(0.27 0.025 250);
+  --muted: oklch(0.958 0.009 232);
+  --muted-foreground: oklch(0.49 0.025 248);
+  --border: oklch(0.902 0.014 234);
+  --input: oklch(0.902 0.014 234);
+
+  /* Brand: calm ocean blue for property, finance, and utility operations */
+  --primary: oklch(0.47 0.115 224);
+  --primary-foreground: oklch(0.985 0.004 230);
+  --accent: oklch(0.932 0.028 205);
+  --accent-foreground: oklch(0.25 0.035 225);
+  --ring: oklch(0.59 0.105 220);
+  --brand-gradient-start: oklch(0.4 0.105 224);
+  --brand-gradient-middle: oklch(0.54 0.12 214);
+  --brand-gradient-end: oklch(0.7 0.105 191);
+
+  /* Semantic states */
+  --success: oklch(0.53 0.14 157);
+  --success-foreground: oklch(0.22 0.055 157);
+  --warning: oklch(0.69 0.14 78);
+  --warning-foreground: oklch(0.27 0.065 65);
+  --info: oklch(0.57 0.135 237);
+  --info-foreground: oklch(0.23 0.06 245);
+  --destructive: oklch(0.58 0.205 28);
+
+  /* Data visualization */
+  --chart-1: oklch(0.62 0.15 224);
+  --chart-2: oklch(0.67 0.13 184);
+  --chart-3: oklch(0.62 0.15 151);
+  --chart-4: oklch(0.72 0.14 78);
+  --chart-5: oklch(0.64 0.17 28);
+
+  /* Navigation */
+  --sidebar: oklch(0.955 0.012 238);
+  --sidebar-foreground: oklch(0.22 0.024 252);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.925 0.022 216);
+  --sidebar-accent-foreground: oklch(0.24 0.032 236);
+  --sidebar-border: oklch(0.89 0.016 238);
+  --sidebar-ring: var(--ring);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: oklch(0.155 0.018 252);
+  --foreground: oklch(0.965 0.006 224);
+  --card: oklch(0.195 0.019 250);
+  --card-foreground: oklch(0.965 0.006 224);
+  --popover: oklch(0.205 0.02 250);
+  --popover-foreground: oklch(0.965 0.006 224);
+  --secondary: oklch(0.255 0.02 248);
+  --secondary-foreground: oklch(0.955 0.007 224);
+  --muted: oklch(0.235 0.018 250);
+  --muted-foreground: oklch(0.73 0.018 235);
+  --border: oklch(0.985 0 0 / 10%);
+  --input: oklch(0.985 0 0 / 13%);
+
+  --primary: oklch(0.76 0.105 207);
+  --primary-foreground: oklch(0.18 0.025 246);
+  --accent: oklch(0.29 0.035 215);
+  --accent-foreground: oklch(0.96 0.008 220);
+  --ring: oklch(0.7 0.09 209);
+  --brand-gradient-start: oklch(0.5 0.11 224);
+  --brand-gradient-middle: oklch(0.64 0.115 210);
+  --brand-gradient-end: oklch(0.77 0.1 190);
+
+  --success: oklch(0.73 0.13 157);
+  --success-foreground: oklch(0.92 0.045 157);
+  --warning: oklch(0.78 0.13 80);
+  --warning-foreground: oklch(0.94 0.04 84);
+  --info: oklch(0.74 0.11 230);
+  --info-foreground: oklch(0.94 0.025 230);
+  --destructive: oklch(0.7 0.18 25);
+
+  --chart-1: oklch(0.74 0.11 207);
+  --chart-2: oklch(0.76 0.1 184);
+  --chart-3: oklch(0.76 0.11 151);
+  --chart-4: oklch(0.8 0.11 80);
+  --chart-5: oklch(0.75 0.14 28);
+
+  --sidebar: oklch(0.175 0.018 252);
+  --sidebar-foreground: oklch(0.955 0.007 224);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.255 0.027 226);
+  --sidebar-accent-foreground: oklch(0.96 0.008 220);
+  --sidebar-border: oklch(0.985 0 0 / 9%);
+  --sidebar-ring: var(--ring);
+}

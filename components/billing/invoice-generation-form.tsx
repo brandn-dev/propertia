@@ -2,7 +2,7 @@
 
 import { useActionState, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarRange, LoaderCircle, Save } from "lucide-react";
+import { ArrowLeft, CalendarRange, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import type { InvoiceGenerationFormState } from "@/app/(dashboard)/billing/actions";
 import {
   buildCarryForwardAssignments,
@@ -30,6 +30,12 @@ import {
 import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
 import { calculateAdjustedMonthlyRent } from "@/lib/billing/rent-adjustments";
 import {
+  calculateInvoiceAdjustmentAmount,
+  WHOLE_INVOICE_TARGET,
+  type InvoiceAdjustmentType,
+  type InvoiceAdjustmentValueType,
+} from "@/lib/billing/invoice-adjustments";
+import {
   ALLOCATION_TYPE_LABELS,
   INVOICE_GENERATION_ADJUSTMENT_ACTION_LABELS,
   INVOICE_GENERATION_ADJUSTMENT_VALUE_TYPE_LABELS,
@@ -41,7 +47,6 @@ import { getUtilityUnitLabel } from "@/lib/utility-units";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 
 const selectClassName = "select-blank";
@@ -142,6 +147,15 @@ type LineAdjustmentDraft = {
   action: InvoiceGenerationAdjustmentAction;
   valueType: InvoiceGenerationAdjustmentValueType;
   value: string;
+};
+
+type InvoiceAdjustmentDraft = {
+  id: string;
+  adjustmentType: InvoiceAdjustmentType;
+  valueType: InvoiceAdjustmentValueType;
+  value: string;
+  targetLineId: string;
+  label: string;
 };
 
 type DeferredBalancePreviewOption = {
@@ -250,7 +264,6 @@ export function InvoiceGenerationForm({
   initialValues,
 }: InvoiceGenerationFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
-  useActionRedirect(state.redirectTo);
   useActionToast({
     message: state.message,
     title: "Invoice generation blocked",
@@ -266,6 +279,8 @@ export function InvoiceGenerationForm({
   const [lineAdjustmentDraftsByCycle, setLineAdjustmentDraftsByCycle] = useState<
     Record<string, Record<string, LineAdjustmentDraft>>
   >({});
+  const [invoiceAdjustmentDraftsByCycle, setInvoiceAdjustmentDraftsByCycle] =
+    useState<Record<string, InvoiceAdjustmentDraft[]>>({});
   const [carryForwardEnabledByCycle, setCarryForwardEnabledByCycle] = useState<
     Record<string, Record<string, boolean>>
   >({});
@@ -629,6 +644,10 @@ export function InvoiceGenerationForm({
       ).length,
     0
   );
+  const selectedInvoiceAdjustmentCount = selectedVisibleCycles.reduce(
+    (sum, cycle) => sum + (invoiceAdjustmentDraftsByCycle[cycle.id]?.length ?? 0),
+    0
+  );
   const selectedCarryForwardCount = selectedVisibleCycles.reduce(
     (sum, cycle) =>
       sum +
@@ -657,6 +676,15 @@ export function InvoiceGenerationForm({
           };
         })
         .filter((value) => value !== null)
+    )
+  );
+  const serializedInvoiceAdjustments = JSON.stringify(
+    selectedVisibleCycles.flatMap((cycle) =>
+      (invoiceAdjustmentDraftsByCycle[cycle.id] ?? []).map((draft) => ({
+        ...draft,
+        cycleSelectionKey: cycle.id,
+        value: Number(draft.value || 0),
+      }))
     )
   );
   const serializedCarryForwardSelections = JSON.stringify(
@@ -750,6 +778,45 @@ export function InvoiceGenerationForm({
           ...changes,
         },
       },
+    }));
+  }
+
+  function addInvoiceAdjustment(cycleId: string) {
+    setInvoiceAdjustmentDraftsByCycle((current) => ({
+      ...current,
+      [cycleId]: [
+        ...(current[cycleId] ?? []),
+        {
+          id: crypto.randomUUID(),
+          adjustmentType: "DEDUCTION",
+          valueType: "FIXED",
+          value: "",
+          targetLineId: WHOLE_INVOICE_TARGET,
+          label: "",
+        },
+      ],
+    }));
+  }
+
+  function updateInvoiceAdjustment(
+    cycleId: string,
+    adjustmentId: string,
+    changes: Partial<InvoiceAdjustmentDraft>
+  ) {
+    setInvoiceAdjustmentDraftsByCycle((current) => ({
+      ...current,
+      [cycleId]: (current[cycleId] ?? []).map((draft) =>
+        draft.id === adjustmentId ? { ...draft, ...changes } : draft
+      ),
+    }));
+  }
+
+  function removeInvoiceAdjustment(cycleId: string, adjustmentId: string) {
+    setInvoiceAdjustmentDraftsByCycle((current) => ({
+      ...current,
+      [cycleId]: (current[cycleId] ?? []).filter(
+        (draft) => draft.id !== adjustmentId
+      ),
     }));
   }
 
@@ -871,6 +938,12 @@ export function InvoiceGenerationForm({
       <input type="hidden" name="lineAdjustments" value={serializedLineAdjustments} readOnly />
       <input
         type="hidden"
+        name="invoiceAdjustments"
+        value={serializedInvoiceAdjustments}
+        readOnly
+      />
+      <input
+        type="hidden"
         name="carryForwardSelections"
         value={serializedCarryForwardSelections}
         readOnly
@@ -938,6 +1011,7 @@ export function InvoiceGenerationForm({
               </p>
               <FieldError message={state.errors?.readingSelections?.[0]} />
               <FieldError message={state.errors?.lineAdjustments?.[0]} />
+              <FieldError message={state.errors?.invoiceAdjustments?.[0]} />
               <FieldError message={state.errors?.carryForwardSelections?.[0]} />
             </div>
 
@@ -1151,6 +1225,169 @@ export function InvoiceGenerationForm({
                                 </div>
                               ) : null}
 
+                              <div className="rounded-[0.95rem] border border-border/60 bg-background/45 p-3">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                      Additions and deductions
+                                    </p>
+                                    <p className="text-xs leading-5 text-muted-foreground">
+                                      Add audited positive or negative lines to this invoice.
+                                    </p>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="button-blank rounded-full"
+                                    onClick={() => addInvoiceAdjustment(cycle.id)}
+                                  >
+                                    <Plus />
+                                    Add adjustment
+                                  </Button>
+                                </div>
+
+                                <div className="mt-3 space-y-3">
+                                  {(invoiceAdjustmentDraftsByCycle[cycle.id] ?? []).map(
+                                    (draft) => {
+                                      const targetLine = getBillableLines(cycle).find(
+                                        (line) => line.lineId === draft.targetLineId
+                                      );
+                                      const basisAmount =
+                                        targetLine?.amount ??
+                                        getBillableLines(cycle).reduce(
+                                          (sum, line) => sum + line.amount,
+                                          0
+                                        );
+                                      const previewAmount = calculateInvoiceAdjustmentAmount({
+                                        valueType: draft.valueType,
+                                        value: Number(draft.value || 0),
+                                        basisAmount,
+                                      });
+
+                                      return (
+                                        <div
+                                          key={draft.id}
+                                          className="rounded-[0.9rem] border border-border/55 bg-background/60 p-3"
+                                        >
+                                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[9rem_11rem_minmax(0,1fr)_9rem_auto]">
+                                            <div className="space-y-2">
+                                              <Label>Type</Label>
+                                              <select
+                                                value={draft.adjustmentType}
+                                                onChange={(event) =>
+                                                  updateInvoiceAdjustment(cycle.id, draft.id, {
+                                                    adjustmentType: event.target
+                                                      .value as InvoiceAdjustmentType,
+                                                  })
+                                                }
+                                                className={selectClassName}
+                                              >
+                                                <option value="ADDITION">Addition</option>
+                                                <option value="DEDUCTION">Deduction</option>
+                                              </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label>Calculation</Label>
+                                              <select
+                                                value={draft.valueType}
+                                                onChange={(event) =>
+                                                  updateInvoiceAdjustment(cycle.id, draft.id, {
+                                                    valueType: event.target
+                                                      .value as InvoiceAdjustmentValueType,
+                                                  })
+                                                }
+                                                className={selectClassName}
+                                              >
+                                                <option value="FIXED">Fixed amount</option>
+                                                <option value="PERCENTAGE">Percentage</option>
+                                              </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label>Target</Label>
+                                              <select
+                                                value={draft.targetLineId}
+                                                onChange={(event) =>
+                                                  updateInvoiceAdjustment(cycle.id, draft.id, {
+                                                    targetLineId: event.target.value,
+                                                  })
+                                                }
+                                                className={selectClassName}
+                                              >
+                                                <option value={WHOLE_INVOICE_TARGET}>
+                                                  Whole invoice
+                                                </option>
+                                                {getBillableLines(cycle).map((line) => (
+                                                  <option key={line.lineId} value={line.lineId}>
+                                                    {line.label} · {formatMoney(line.amount)}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label>
+                                                {draft.valueType === "PERCENTAGE"
+                                                  ? "Percent"
+                                                  : "Amount"}
+                                              </Label>
+                                              <Input
+                                                type="number"
+                                                min="0.01"
+                                                max={
+                                                  draft.valueType === "PERCENTAGE"
+                                                    ? "100"
+                                                    : undefined
+                                                }
+                                                step="0.01"
+                                                value={draft.value}
+                                                onChange={(event) =>
+                                                  updateInvoiceAdjustment(cycle.id, draft.id, {
+                                                    value: event.target.value,
+                                                  })
+                                                }
+                                                className="field-blank h-11"
+                                              />
+                                            </div>
+                                            <div className="flex items-end">
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                className="button-blank h-11 rounded-xl"
+                                                onClick={() =>
+                                                  removeInvoiceAdjustment(cycle.id, draft.id)
+                                                }
+                                                aria-label="Remove adjustment"
+                                              >
+                                                <Trash2 />
+                                              </Button>
+                                            </div>
+                                          </div>
+                                          <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                                            <div className="space-y-2">
+                                              <Label>Reason</Label>
+                                              <Input
+                                                value={draft.label}
+                                                onChange={(event) =>
+                                                  updateInvoiceAdjustment(cycle.id, draft.id, {
+                                                    label: event.target.value,
+                                                  })
+                                                }
+                                                placeholder="Approved rent adjustment, correction, fee…"
+                                                className="field-blank h-11"
+                                              />
+                                            </div>
+                                            <div className="self-end rounded-xl border border-border/55 bg-muted/35 px-4 py-3 text-sm">
+                                              {draft.adjustmentType === "DEDUCTION" ? "−" : "+"}
+                                              {formatMoney(previewAmount)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                  )}
+                                </div>
+                              </div>
+
                               {assignedCarryForwards.length > 0 ? (
                                 <div className="rounded-[0.95rem] border border-border/60 bg-background/45 p-3">
                                   <div className="space-y-1">
@@ -1253,7 +1490,7 @@ export function InvoiceGenerationForm({
           ) : null}
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
           <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               Issue run
@@ -1326,6 +1563,12 @@ export function InvoiceGenerationForm({
                   {selectedAdjustmentCount > 0 ? (
                     <p className="text-xs text-muted-foreground">
                       {selectedAdjustmentCount} line adjustment(s) configured.
+                    </p>
+                  ) : null}
+                  {selectedInvoiceAdjustmentCount > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedInvoiceAdjustmentCount} addition/deduction line(s)
+                      configured.
                     </p>
                   ) : null}
                   {selectedCarryForwardCount > 0 ? (

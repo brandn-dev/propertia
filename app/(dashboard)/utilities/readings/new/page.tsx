@@ -1,17 +1,32 @@
 import { Gauge, Plus, Ruler } from "lucide-react";
-import { createMeterReadingAction } from "@/app/(dashboard)/utilities/actions";
+import { createBulkMeterReadingsAction } from "@/app/(dashboard)/utilities/actions";
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
-import { MeterReadingForm } from "@/components/utilities/meter-reading-form";
+import { BulkMeterReadingForm } from "@/components/utilities/bulk-meter-reading-form";
 import { getUtilityMeterReadingOptions } from "@/lib/data/admin";
+import { getCosaTemplatesOverview } from "@/lib/data/billing";
 import { requireAnyCapability } from "@/lib/auth/user";
+import { hasAnyCapability } from "@/lib/auth/roles";
 
-export default async function NewMeterReadingPage() {
+type NewMeterReadingPageProps = {
+  searchParams: Promise<{
+    mode?: string;
+    propertyId?: string;
+    templateId?: string;
+  }>;
+};
+
+export default async function NewMeterReadingPage({ searchParams }: NewMeterReadingPageProps) {
   const user = await requireAnyCapability([
     "MANAGE_UTILITIES",
     "RECORD_READINGS",
   ]);
-  const meterOptions = await getUtilityMeterReadingOptions();
+  const canManageCosa = hasAnyCapability(user, ["MANAGE_COSA"]);
+  const [meterOptions, cosaTemplates] = await Promise.all([
+    getUtilityMeterReadingOptions(),
+    canManageCosa ? getCosaTemplatesOverview() : Promise.resolve([]),
+  ]);
+  const query = await searchParams;
   const assignedTenantCount = new Set(
     meterOptions.flatMap((meter) => (meter.tenant ? [meter.tenant.id] : []))
   ).size;
@@ -20,8 +35,8 @@ export default async function NewMeterReadingPage() {
     <div className="space-y-6">
       <DashboardPageHero
         eyebrow="Operations / Utilities"
-        title="Record reading"
-        description="Choose the tenant first, then capture the next chronological reading for one of that tenant's assigned meters. Shared property meters remain available under their own scope."
+        title="Quick utility readings"
+        description="Choose one tenant or shared property, then capture water and electricity together in one atomic save."
         icon={Gauge}
         badges={[user.role, "Tenant-first capture", "Meter-reader enabled"]}
         action={<Plus className="size-5 text-primary" />}
@@ -42,10 +57,32 @@ export default async function NewMeterReadingPage() {
         />
       </section>
 
-      <MeterReadingForm
-        formAction={createMeterReadingAction}
+      <BulkMeterReadingForm
+        formAction={createBulkMeterReadingsAction}
         meterOptions={meterOptions}
+        cosaTemplates={cosaTemplates.map((template) => ({
+          ...template,
+          defaultAmount: template.defaultAmount?.toString() ?? null,
+          dailyRate: template.dailyRate?.toString() ?? null,
+          allocations: template.allocations.map((allocation) => ({
+            ...allocation,
+            percentage: allocation.percentage?.toString() ?? null,
+            amount: allocation.amount?.toString() ?? null,
+            contract: allocation.contract
+              ? {
+                  ...allocation.contract,
+                  property: {
+                    ...allocation.contract.property,
+                    size: allocation.contract.property.size?.toString() ?? null,
+                  },
+                }
+              : null,
+          })),
+        }))}
         role={user.role}
+        initialMode={query.mode === "shared" ? "shared" : "tenant"}
+        initialPropertyId={query.propertyId ?? ""}
+        initialTemplateId={query.templateId ?? ""}
       />
     </div>
   );

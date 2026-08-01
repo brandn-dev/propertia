@@ -5,14 +5,13 @@ import Link from "next/link";
 import { ArrowLeft, Calculator, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import type { CosaFormState } from "@/app/(dashboard)/billing/actions";
 import { calculateCosaAllocations } from "@/lib/billing/cosa";
-import { ALLOCATION_TYPES, ALLOCATION_TYPE_LABELS } from "@/lib/form-options";
+import { ALLOCATION_TYPES, ALLOCATION_TYPE_LABELS, COSA_CALCULATION_MODES, COSA_CALCULATION_MODE_LABELS } from "@/lib/form-options";
 import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
 import { getDescendantPropertyIds } from "@/lib/property-tree";
 import { formatUtilityQuantity, getUtilityRateLabel } from "@/lib/utility-units";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 const initialState: CosaFormState = {};
 
@@ -89,6 +88,9 @@ type CosaFormProps = {
     meterReadingId: string;
     description: string;
     totalAmount: string;
+    calculationMode: (typeof COSA_CALCULATION_MODES)[number];
+    quantity: string;
+    unitRate: string;
     billingDate: string;
     allocationType: (typeof ALLOCATION_TYPES)[number];
     allocations: AllocationEntry[];
@@ -98,6 +100,7 @@ type CosaFormProps = {
     templateId: string;
     templateName: string;
   } | null;
+  successRedirectTo?: string;
 };
 
 function FieldError({ message }: { message?: string }) {
@@ -250,12 +253,16 @@ export function CosaForm({
     meterReadingId: "",
     description: "",
     totalAmount: "",
+    calculationMode: "MANUAL_TOTAL",
+    quantity: "",
+    unitRate: "",
     billingDate: "",
     allocationType: "EQUAL_SPLIT",
     allocations: [],
   },
   lockedReason,
   templateLock = null,
+  successRedirectTo = "",
 }: CosaFormProps) {
   function getEligibleMeterReadings(
     nextMeterId: string,
@@ -280,7 +287,6 @@ export function CosaForm({
   }
 
   const [state, action, pending] = useActionState(formAction, initialState);
-  useActionRedirect(state.redirectTo);
   const [propertyId, setPropertyId] = useState(initialValues.propertyId);
   const [meterId, setMeterId] = useState(initialValues.meterId);
   const [meterReadingId, setMeterReadingId] = useState(
@@ -289,6 +295,9 @@ export function CosaForm({
       getLatestEligibleMeterReadingId(initialValues.meterId)
   );
   const [totalAmount, setTotalAmount] = useState(initialValues.totalAmount);
+  const [calculationMode, setCalculationMode] = useState(initialValues.calculationMode);
+  const [quantity, setQuantity] = useState(initialValues.quantity);
+  const [unitRate, setUnitRate] = useState(initialValues.unitRate);
   const [billingDate, setBillingDate] = useState(initialValues.billingDate);
   const [allocationType, setAllocationType] = useState(
     initialValues.allocationType,
@@ -398,7 +407,9 @@ export function CosaForm({
 
   const effectiveTotalAmount = selectedMeterReading
     ? selectedMeterReading.totalAmount
-    : totalAmount;
+    : calculationMode === "DAILY_RATE"
+      ? (Number(quantity || 0) * Number(unitRate || 0)).toFixed(2)
+      : totalAmount;
 
   const contractLookup = useMemo(
     () => new Map(contractOptions.map((contract) => [contract.id, contract])),
@@ -707,6 +718,7 @@ export function CosaForm({
 
   return (
     <form action={action} className="space-y-6">
+      <input type="hidden" name="successRedirectTo" value={successRedirectTo} />
       <input
         type="hidden"
         name="allocations"
@@ -886,6 +898,42 @@ export function CosaForm({
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="calculationMode">Calculation</Label>
+                <select
+                  id="calculationMode"
+                  name="calculationMode"
+                  value={selectedMeterReading ? "METER_READING" : calculationMode}
+                  onChange={(event) => setCalculationMode(event.target.value as (typeof COSA_CALCULATION_MODES)[number])}
+                  className={selectClassName}
+                  disabled={pending || isLocked || isTemplateLocked || Boolean(selectedMeterReading)}
+                >
+                  {COSA_CALCULATION_MODES.map((modeOption) => (
+                    <option key={modeOption} value={modeOption}>{COSA_CALCULATION_MODE_LABELS[modeOption]}</option>
+                  ))}
+                </select>
+              </div>
+
+              {calculationMode === "DAILY_RATE" && !selectedMeterReading ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="quantity">Days worked</Label>
+                    <Input id="quantity" name="quantity" type="number" min="0.01" step="0.01" value={quantity} onChange={(event) => setQuantity(event.target.value)} className="field-blank h-11" placeholder="20.5" disabled={pending || isLocked} />
+                    <FieldError message={state.errors?.quantity?.[0]} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="unitRate">Rate per day</Label>
+                    <Input id="unitRate" name="unitRate" type="number" min="0.01" step="0.01" value={unitRate} onChange={(event) => setUnitRate(event.target.value)} className="field-blank h-11" readOnly={isTemplateLocked} disabled={pending || isLocked} />
+                    <FieldError message={state.errors?.unitRate?.[0]} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <input type="hidden" name="quantity" value="" />
+                  <input type="hidden" name="unitRate" value="" />
+                </>
+              )}
+
+              <div className="space-y-2">
                 <Label htmlFor="totalAmount">Total amount</Label>
                 <Input
                   id="totalAmount"
@@ -898,12 +946,14 @@ export function CosaForm({
                   placeholder="12000.00"
                   className="field-blank h-11"
                   disabled={pending || isLocked}
-                  readOnly={Boolean(selectedMeterReading)}
+                  readOnly={Boolean(selectedMeterReading) || calculationMode === "DAILY_RATE"}
                 />
                 <p className="text-sm text-muted-foreground">
                   {selectedMeterReading
                     ? "This amount is locked to the selected shared-meter reading."
-                    : "Enter the monthly shared-charge total manually, or choose a shared-meter reading above."}
+                    : calculationMode === "DAILY_RATE"
+                      ? `${quantity || "0"} days × ${formatCurrency(Number(unitRate || 0))} per day.`
+                      : "Enter the monthly shared-charge total manually, or choose a shared-meter reading above."}
                 </p>
                 <FieldError message={state.errors?.totalAmount?.[0]} />
               </div>
@@ -1462,7 +1512,7 @@ export function CosaForm({
           </div>
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
           <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               {mode === "create" ? "New record" : "Update record"}

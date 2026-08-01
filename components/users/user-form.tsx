@@ -22,7 +22,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { UserAvatarField } from "@/components/users/user-avatar-field";
 
 const initialState: UserFormState = {};
@@ -81,7 +80,6 @@ export function UserForm({
     initialState
   );
 
-  useActionRedirect(state.redirectTo);
 
   const [displayName, setDisplayName] = useState(initialValues.displayName);
   const [role, setRole] = useState<AppRole>(initialValues.role);

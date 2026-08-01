@@ -8,7 +8,6 @@ import type { HistoricalBacklogFormState } from "@/app/(dashboard)/billing/backl
 import { HistoricalBacklogMonthEditor } from "@/components/billing/historical-backlog-month-editor";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 import {
   buildBacklogMonthRowKey,
@@ -84,7 +83,6 @@ export function HistoricalBacklogForm({
   const [submitLocked, setSubmitLocked] = useState(false);
   const [drafts, setDrafts] = useState<HistoricalBacklogDraftMap>({});
   const router = useRouter();
-  useActionRedirect(state.redirectTo);
   useActionToast({
     message: state.message,
     title: "Backlog month blocked",
@@ -400,7 +398,7 @@ export function HistoricalBacklogForm({
           />
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
           <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               Historical entry

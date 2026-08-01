@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { requireRole } from "@/lib/auth/user";
 import { APP_CAPABILITIES, type AppCapability, type AppRole } from "@/lib/auth/roles";
 import { hashPassword } from "@/lib/auth/password";
@@ -17,7 +17,6 @@ import { createUserSchema, updateUserSchema } from "@/lib/validations/user";
 export type UserFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 function revalidateUserViews() {
@@ -195,9 +194,7 @@ export async function createUserAction(
   }
 
   revalidateUserViews();
-  return {
-    redirectTo: "/users",
-  };
+  redirect("/users", RedirectType.replace);
 }
 
 export async function updateUserAction(
@@ -305,9 +302,7 @@ export async function updateUserAction(
   }
 
   revalidateUserViews();
-  return {
-    redirectTo: "/users",
-  };
+  redirect("/users", RedirectType.replace);
 }
 
 export async function toggleUserActiveAction(userId: string, nextActive: boolean) {

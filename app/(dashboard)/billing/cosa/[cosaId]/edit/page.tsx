@@ -109,6 +109,9 @@ export default async function EditBillingCosaPage({
           meterReadingId: cosa.meterReadingId ?? "",
           description: cosa.description,
           totalAmount: cosa.totalAmount.toString(),
+          calculationMode: cosa.calculationMode,
+          quantity: cosa.quantity?.toString() ?? "",
+          unitRate: cosa.unitRate?.toString() ?? "",
           billingDate: toDateInputValue(cosa.billingDate),
           allocationType: cosa.allocationType,
           allocations: cosa.allocations.map((allocation) => ({

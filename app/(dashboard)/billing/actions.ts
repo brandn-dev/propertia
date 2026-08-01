@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { requireCapability } from "@/lib/auth/user";
 import {
   getInvoiceTemplateLogoFileError,
@@ -35,6 +35,11 @@ import {
   isReadingInUtilityBillingWindow,
 } from "@/lib/billing/cycles";
 import { calculateAdjustedMonthlyRent } from "@/lib/billing/rent-adjustments";
+import {
+  calculateInvoiceAdjustmentAmount,
+  WHOLE_INVOICE_TARGET,
+  type InvoiceAdjustmentInput,
+} from "@/lib/billing/invoice-adjustments";
 import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
 import { generateInvoiceAccessCode } from "@/lib/billing/public-access";
 import { calculateCosaAllocations } from "@/lib/billing/cosa";
@@ -64,43 +69,36 @@ import {
 export type InvoiceGenerationFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 export type RecurringChargeFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 export type CosaFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 export type CosaTemplateFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 export type InvoiceBrandingTemplateFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 export type RecordPaymentFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 export type BulkRecordPaymentFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 const READING_SELECTION_SEPARATOR = "::";
@@ -120,6 +118,10 @@ function getInvoiceGenerationPayload(formData: FormData) {
     formData.get("carryForwardSelections"),
     "Deferred balance selection data is invalid."
   );
+  const invoiceAdjustmentsResult = parseJsonArray(
+    formData.get("invoiceAdjustments"),
+    "Invoice addition and deduction data is invalid."
+  );
 
   return {
     tenantId: String(formData.get("tenantId") ?? ""),
@@ -135,6 +137,8 @@ function getInvoiceGenerationPayload(formData: FormData) {
     dueDate: String(formData.get("dueDate") ?? ""),
     lineAdjustments: lineAdjustmentsResult.items,
     lineAdjustmentsParseError: lineAdjustmentsResult.error,
+    invoiceAdjustments: invoiceAdjustmentsResult.items,
+    invoiceAdjustmentsParseError: invoiceAdjustmentsResult.error,
     carryForwardSelections: carryForwardSelectionsResult.items,
     carryForwardSelectionsParseError: carryForwardSelectionsResult.error,
   };
@@ -187,10 +191,14 @@ function getCosaPayload(formData: FormData) {
     meterReadingId: String(formData.get("meterReadingId") ?? ""),
     description: String(formData.get("description") ?? ""),
     totalAmount: String(formData.get("totalAmount") ?? ""),
+    calculationMode: String(formData.get("calculationMode") ?? "MANUAL_TOTAL"),
+    quantity: String(formData.get("quantity") ?? ""),
+    unitRate: String(formData.get("unitRate") ?? ""),
     billingDate: String(formData.get("billingDate") ?? ""),
     allocationType: String(formData.get("allocationType") ?? ""),
     allocations: allocationsResult.allocations,
     allocationsParseError: allocationsResult.error,
+    successRedirectTo: String(formData.get("successRedirectTo") ?? ""),
   };
 }
 
@@ -206,6 +214,8 @@ function getCosaTemplatePayload(formData: FormData) {
     name: String(formData.get("name") ?? ""),
     allocationType: String(formData.get("allocationType") ?? ""),
     defaultAmount: String(formData.get("defaultAmount") ?? ""),
+    calculationMode: String(formData.get("calculationMode") ?? "MANUAL_TOTAL"),
+    dailyRate: String(formData.get("dailyRate") ?? ""),
     isActive: formData.get("isActive") === "on",
     allocations: allocationsResult.allocations,
     allocationsParseError: allocationsResult.error,
@@ -396,7 +406,11 @@ function getCosaParseError(payload: ParsedCosaPayload): CosaFormState | null {
 function getInvoiceGenerationParseError(
   payload: ParsedInvoiceGenerationPayload
 ): InvoiceGenerationFormState | null {
-  if (!payload.lineAdjustmentsParseError && !payload.carryForwardSelectionsParseError) {
+  if (
+    !payload.lineAdjustmentsParseError &&
+    !payload.invoiceAdjustmentsParseError &&
+    !payload.carryForwardSelectionsParseError
+  ) {
     return null;
   }
 
@@ -404,6 +418,9 @@ function getInvoiceGenerationParseError(
     errors: {
       lineAdjustments: payload.lineAdjustmentsParseError
         ? [payload.lineAdjustmentsParseError]
+        : undefined,
+      invoiceAdjustments: payload.invoiceAdjustmentsParseError
+        ? [payload.invoiceAdjustmentsParseError]
         : undefined,
       carryForwardSelections: payload.carryForwardSelectionsParseError
         ? [payload.carryForwardSelectionsParseError]
@@ -676,6 +693,9 @@ function buildInvoiceGenerationBaseLines(params: {
     computedAmount: { toString(): string };
     cosa: {
       description: string;
+      calculationMode: "METER_READING" | "DAILY_RATE" | "MANUAL_TOTAL";
+      quantity: { toString(): string } | null;
+      unitRate: { toString(): string } | null;
     };
   }>;
 }) {
@@ -744,7 +764,12 @@ function buildInvoiceGenerationBaseLines(params: {
       contractId: params.contractId,
       type: "COSA" as const,
       label: allocation.cosa.description,
-      description: allocation.cosa.description,
+      description:
+        allocation.cosa.calculationMode === "DAILY_RATE" &&
+        allocation.cosa.quantity &&
+        allocation.cosa.unitRate
+          ? `${allocation.cosa.description} · ${Number(allocation.cosa.quantity.toString())} days × ${formatMoneyForNote(Number(allocation.cosa.unitRate.toString()))}/day`
+          : allocation.cosa.description,
       amount: Number(allocation.computedAmount.toString()),
       quantity: 1,
       unitPrice: Number(allocation.computedAmount.toString()),
@@ -765,6 +790,21 @@ function groupLineAdjustmentsByCycle(
 
     cycleAdjustments.set(adjustment.lineId, adjustment);
     grouped.set(adjustment.cycleSelectionKey, cycleAdjustments);
+  }
+
+  return grouped;
+}
+
+function groupInvoiceAdjustmentsByCycle(
+  adjustments: InvoiceAdjustmentInput[]
+) {
+  const grouped = new Map<string, InvoiceAdjustmentInput[]>();
+
+  for (const adjustment of adjustments) {
+    grouped.set(adjustment.cycleSelectionKey, [
+      ...(grouped.get(adjustment.cycleSelectionKey) ?? []),
+      adjustment,
+    ]);
   }
 
   return grouped;
@@ -1133,7 +1173,7 @@ export async function generateInvoicesAction(
   _previousState: InvoiceGenerationFormState,
   formData: FormData
 ): Promise<InvoiceGenerationFormState> {
-  await requireCapability("MANAGE_BILLING");
+  const user = await requireCapability("MANAGE_BILLING");
 
   const payload = getInvoiceGenerationPayload(formData);
   const parseError = getInvoiceGenerationParseError(payload);
@@ -1209,6 +1249,9 @@ export async function generateInvoicesAction(
   );
   const selectedLineAdjustmentsByCycle = groupLineAdjustmentsByCycle(
     validatedFields.data.lineAdjustments as InvoiceGenerationLineAdjustment[]
+  );
+  const selectedInvoiceAdjustmentsByCycle = groupInvoiceAdjustmentsByCycle(
+    validatedFields.data.invoiceAdjustments as InvoiceAdjustmentInput[]
   );
   const selectedCarryForwardKeysByCycle = groupCarryForwardSelectionsByCycle(
     validatedFields.data.carryForwardSelections
@@ -1329,6 +1372,9 @@ export async function generateInvoicesAction(
             id: true,
             description: true,
             billingDate: true,
+            calculationMode: true,
+            quantity: true,
+            unitRate: true,
             meter: {
               select: {
                 meterCode: true,
@@ -1394,6 +1440,7 @@ export async function generateInvoicesAction(
     rentAmount: number;
     baseLines: InvoiceGenerationBaseLine[];
     lineAdjustmentsByLineId: Map<string, InvoiceGenerationLineAdjustment>;
+    invoiceAdjustments: InvoiceAdjustmentInput[];
     oneTimeSecurityDepositCharge: number;
     freeRentConcessionAmount: number;
     advanceRentCreditAmount: number;
@@ -1402,6 +1449,7 @@ export async function generateInvoicesAction(
   const matchedSelectedCycleKeys = new Set<string>();
   const matchedSelectedReadingKeys = new Set<string>();
   const matchedLineAdjustments = new Set<string>();
+  const matchedInvoiceAdjustments = new Set<string>();
 
   for (const contract of contracts) {
     const missingCycles = filterCyclesWithoutInvoicedMonths(
@@ -1530,6 +1578,8 @@ export async function generateInvoicesAction(
       const lineAdjustmentsByLineId =
         selectedLineAdjustmentsByCycle.get(selectionKey) ??
         new Map<string, InvoiceGenerationLineAdjustment>();
+      const invoiceAdjustments =
+        selectedInvoiceAdjustmentsByCycle.get(selectionKey) ?? [];
 
       for (const [lineId, lineAdjustment] of lineAdjustmentsByLineId) {
         const baseLine = baseLines.find((line) => line.lineId === lineId);
@@ -1557,6 +1607,18 @@ export async function generateInvoicesAction(
         matchedLineAdjustments.add(`${selectionKey}::${lineId}`);
       }
 
+
+      for (const adjustment of invoiceAdjustments) {
+        if (
+          adjustment.targetLineId !== WHOLE_INVOICE_TARGET &&
+          !baseLines.some((line) => line.lineId === adjustment.targetLineId)
+        ) {
+          continue;
+        }
+
+        matchedInvoiceAdjustments.add(adjustment.id);
+      }
+
       selectedCycleEntries.push({
         selectionKey,
         contract,
@@ -1565,6 +1627,7 @@ export async function generateInvoicesAction(
         rentAmount,
         baseLines,
         lineAdjustmentsByLineId,
+        invoiceAdjustments,
         oneTimeSecurityDepositCharge,
         freeRentConcessionAmount,
         advanceRentCreditAmount,
@@ -1603,6 +1666,20 @@ export async function generateInvoicesAction(
         ],
       },
       message: "Invoice line selection is out of date.",
+    };
+  }
+
+
+  if (
+    matchedInvoiceAdjustments.size !== validatedFields.data.invoiceAdjustments.length
+  ) {
+    return {
+      errors: {
+        invoiceAdjustments: [
+          "One or more additions or deductions target an unavailable invoice line.",
+        ],
+      },
+      message: "Invoice adjustment selection is out of date.",
     };
   }
 
@@ -1705,6 +1782,100 @@ export async function generateInvoicesAction(
     };
   }
 
+  for (const entry of selectedCycleEntries) {
+    const selectedCarryForwardKeys =
+      selectedCarryForwardKeysByCycle.get(entry.selectionKey) ?? new Set<string>();
+    const carryForwardAmount = (carryForwardAssignments.get(entry.selectionKey) ?? [])
+      .filter((source) => selectedCarryForwardKeys.has(source.carryForwardKey))
+      .reduce((sum, source) => sum + source.amount, 0);
+    const preAdjustmentTotal =
+      entry.baseLines.reduce((sum, line) => sum + line.amount, 0) +
+      entry.oneTimeSecurityDepositCharge +
+      carryForwardAmount -
+      entry.freeRentConcessionAmount -
+      entry.advanceRentCreditAmount;
+    let additions = 0;
+    let deductions = 0;
+    const deductionByTarget = new Map<string, number>();
+    const legacyLineReduction = entry.baseLines.reduce((sum, line) => {
+      const lineAdjustment = entry.lineAdjustmentsByLineId.get(line.lineId);
+
+      if (!lineAdjustment) {
+        return sum;
+      }
+
+      return (
+        sum +
+        calculateInvoiceGenerationLineOutcome({
+          lineAmount: line.amount,
+          adjustment: lineAdjustment,
+        }).reductionAmount
+      );
+    }, 0);
+
+    for (const adjustment of entry.invoiceAdjustments) {
+      const targetLine = entry.baseLines.find(
+        (line) => line.lineId === adjustment.targetLineId
+      );
+      const basisAmount = targetLine?.amount ?? preAdjustmentTotal;
+      const amount = calculateInvoiceAdjustmentAmount({
+        valueType: adjustment.valueType,
+        value: adjustment.value,
+        basisAmount,
+      });
+
+      if (adjustment.adjustmentType === "DEDUCTION" && amount > basisAmount) {
+        return {
+          errors: {
+            invoiceAdjustments: [
+              `Deduction “${adjustment.label}” exceeds its ${targetLine?.label ?? "invoice"} target.`,
+            ],
+          },
+          message: "Invoice deduction is too large.",
+        };
+      }
+
+      if (adjustment.adjustmentType === "ADDITION") {
+        additions += amount;
+      } else {
+        deductions += amount;
+        deductionByTarget.set(
+          adjustment.targetLineId,
+          (deductionByTarget.get(adjustment.targetLineId) ?? 0) + amount
+        );
+      }
+    }
+
+    for (const [targetLineId, targetDeductions] of deductionByTarget) {
+      const targetLine = entry.baseLines.find(
+        (line) => line.lineId === targetLineId
+      );
+      const targetAmount = targetLine?.amount ?? preAdjustmentTotal;
+
+      if (targetDeductions > targetAmount) {
+        return {
+          errors: {
+            invoiceAdjustments: [
+              `Combined deductions exceed the ${targetLine?.label ?? "invoice"} target.`,
+            ],
+          },
+          message: "Combined invoice deductions are too large.",
+        };
+      }
+    }
+
+    if (preAdjustmentTotal - legacyLineReduction + additions - deductions < 0) {
+      return {
+        errors: {
+          invoiceAdjustments: [
+            "Combined deductions cannot make an invoice total negative.",
+          ],
+        },
+        message: "Combined invoice deductions are too large.",
+      };
+    }
+  }
+
   try {
     const sortedCycleEntries = [...selectedCycleEntries].sort((left, right) => {
       if (left.cycle.start.getTime() !== right.cycle.start.getTime()) {
@@ -1751,6 +1922,57 @@ export async function generateInvoicesAction(
         const noteLines: string[] = [];
         let discountTotal = 0;
 
+        const createAdjustmentRecord = async (params: {
+          signedAmount: number;
+          label: string;
+          source: "MANUAL" | "SYSTEM" | "BACKLOG";
+          valueType?: "FIXED" | "PERCENTAGE";
+          enteredValue?: number;
+          targetInvoiceItemId?: string | null;
+          createdById?: string | null;
+          countsAsDiscount?: boolean;
+        }) => {
+          const adjustmentItem = await tx.invoiceItem.create({
+            data: {
+              invoiceId: invoice.id,
+              itemType: "ADJUSTMENT",
+              description: params.label,
+              quantity: toMoney(1),
+              unitPrice: toMoney(params.signedAmount),
+              amount: toMoney(params.signedAmount),
+            },
+          });
+
+          await tx.invoiceAdjustment.create({
+            data: {
+              invoiceId: invoice.id,
+              adjustmentInvoiceItemId: adjustmentItem.id,
+              targetInvoiceItemId: params.targetInvoiceItemId ?? null,
+              adjustmentType:
+                params.signedAmount < 0 ? "DEDUCTION" : "ADDITION",
+              valueType: params.valueType ?? "FIXED",
+              enteredValue: toMoney(
+                params.enteredValue ?? Math.abs(params.signedAmount)
+              ),
+              calculatedAmount: toMoney(Math.abs(params.signedAmount)),
+              label: params.label,
+              source: params.source,
+              createdById: params.createdById ?? null,
+            },
+          });
+
+          createdItemMeta.push({
+            itemType: "ADJUSTMENT",
+            amount: params.signedAmount,
+          });
+
+          if (params.signedAmount < 0 && params.countsAsDiscount) {
+            discountTotal += Math.abs(params.signedAmount);
+          }
+
+          return adjustmentItem;
+        };
+
         for (const line of entry.baseLines) {
           const createdItem = await tx.invoiceItem.create({
             data: {
@@ -1774,19 +1996,10 @@ export async function generateInvoicesAction(
         }
 
         if (entry.oneTimeSecurityDepositCharge > 0) {
-          await tx.invoiceItem.create({
-            data: {
-              invoiceId: invoice.id,
-              itemType: "ADJUSTMENT",
-              description: `Security deposit · ${entry.securityDepositMonths} month(s)`,
-              quantity: toMoney(1),
-              unitPrice: toMoney(entry.oneTimeSecurityDepositCharge),
-              amount: toMoney(entry.oneTimeSecurityDepositCharge),
-            },
-          });
-          createdItemMeta.push({
-            itemType: "ADJUSTMENT",
-            amount: entry.oneTimeSecurityDepositCharge,
+          await createAdjustmentRecord({
+            signedAmount: entry.oneTimeSecurityDepositCharge,
+            label: `Security deposit · ${entry.securityDepositMonths} month(s)`,
+            source: "SYSTEM",
           });
         }
 
@@ -1843,36 +2056,55 @@ export async function generateInvoicesAction(
         }
 
         if (entry.freeRentConcessionAmount > 0) {
-          await tx.invoiceItem.create({
-            data: {
-              invoiceId: invoice.id,
-              itemType: "ADJUSTMENT",
-              description: `Free rent concession · ${entry.cycleLabel}`,
-              quantity: toMoney(1),
-              unitPrice: toMoney(-entry.freeRentConcessionAmount),
-              amount: toMoney(-entry.freeRentConcessionAmount),
-            },
-          });
-          createdItemMeta.push({
-            itemType: "ADJUSTMENT",
-            amount: -entry.freeRentConcessionAmount,
+          await createAdjustmentRecord({
+            signedAmount: -entry.freeRentConcessionAmount,
+            label: `Free rent concession · ${entry.cycleLabel}`,
+            source: "SYSTEM",
+            countsAsDiscount: true,
           });
         }
 
         if (entry.advanceRentCreditAmount > 0) {
-          await tx.invoiceItem.create({
-            data: {
-              invoiceId: invoice.id,
-              itemType: "ADJUSTMENT",
-              description: `Advance rent applied · ${entry.cycleLabel}`,
-              quantity: toMoney(1),
-              unitPrice: toMoney(-entry.advanceRentCreditAmount),
-              amount: toMoney(-entry.advanceRentCreditAmount),
-            },
+          await createAdjustmentRecord({
+            signedAmount: -entry.advanceRentCreditAmount,
+            label: `Advance rent applied · ${entry.cycleLabel}`,
+            source: "SYSTEM",
+            countsAsDiscount: true,
           });
-          createdItemMeta.push({
-            itemType: "ADJUSTMENT",
-            amount: -entry.advanceRentCreditAmount,
+        }
+
+        const preManualAdjustmentTotal = createdItemMeta.reduce(
+          (sum, item) => sum + item.amount,
+          0
+        );
+
+        for (const adjustment of entry.invoiceAdjustments) {
+          const targetLine = entry.baseLines.find(
+            (line) => line.lineId === adjustment.targetLineId
+          );
+          const basisAmount = targetLine?.amount ?? preManualAdjustmentTotal;
+          const calculatedAmount = calculateInvoiceAdjustmentAmount({
+            valueType: adjustment.valueType,
+            value: adjustment.value,
+            basisAmount,
+          });
+          const signedAmount =
+            adjustment.adjustmentType === "DEDUCTION"
+              ? -calculatedAmount
+              : calculatedAmount;
+
+          await createAdjustmentRecord({
+            signedAmount,
+            label: adjustment.label,
+            source: "MANUAL",
+            valueType: adjustment.valueType,
+            enteredValue: adjustment.value,
+            targetInvoiceItemId:
+              adjustment.targetLineId === WHOLE_INVOICE_TARGET
+                ? null
+                : createdBaseItemIdByLineId.get(adjustment.targetLineId) ?? null,
+            createdById: user.id,
+            countsAsDiscount: adjustment.adjustmentType === "DEDUCTION",
           });
         }
 
@@ -1888,28 +2120,23 @@ export async function generateInvoicesAction(
             adjustment: lineAdjustment,
           });
 
-          await tx.invoiceItem.create({
-            data: {
-              invoiceId: invoice.id,
-              itemType: "ADJUSTMENT",
-              description: buildInvoiceAdjustmentDescription({
-                lineLabel: line.label,
-                cycleLabel: entry.cycleLabel,
-                action: lineAdjustment.action,
-              }),
-              quantity: toMoney(1),
-              unitPrice: toMoney(-outcome.reductionAmount),
-              amount: toMoney(-outcome.reductionAmount),
-            },
-          });
-
-          createdItemMeta.push({
-            itemType: "ADJUSTMENT",
-            amount: -outcome.reductionAmount,
+          await createAdjustmentRecord({
+            signedAmount: -outcome.reductionAmount,
+            label: buildInvoiceAdjustmentDescription({
+              lineLabel: line.label,
+              cycleLabel: entry.cycleLabel,
+              action: lineAdjustment.action,
+            }),
+            source: "MANUAL",
+            valueType:
+              lineAdjustment.valueType === "PERCENT" ? "PERCENTAGE" : "FIXED",
+            enteredValue: lineAdjustment.value,
+            targetInvoiceItemId: createdBaseItemIdByLineId.get(line.lineId) ?? null,
+            createdById: user.id,
+            countsAsDiscount: outcome.discountAmount > 0,
           });
 
           if (outcome.discountAmount > 0) {
-            discountTotal += outcome.discountAmount;
             noteLines.push(
               buildDiscountNote({
                 lineLabel: line.label,
@@ -1996,13 +2223,14 @@ export async function generateInvoicesAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: withToast("/billing", {
+  redirect(
+    withToast("/billing", {
       intent: "success",
       title: "Invoices generated",
       description: `Generated ${selectedCycleEntries.length} invoice cycle(s).`,
     }),
-  };
+    RedirectType.replace
+  );
 }
 
 export async function createCosaAction(
@@ -2120,6 +2348,15 @@ export async function createCosaAction(
         meterReadingId: validatedFields.data.meterReadingId ?? null,
         description: validatedFields.data.description,
         totalAmount: toMoney(resolvedTotalAmount),
+        calculationMode: validatedFields.data.calculationMode,
+        quantity:
+          validatedFields.data.quantity && validatedFields.data.quantity !== ""
+            ? toMoney(Number(validatedFields.data.quantity))
+            : null,
+        unitRate:
+          validatedFields.data.unitRate && validatedFields.data.unitRate !== ""
+            ? toMoney(Number(validatedFields.data.unitRate))
+            : null,
         billingDate: endOfDay(new Date(validatedFields.data.billingDate)),
         allocationType: validatedFields.data.allocationType,
         allocations: {
@@ -2147,9 +2384,14 @@ export async function createCosaAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: "/billing/cosa",
-  };
+  redirect(
+    validatedFields.data.successRedirectTo?.startsWith(
+      "/utilities/readings/handoff?ids="
+    )
+      ? validatedFields.data.successRedirectTo
+      : "/billing/cosa",
+    RedirectType.replace
+  );
 }
 
 export async function updateCosaAction(
@@ -2302,6 +2544,15 @@ export async function updateCosaAction(
         meterReadingId: validatedFields.data.meterReadingId ?? null,
         description: validatedFields.data.description,
         totalAmount: toMoney(resolvedTotalAmount),
+        calculationMode: validatedFields.data.calculationMode,
+        quantity:
+          validatedFields.data.quantity && validatedFields.data.quantity !== ""
+            ? toMoney(Number(validatedFields.data.quantity))
+            : null,
+        unitRate:
+          validatedFields.data.unitRate && validatedFields.data.unitRate !== ""
+            ? toMoney(Number(validatedFields.data.unitRate))
+            : null,
         billingDate: endOfDay(new Date(validatedFields.data.billingDate)),
         allocationType: validatedFields.data.allocationType,
         allocations: {
@@ -2330,9 +2581,7 @@ export async function updateCosaAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: "/billing/cosa",
-  };
+  redirect("/billing/cosa", RedirectType.replace);
 }
 
 export async function createCosaTemplateAction(
@@ -2399,6 +2648,10 @@ export async function createCosaTemplateAction(
         name: validatedFields.data.name,
         allocationType: validatedFields.data.allocationType,
         defaultAmount: validatedFields.data.defaultAmount ?? null,
+        calculationMode: validatedFields.data.calculationMode,
+        dailyRate: validatedFields.data.dailyRate
+          ? toMoney(Number(validatedFields.data.dailyRate))
+          : null,
         isActive: validatedFields.data.isActive,
         allocations: {
           create: validatedFields.data.allocations.map((allocation) => ({
@@ -2428,9 +2681,7 @@ export async function createCosaTemplateAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: "/billing/cosa/templates",
-  };
+  redirect("/billing/cosa/templates", RedirectType.replace);
 }
 
 export async function updateCosaTemplateAction(
@@ -2520,6 +2771,10 @@ export async function updateCosaTemplateAction(
         name: validatedFields.data.name,
         allocationType: validatedFields.data.allocationType,
         defaultAmount: validatedFields.data.defaultAmount ?? null,
+        calculationMode: validatedFields.data.calculationMode,
+        dailyRate: validatedFields.data.dailyRate
+          ? toMoney(Number(validatedFields.data.dailyRate))
+          : null,
         isActive: validatedFields.data.isActive,
         allocations: {
           deleteMany: {},
@@ -2550,9 +2805,7 @@ export async function updateCosaTemplateAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: "/billing/cosa/templates",
-  };
+  redirect("/billing/cosa/templates", RedirectType.replace);
 }
 
 export async function deleteCosaTemplateAction(
@@ -2705,9 +2958,7 @@ export async function createInvoiceBrandingTemplateAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: "/billing/invoice-templates",
-  };
+  redirect("/billing/invoice-templates", RedirectType.replace);
 }
 
 export async function updateInvoiceBrandingTemplateAction(
@@ -2861,9 +3112,7 @@ export async function updateInvoiceBrandingTemplateAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: "/billing/invoice-templates",
-  };
+  redirect("/billing/invoice-templates", RedirectType.replace);
 }
 
 export async function createRecurringChargeAction(
@@ -2917,9 +3166,7 @@ export async function createRecurringChargeAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: "/billing/charges",
-  };
+  redirect("/billing/charges", RedirectType.replace);
 }
 
 export async function updateRecurringChargeAction(
@@ -2990,9 +3237,7 @@ export async function updateRecurringChargeAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: "/billing/charges",
-  };
+  redirect("/billing/charges", RedirectType.replace);
 }
 
 export async function deactivateRecurringChargeAction(
@@ -3019,13 +3264,14 @@ export async function deactivateRecurringChargeAction(
   }
 
   if (!existingCharge.isActive) {
-    return {
-      redirectTo: withToast("/billing/charges", {
+    redirect(
+      withToast("/billing/charges", {
         title: "Charge already inactive",
         description: "Recurring charge was already removed from future billing.",
         intent: "info",
       }),
-    };
+      RedirectType.replace
+    );
   }
 
   try {
@@ -3042,14 +3288,15 @@ export async function deactivateRecurringChargeAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: withToast("/billing/charges", {
+  redirect(
+    withToast("/billing/charges", {
       title: "Charge removed",
       description:
         "Recurring charge was removed from future billing. Existing invoices were not changed.",
       intent: "success",
     }),
-  };
+    RedirectType.replace
+  );
 }
 
 export async function recordPaymentAction(
@@ -3150,13 +3397,14 @@ export async function recordPaymentAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: withToast(`/billing/${invoice.id}`, {
+  redirect(
+    withToast(`/billing/${invoice.id}`, {
       intent: "success",
       title: "Payment recorded",
       description: `Recorded payment for ${invoice.invoiceNumber}.`,
     }),
-  };
+    RedirectType.replace
+  );
 }
 
 export async function bulkRecordFullPaymentAction(
@@ -3269,13 +3517,14 @@ export async function bulkRecordFullPaymentAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: withToast("/billing", {
+  redirect(
+    withToast("/billing", {
       intent: "success",
       title: "Invoices fully paid",
       description: `Recorded full payments for ${orderedInvoices.length} invoice${
         orderedInvoices.length === 1 ? "" : "s"
       }.`,
     }),
-  };
+    RedirectType.replace
+  );
 }

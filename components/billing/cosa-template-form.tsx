@@ -5,13 +5,12 @@ import Link from "next/link";
 import { ArrowLeft, Calculator, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import type { CosaTemplateFormState } from "@/app/(dashboard)/billing/actions";
 import { calculateCosaAllocations } from "@/lib/billing/cosa";
-import { ALLOCATION_TYPES, ALLOCATION_TYPE_LABELS } from "@/lib/form-options";
+import { ALLOCATION_TYPES, ALLOCATION_TYPE_LABELS, COSA_CALCULATION_MODES, COSA_CALCULATION_MODE_LABELS } from "@/lib/form-options";
 import { formatCurrency } from "@/lib/format";
 import { getDescendantPropertyIds } from "@/lib/property-tree";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 
 const initialState: CosaTemplateFormState = {};
@@ -76,6 +75,8 @@ type CosaTemplateFormProps = {
     name: string;
     allocationType: (typeof ALLOCATION_TYPES)[number];
     defaultAmount: string;
+    calculationMode: (typeof COSA_CALCULATION_MODES)[number];
+    dailyRate: string;
     isActive: boolean;
     allocations: AllocationEntry[];
   };
@@ -188,12 +189,13 @@ export function CosaTemplateForm({
     name: "",
     allocationType: "PERCENTAGE",
     defaultAmount: "",
+    calculationMode: "MANUAL_TOTAL",
+    dailyRate: "",
     isActive: true,
     allocations: [],
   },
 }: CosaTemplateFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
-  useActionRedirect(state.redirectTo);
   useActionToast({
     message: state.message,
     title: mode === "create" ? "Template not created" : "Template not saved",
@@ -204,6 +206,8 @@ export function CosaTemplateForm({
   const [defaultAmount, setDefaultAmount] = useState(
     initialValues.defaultAmount,
   );
+  const [calculationMode, setCalculationMode] = useState(initialValues.calculationMode);
+  const [dailyRate, setDailyRate] = useState(initialValues.dailyRate);
   const [allocationType, setAllocationType] = useState(
     initialValues.allocationType,
   );
@@ -597,9 +601,12 @@ export function CosaTemplateForm({
                   id="meterId"
                   name="meterId"
                   value={meterId}
-                  onChange={(event) => setMeterId(event.target.value)}
+                  onChange={(event) => {
+                    setMeterId(event.target.value);
+                    if (event.target.value) setCalculationMode("METER_READING");
+                  }}
                   className={selectClassName}
-                  disabled={pending || !propertyId}
+                  disabled={pending || !propertyId || calculationMode === "DAILY_RATE"}
                 >
                   <option value="">No linked meter</option>
                   {visibleMeters.map((meter) => (
@@ -611,6 +618,37 @@ export function CosaTemplateForm({
                 </select>
                 <FieldError message={state.errors?.meterId?.[0]} />
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="calculationMode">Monthly calculation</Label>
+                <select
+                  id="calculationMode"
+                  name="calculationMode"
+                  value={calculationMode}
+                  onChange={(event) => {
+                    const nextMode = event.target.value as (typeof COSA_CALCULATION_MODES)[number];
+                    setCalculationMode(nextMode);
+                    if (nextMode === "DAILY_RATE") setMeterId("");
+                  }}
+                  className={selectClassName}
+                  disabled={pending}
+                >
+                  {COSA_CALCULATION_MODES.map((modeOption) => (
+                    <option key={modeOption} value={modeOption}>{COSA_CALCULATION_MODE_LABELS[modeOption]}</option>
+                  ))}
+                </select>
+              </div>
+
+              {calculationMode === "DAILY_RATE" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="dailyRate">Rate per day</Label>
+                  <Input id="dailyRate" name="dailyRate" type="number" min="0.01" step="0.01" value={dailyRate} onChange={(event) => setDailyRate(event.target.value)} className="field-blank h-11" placeholder="800.00" disabled={pending} />
+                  <FieldError message={state.errors?.dailyRate?.[0]} />
+                  <p className="text-sm text-muted-foreground">Monthly quick entry asks for days worked and multiplies by this rate.</p>
+                </div>
+              ) : (
+                <input type="hidden" name="dailyRate" value="" />
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="allocationType">Allocation type</Label>
@@ -1120,7 +1158,7 @@ export function CosaTemplateForm({
           </div>
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
           <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               {mode === "create" ? "New template" : "Update template"}

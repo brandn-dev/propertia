@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import {
   isRetryablePrismaError,
   prisma,
@@ -96,9 +96,7 @@ export async function loginAction(
   }
 
   revalidatePath("/");
-  return {
-    redirectTo: "/dashboard",
-  };
+  redirect("/dashboard", RedirectType.replace);
 }
 
 export async function logoutAction() {

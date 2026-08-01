@@ -67,7 +67,12 @@ export default async function BillingCosaTemplatesPage() {
   await requireCapability("MANAGE_COSA");
   const templates = await getCosaTemplatesOverview();
   const activeTemplates = templates.filter((template) => template.isActive).length;
-  const defaultedTemplates = templates.filter((template) => template.defaultAmount).length;
+  const configuredTemplates = templates.filter(
+    (template) =>
+      template.defaultAmount ||
+      template.dailyRate ||
+      (template.calculationMode === "METER_READING" && template.meter)
+  ).length;
   const participantCount = templates.reduce(
     (sum, template) => sum + template.allocations.length,
     0
@@ -86,14 +91,14 @@ export default async function BillingCosaTemplatesPage() {
             <Button
               render={<Link href="/billing/cosa" />}
               variant="outline"
-              className="button-blank rounded-full"
+              className="button-blank rounded-lg"
             >
               <Share2 />
               COSA records
             </Button>
             <Button
               render={<Link href="/billing/cosa/templates/new" />}
-              className="rounded-full"
+              className="rounded-lg"
             >
               <Plus />
               New template
@@ -116,9 +121,9 @@ export default async function BillingCosaTemplatesPage() {
           icon={Share2}
         />
         <DashboardMetricCard
-          label="Templates with default amount"
-          value={String(defaultedTemplates)}
-          detail="Templates that can prefill a monthly amount immediately."
+          label="Configured sources"
+          value={String(configuredTemplates)}
+          detail="Templates linked to meter, daily rate, or default total."
           icon={CopyPlus}
         />
         <DashboardMetricCard
@@ -132,20 +137,19 @@ export default async function BillingCosaTemplatesPage() {
       <section className="border-blank rounded-xl p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-              <h2 className="text-lg font-semibold tracking-[-0.04em]">
-                Quick-start templates
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Security guard and maintenance staff are manual monthly salaries
-                split by unit count. Water and electricity are shared meters split
-                by percentage. Generator fuel starts as a manual shared cost with
-                an editable split mode.
-              </p>
-            </div>
+            <h2 className="text-lg font-semibold tracking-[-0.04em]">
+              Quick-start templates
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Start from a proven source type. Salaries use predefined daily
+              rates, utilities use exact shared meters, and generator fuel stays
+              manual. Participant splits remain editable.
+            </p>
+          </div>
           <Button
             render={<Link href="/billing/cosa/templates/new" />}
             variant="outline"
-            className="button-blank rounded-full"
+            className="button-blank rounded-lg"
           >
             <Plus />
             Blank template
@@ -190,7 +194,7 @@ export default async function BillingCosaTemplatesPage() {
             <Button
               render={<Link href="/billing/cosa/templates/new" />}
               variant="outline"
-              className="button-blank rounded-full"
+              className="button-blank rounded-lg"
             >
               <Plus />
               Add template
@@ -206,7 +210,7 @@ export default async function BillingCosaTemplatesPage() {
               action={
                 <Button
                   render={<Link href="/billing/cosa/templates/new" />}
-                  className="rounded-full"
+                  className="rounded-lg"
                 >
                   <Plus />
                   Create first template
@@ -214,7 +218,7 @@ export default async function BillingCosaTemplatesPage() {
               }
             />
           ) : (
-            <Table>
+            <Table className="min-w-[980px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Template</TableHead>
@@ -240,7 +244,9 @@ export default async function BillingCosaTemplatesPage() {
                         <p className="text-xs text-muted-foreground">
                           {template.meter
                             ? `${template.meter.utilityType.replaceAll("_", " ")} · ${template.meter.meterCode}`
-                            : "Manual shared charge"}
+                            : template.calculationMode === "DAILY_RATE"
+                              ? "Daily-rate salary"
+                              : "Manual shared charge"}
                         </p>
                       </TableCell>
                       <TableCell>
@@ -261,12 +267,23 @@ export default async function BillingCosaTemplatesPage() {
                         </p>
                       </TableCell>
                       <TableCell>
-                        {template.defaultAmount
-                          ? formatCurrency(toNumber(template.defaultAmount))
-                          : "No default amount"}
+                        {template.calculationMode === "DAILY_RATE" && template.dailyRate
+                          ? `${formatCurrency(toNumber(template.dailyRate))} / day`
+                          : template.defaultAmount
+                            ? formatCurrency(toNumber(template.defaultAmount))
+                            : template.calculationMode === "METER_READING"
+                              ? "From meter reading"
+                              : "No default amount"}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">
+                        <Badge
+                          variant="outline"
+                          className={
+                            template.isActive
+                              ? "border-success/25 bg-success/10 text-success-foreground"
+                              : "text-muted-foreground"
+                          }
+                        >
                           {template.isActive ? "Active" : "Inactive"}
                         </Badge>
                       </TableCell>
@@ -279,18 +296,26 @@ export default async function BillingCosaTemplatesPage() {
                             render={<Link href={`/billing/cosa/templates/${template.id}/edit`} />}
                             variant="outline"
                             size="sm"
-                            className="button-blank rounded-full"
+                            className="button-blank rounded-lg"
                           >
                             <Eye />
                             Edit
                           </Button>
                           <Button
-                            render={<Link href={`/billing/cosa/new?templateId=${template.id}`} />}
+                            render={<Link href={
+                              template.calculationMode === "METER_READING"
+                                ? `/utilities/readings/new?mode=shared&propertyId=${template.property.id}&templateId=${template.id}`
+                                : `/billing/cosa/new?templateId=${template.id}`
+                            } />}
                             size="sm"
-                            className="rounded-full"
+                            className="rounded-lg"
                           >
                             <CopyPlus />
-                            Create monthly
+                            {template.calculationMode === "METER_READING"
+                              ? "Record utilities"
+                              : template.calculationMode === "DAILY_RATE"
+                                ? "Enter days"
+                                : "Create monthly"}
                           </Button>
                         </div>
                       </TableCell>

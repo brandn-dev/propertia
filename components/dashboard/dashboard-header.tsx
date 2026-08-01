@@ -26,7 +26,7 @@ export function DashboardHeader({ notificationSummary }: DashboardHeaderProps) {
 
   return (
     <header className="sticky top-0 z-20 border-b border-border/60 bg-background/78 backdrop-blur-2xl">
-      <div className="flex h-16 shrink-0 items-center justify-between gap-3 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-14 md:px-6">
+      <div className="flex h-16 shrink-0 items-center justify-between gap-3 px-4 transition-[height] duration-200 ease-[var(--ease-out-ui)] group-has-data-[collapsible=icon]/sidebar-wrapper:h-14 md:px-6">
         <div className="flex min-w-0 items-center gap-2">
           <SidebarTrigger className="-ml-1 rounded-full" />
           <Separator

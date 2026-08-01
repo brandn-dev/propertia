@@ -39,9 +39,9 @@ function getSeverityTone(severity: NotificationSummary["items"][number]["severit
     case "CRITICAL":
       return "text-destructive";
     case "WARNING":
-      return "text-amber-500";
+      return "text-warning";
     default:
-      return "text-primary";
+      return "text-info";
   }
 }
 

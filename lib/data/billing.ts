@@ -30,6 +30,7 @@ const recurringChargeOverviewSelect = {
       paymentStartDate: true,
       property: {
         select: {
+          id: true,
           name: true,
           propertyCode: true,
         },
@@ -847,6 +848,9 @@ export async function getCosasOverview() {
       description: true,
       allocationType: true,
       totalAmount: true,
+      calculationMode: true,
+      quantity: true,
+      unitRate: true,
       billingDate: true,
       property: {
         select: {
@@ -889,6 +893,7 @@ export async function getCosasOverview() {
                 select: {
                   name: true,
                   propertyCode: true,
+                  size: true,
                 },
               },
               tenant: {
@@ -916,6 +921,9 @@ export async function getCosaForEdit(cosaId: string) {
       meterReadingId: true,
       description: true,
       totalAmount: true,
+      calculationMode: true,
+      quantity: true,
+      unitRate: true,
       billingDate: true,
       allocationType: true,
       property: {
@@ -988,9 +996,12 @@ export async function getCosaTemplatesOverview() {
       name: true,
       allocationType: true,
       defaultAmount: true,
+      calculationMode: true,
+      dailyRate: true,
       isActive: true,
       property: {
         select: {
+          id: true,
           name: true,
           propertyCode: true,
         },
@@ -1018,6 +1029,7 @@ export async function getCosaTemplatesOverview() {
                 select: {
                   name: true,
                   propertyCode: true,
+                  size: true,
                 },
               },
               tenant: {
@@ -1045,6 +1057,8 @@ export async function getCosaTemplateForEdit(templateId: string) {
       name: true,
       allocationType: true,
       defaultAmount: true,
+      calculationMode: true,
+      dailyRate: true,
       isActive: true,
       property: {
         select: {
@@ -1089,6 +1103,83 @@ export async function getCosaTemplateForEdit(templateId: string) {
                 },
               },
             },
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function getInvoiceAdjustmentsOverview() {
+  return prisma.invoiceAdjustment.findMany({
+    orderBy: [{ createdAt: "desc" }],
+    select: {
+      id: true,
+      adjustmentType: true,
+      valueType: true,
+      enteredValue: true,
+      calculatedAmount: true,
+      label: true,
+      source: true,
+      createdAt: true,
+      createdBy: {
+        select: {
+          displayName: true,
+        },
+      },
+      targetInvoiceItem: {
+        select: {
+          description: true,
+        },
+      },
+      invoice: {
+        select: {
+          id: true,
+          invoiceNumber: true,
+          tenant: {
+            select: {
+              firstName: true,
+              lastName: true,
+              businessName: true,
+            },
+          },
+          contract: {
+            select: {
+              property: {
+                select: {
+                  name: true,
+                  propertyCode: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function getSharedReadingHandoff(readingIds: string[]) {
+  return prisma.meterReading.findMany({
+    where: { id: { in: readingIds }, meter: { isShared: true } },
+    orderBy: [{ readingDate: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      readingDate: true,
+      consumption: true,
+      ratePerUnit: true,
+      totalAmount: true,
+      cosa: { select: { id: true } },
+      meter: {
+        select: {
+          id: true,
+          meterCode: true,
+          utilityType: true,
+          property: { select: { id: true, name: true, propertyCode: true } },
+          cosaTemplates: {
+            where: { isActive: true },
+            orderBy: [{ name: "asc" }],
+            select: { id: true, name: true },
           },
         },
       },

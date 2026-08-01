@@ -18,6 +18,7 @@ export type CosaTemplatePreset = {
   utilityType?: (typeof UTILITY_TYPES)[number];
   description: string;
   sourceHint: string;
+  calculationMode: "METER_READING" | "DAILY_RATE" | "MANUAL_TOTAL";
 };
 
 export const COSA_TEMPLATE_PRESETS: CosaTemplatePreset[] = [
@@ -30,6 +31,7 @@ export const COSA_TEMPLATE_PRESETS: CosaTemplatePreset[] = [
     description:
       "Use this for the shared water meter, then split the monthly total by tenant percentage.",
     sourceHint: "Shared meter + percentage",
+    calculationMode: "METER_READING",
   },
   {
     id: "common-electricity",
@@ -40,6 +42,7 @@ export const COSA_TEMPLATE_PRESETS: CosaTemplatePreset[] = [
     description:
       "Use this for the shared electric meter, then split the monthly total by tenant percentage.",
     sourceHint: "Shared meter + percentage",
+    calculationMode: "METER_READING",
   },
   {
     id: "security-guard",
@@ -48,7 +51,8 @@ export const COSA_TEMPLATE_PRESETS: CosaTemplatePreset[] = [
     allocationType: "PER_UNIT",
     description:
       "Use this for the monthly guard salary, then divide it by the participating tenant unit counts.",
-    sourceHint: "Manual amount + by unit",
+    sourceHint: "Daily rate × days + by unit",
+    calculationMode: "DAILY_RATE",
   },
   {
     id: "maintenance-staff",
@@ -57,7 +61,8 @@ export const COSA_TEMPLATE_PRESETS: CosaTemplatePreset[] = [
     allocationType: "PER_UNIT",
     description:
       "Use this for the monthly maintenance payroll, then divide it by the participating tenant unit counts.",
-    sourceHint: "Manual amount + by unit",
+    sourceHint: "Daily rate × days + by unit",
+    calculationMode: "DAILY_RATE",
   },
   {
     id: "generator-fuel",
@@ -67,6 +72,7 @@ export const COSA_TEMPLATE_PRESETS: CosaTemplatePreset[] = [
     description:
       "Use this for the monthly generator fuel cost, then choose the participating tenants and adjust the split mode if needed.",
     sourceHint: "Manual amount + flexible split",
+    calculationMode: "MANUAL_TOTAL",
   },
 ];
 

@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 import { formatCurrency } from "@/lib/format";
 
@@ -72,7 +71,6 @@ export function PaymentForm({
   items,
 }: PaymentFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
-  useActionRedirect(state.redirectTo);
   useActionToast({
     message: state.message,
     title: "Payment not recorded",
@@ -263,7 +261,7 @@ export function PaymentForm({
           </div>
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
           <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               Payment run

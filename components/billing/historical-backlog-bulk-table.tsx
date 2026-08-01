@@ -443,7 +443,7 @@ export function HistoricalBacklogBulkTable({
                                         {month.label}
                                       </button>
                                       {isSaved ? (
-                                        <Check className="size-4 text-emerald-600" />
+                                        <Check className="size-4 text-success" />
                                       ) : null}
                                     </div>
                                     <p className="mt-1 text-xs text-muted-foreground">
@@ -454,7 +454,7 @@ export function HistoricalBacklogBulkTable({
                                         {rowErrors[0]}
                                       </p>
                                     ) : isSaved ? (
-                                      <p className="mt-1 text-xs text-emerald-600">
+                                      <p className="mt-1 text-xs text-success">
                                         Saved
                                       </p>
                                     ) : null}
@@ -503,7 +503,7 @@ export function HistoricalBacklogBulkTable({
           </div>
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
           <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               Bulk backlog
@@ -617,7 +617,7 @@ export function HistoricalBacklogBulkTable({
                         >
                           {cycle.label}
                         </button>
-                        {saved ? <Check className="size-4 text-emerald-600" /> : null}
+                        {saved ? <Check className="size-4 text-success" /> : null}
                       </div>
                       {rowErrors.length > 0 ? (
                         <p className="mt-1 text-xs text-destructive">{rowErrors[0]}</p>

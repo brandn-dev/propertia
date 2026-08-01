@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { requireAnyCapability } from "@/lib/auth/user";
+import { redirect, RedirectType } from "next/navigation";
+import { requireAnyCapability, requireCapability } from "@/lib/auth/user";
+import { calculateCosaAllocations } from "@/lib/billing/cosa";
 import { toDateInputValue } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { withToast } from "@/lib/toast";
@@ -15,13 +16,17 @@ import {
 export type UtilityMeterFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 export type MeterReadingFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
+};
+
+export type BulkMeterReadingFormState = {
+  message?: string;
+  errors?: Record<string, string[] | undefined>;
+  rowErrors?: Array<Record<string, string[] | undefined> | undefined>;
 };
 
 function revalidateUtilityViews() {
@@ -87,6 +92,12 @@ function compareAppDates(left: Date | string, right: Date | string) {
   }
 
   return 0;
+}
+
+function endOfDay(value: Date) {
+  const next = new Date(value);
+  next.setHours(23, 59, 59, 999);
+  return next;
 }
 
 type TimelineReading = {
@@ -276,9 +287,7 @@ export async function createUtilityMeterAction(
   }
 
   revalidateUtilityViews();
-  return {
-    redirectTo: "/utilities/meters",
-  };
+  redirect("/utilities/meters", RedirectType.replace);
 }
 
 export async function updateUtilityMeterAction(
@@ -442,9 +451,7 @@ export async function updateUtilityMeterAction(
   }
 
   revalidateUtilityViews();
-  return {
-    redirectTo: "/utilities/meters",
-  };
+  redirect("/utilities/meters", RedirectType.replace);
 }
 
 export async function replaceUtilityMeterAction(
@@ -548,9 +555,7 @@ export async function replaceUtilityMeterAction(
   }
 
   revalidateUtilityViews();
-  return {
-    redirectTo: "/utilities/meters",
-  };
+  redirect("/utilities/meters", RedirectType.replace);
 }
 
 export async function createMeterReadingAction(
@@ -721,9 +726,283 @@ export async function createMeterReadingAction(
   }
 
   revalidateUtilityViews();
-  return {
-    redirectTo: "/utilities/readings",
-  };
+  redirect("/utilities/readings", RedirectType.replace);
+}
+
+export async function createBulkMeterReadingsAction(
+  _previousState: BulkMeterReadingFormState,
+  formData: FormData
+): Promise<BulkMeterReadingFormState> {
+  const user = await requireAnyCapability(["MANAGE_UTILITIES", "RECORD_READINGS"]);
+  let rawRows: unknown;
+
+  try {
+    rawRows = JSON.parse(String(formData.get("readings") ?? "[]"));
+  } catch {
+    return { message: "Reading rows could not be read. Refresh and try again." };
+  }
+
+  if (!Array.isArray(rawRows) || rawRows.length === 0) {
+    return { errors: { readings: ["Select at least one meter reading."] }, message: "No readings selected." };
+  }
+
+  const requestedTemplateIds = rawRows.map((row) =>
+    row && typeof row === "object" && "cosaTemplateId" in row
+      ? String(row.cosaTemplateId ?? "")
+      : ""
+  );
+  const selectedTemplateIds = Array.from(
+    new Set(requestedTemplateIds.filter(Boolean))
+  );
+
+  if (selectedTemplateIds.length > 0) {
+    await requireCapability("MANAGE_COSA");
+  }
+
+  const parsedRows = rawRows.map((row) => meterReadingSchema.safeParse(row));
+  const rowErrors = parsedRows.map((result) =>
+    result.success ? undefined : result.error.flatten().fieldErrors
+  );
+
+  if (parsedRows.some((result) => !result.success)) {
+    return { rowErrors, message: "Fix the highlighted reading rows and try again." };
+  }
+
+  const rows = parsedRows.flatMap((result) => result.success ? [result.data] : []);
+  const meterIds = rows.map((row) => row.meterId);
+
+  if (new Set(meterIds).size !== meterIds.length) {
+    return { errors: { readings: ["Each meter can only appear once in a reading batch."] }, message: "Duplicate meters selected." };
+  }
+
+  const meters = await prisma.utilityMeter.findMany({
+    where: { id: { in: meterIds } },
+    select: {
+      id: true,
+      tenantId: true,
+      propertyId: true,
+      utilityType: true,
+      isShared: true,
+      openedAt: true,
+      retiredAt: true,
+      openingReading: true,
+      readings: {
+        take: 1,
+        orderBy: [{ readingDate: "desc" }, { createdAt: "desc" }],
+        select: { readingDate: true, currentReading: true },
+      },
+    },
+  });
+  const meterMap = new Map(meters.map((meter) => [meter.id, meter]));
+  const templates = selectedTemplateIds.length
+    ? await prisma.cosaTemplate.findMany({
+        where: { id: { in: selectedTemplateIds } },
+        select: {
+          id: true,
+          propertyId: true,
+          meterId: true,
+          name: true,
+          allocationType: true,
+          calculationMode: true,
+          isActive: true,
+          allocations: {
+            orderBy: [{ createdAt: "asc" }],
+            select: {
+              contractId: true,
+              helperLabel: true,
+              percentage: true,
+              unitCount: true,
+              amount: true,
+              contract: {
+                select: {
+                  property: { select: { size: true } },
+                },
+              },
+            },
+          },
+        },
+      })
+    : [];
+  const templateMap = new Map(templates.map((template) => [template.id, template]));
+  const prepared: Array<{
+    rowIndex: number;
+    meter: (typeof meters)[number];
+    readingDate: Date;
+    previousReading: number;
+    currentReading: number;
+    ratePerUnit: number;
+    consumption: number;
+    startingReadingOverride: number | null;
+    cosaTemplate: (typeof templates)[number] | null;
+  }> = [];
+  const semanticErrors: BulkMeterReadingFormState["rowErrors"] = [];
+
+  rows.forEach((row, rowIndex) => {
+    const meter = meterMap.get(row.meterId);
+    if (!meter) {
+      semanticErrors[rowIndex] = { meterId: ["Select a valid active meter."] };
+      return;
+    }
+    if (meter.retiredAt) {
+      semanticErrors[rowIndex] = {
+        meterId: ["This meter is retired and cannot receive a quick reading."],
+      };
+      return;
+    }
+    const requestedTemplateId = requestedTemplateIds[rowIndex] ?? "";
+    const cosaTemplate = requestedTemplateId
+      ? templateMap.get(requestedTemplateId) ?? null
+      : null;
+    if (
+      requestedTemplateId &&
+      (!cosaTemplate ||
+        !meter.isShared ||
+        !cosaTemplate.isActive ||
+        cosaTemplate.calculationMode !== "METER_READING" ||
+        cosaTemplate.propertyId !== meter.propertyId ||
+        cosaTemplate.meterId !== meter.id)
+    ) {
+      semanticErrors[rowIndex] = {
+        cosaTemplateId: [
+          "Select an active meter-backed template linked to this exact shared meter.",
+        ],
+      };
+      return;
+    }
+    const latest = meter.readings[0] ?? null;
+    const readingDate = new Date(row.readingDate);
+    if (compareAppDates(readingDate, meter.openedAt) < 0 || (meter.retiredAt && compareAppDates(readingDate, meter.retiredAt) > 0)) {
+      semanticErrors[rowIndex] = { readingDate: ["Reading date is outside this meter's active timeline."] };
+      return;
+    }
+    if (latest && compareAppDates(readingDate, latest.readingDate) <= 0) {
+      semanticErrors[rowIndex] = { readingDate: ["Reading date must be later than this meter's latest reading."] };
+      return;
+    }
+    const override = row.startingReadingOverride ? Number(row.startingReadingOverride) : null;
+    if (override !== null && (latest || user.role !== "ADMIN")) {
+      semanticErrors[rowIndex] = { startingReadingOverride: ["Only administrators may override the first reading baseline."] };
+      return;
+    }
+    const previousReading = override ?? (latest ? Number(latest.currentReading.toString()) : Number(meter.openingReading.toString()));
+    const currentReading = Number(row.currentReading);
+    if (currentReading < previousReading) {
+      semanticErrors[rowIndex] = { currentReading: [`Current reading must be at least ${previousReading.toFixed(2)}.`] };
+      return;
+    }
+    const ratePerUnit = Number(row.ratePerUnit);
+    prepared.push({ rowIndex, meter, readingDate, previousReading, currentReading, ratePerUnit, consumption: currentReading - previousReading, startingReadingOverride: override, cosaTemplate });
+  });
+
+  if (semanticErrors.some(Boolean)) {
+    return { rowErrors: semanticErrors, message: "One or more readings break meter chronology." };
+  }
+
+  const firstPrepared = prepared[0];
+  if (
+    firstPrepared &&
+    prepared.some((row) =>
+      firstPrepared.meter.isShared
+        ? !row.meter.isShared || row.meter.propertyId !== firstPrepared.meter.propertyId
+        : row.meter.isShared || row.meter.tenantId !== firstPrepared.meter.tenantId
+    )
+  ) {
+    return {
+      errors: { readings: ["All readings must belong to one tenant or one shared property."] },
+      message: "Reading scope is invalid.",
+    };
+  }
+
+  let createdIds: string[] = [];
+  try {
+    createdIds = await prisma.$transaction(async (tx) => {
+      const ids: string[] = [];
+      for (const row of prepared) {
+        if (row.startingReadingOverride !== null) {
+          await tx.utilityMeter.update({ where: { id: row.meter.id }, data: { openingReading: toFixedDecimal(row.startingReadingOverride) } });
+        }
+        const created = await tx.meterReading.create({
+          data: {
+            meterId: row.meter.id,
+            tenantId: row.meter.tenantId ?? null,
+            readingDate: row.readingDate,
+            previousReading: toFixedDecimal(row.previousReading),
+            currentReading: toFixedDecimal(row.currentReading),
+            consumption: toFixedDecimal(row.consumption),
+            ratePerUnit: toFixedDecimal(row.ratePerUnit),
+            totalAmount: toFixedDecimal(row.consumption * row.ratePerUnit),
+            recordedById: user.id,
+          },
+        });
+        ids.push(created.id);
+
+        if (row.cosaTemplate) {
+          const totalAmount = row.consumption * row.ratePerUnit;
+          const calculatedAllocations = calculateCosaAllocations({
+            allocationType: row.cosaTemplate.allocationType,
+            totalAmount,
+            entries: row.cosaTemplate.allocations.map((allocation, index) => ({
+              contractId:
+                allocation.contractId ??
+                allocation.helperLabel ??
+                `helper-${index + 1}`,
+              basisValue: allocation.contract?.property.size
+                ? Number(allocation.contract.property.size.toString())
+                : null,
+              percentage: allocation.percentage
+                ? Number(allocation.percentage.toString())
+                : null,
+              unitCount: allocation.unitCount,
+              amount: allocation.amount
+                ? Number(allocation.amount.toString())
+                : null,
+            })),
+          });
+
+          await tx.cOSA.create({
+            data: {
+              propertyId: row.meter.propertyId,
+              meterId: row.meter.id,
+              meterReadingId: created.id,
+              description: row.cosaTemplate.name,
+              allocationType: row.cosaTemplate.allocationType,
+              totalAmount: toFixedDecimal(totalAmount),
+              billingDate: endOfDay(row.readingDate),
+              calculationMode: "METER_READING",
+              quantity: toFixedDecimal(row.consumption),
+              unitRate: toFixedDecimal(row.ratePerUnit),
+              allocations: {
+                create: calculatedAllocations.map((allocation, index) => {
+                  const source = row.cosaTemplate?.allocations[index];
+
+                  return {
+                    contractId: source?.contractId ?? null,
+                    helperLabel: source?.helperLabel?.trim() || null,
+                    percentage: toFixedDecimal(allocation.percentage),
+                    unitCount: source?.unitCount ?? null,
+                    computedAmount: toFixedDecimal(allocation.computedAmount),
+                  };
+                }),
+              },
+            },
+          });
+        }
+      }
+      return ids;
+    });
+  } catch {
+    return { message: "Reading batch could not be saved. No readings were created." };
+  }
+
+  revalidateUtilityViews();
+  redirect(
+    withToast("/utilities/readings", {
+      intent: "success",
+      title: "Readings saved",
+      description: `Recorded ${createdIds.length} utility readings${prepared.some((row) => row.cosaTemplate) ? " with COSA allocations" : ""}.`,
+    }),
+    RedirectType.replace
+  );
 }
 
 export async function updateMeterReadingAction(
@@ -959,9 +1238,7 @@ export async function updateMeterReadingAction(
   }
 
   revalidateUtilityViews();
-  return {
-    redirectTo: "/utilities/readings",
-  };
+  redirect("/utilities/readings", RedirectType.replace);
 }
 
 export async function deleteMeterReadingAction(readingId: string) {

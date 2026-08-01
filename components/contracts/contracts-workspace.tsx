@@ -82,14 +82,14 @@ function formatTenantName(tenant: ContractWorkspaceRow["tenant"]) {
 function getStatusTone(status: string) {
   switch (status) {
     case "ACTIVE":
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+      return "border-success/30 bg-success/10 text-success";
     case "DRAFT":
-      return "border-sky-500/30 bg-sky-500/10 text-sky-300";
+      return "border-info/30 bg-info/10 text-info";
     case "EXPIRED":
     case "ENDED":
-      return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+      return "border-warning/30 bg-warning/10 text-warning";
     case "TERMINATED":
-      return "border-rose-500/30 bg-rose-500/10 text-rose-300";
+      return "border-destructive/30 bg-destructive/10 text-destructive";
     default:
       return "border-border/60 bg-muted/20 text-muted-foreground";
   }

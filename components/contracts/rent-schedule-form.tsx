@@ -13,7 +13,6 @@ import { formatCurrency } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 const initialState: RentScheduleFormState = {};
 
@@ -87,7 +86,6 @@ export function RentScheduleForm({
   initialRows,
 }: RentScheduleFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
-  useActionRedirect(state.redirectTo);
   const [rows, setRows] = useState<ScheduleRow[]>(
     initialRows.map((row, index) => ({
       id: createStableInitialRowId(index),

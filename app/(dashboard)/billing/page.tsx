@@ -4,6 +4,7 @@ import {
   Plus,
   ReceiptText,
   Repeat2,
+  ListChecks,
   Scale,
   Share2,
   ClockArrowDown,
@@ -87,6 +88,14 @@ export default async function BillingPage() {
           Billing monitor
         </h1>
         <div className="flex flex-wrap gap-2">
+          <Button
+            render={<Link href="/billing/adjustments" />}
+            variant="outline"
+            className="rounded-full"
+          >
+            <ListChecks />
+            Adjustments
+          </Button>
           <Button
             render={<Link href="/billing/backlog" />}
             variant="outline"

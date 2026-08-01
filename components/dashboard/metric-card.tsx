@@ -15,25 +15,22 @@ export function DashboardMetricCard({
   icon: Icon,
 }: DashboardMetricCardProps) {
   return (
-    <Card className="rounded-2xl border-border/60 bg-card/95 shadow-sm">
+    <Card className="rounded-2xl border-border/70 bg-card/95 shadow-sm">
       <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background/80 text-primary shadow-sm">
-            <Icon className="size-4.5" />
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[0.7rem] font-semibold tracking-[0.11em] text-muted-foreground uppercase">
+              {label}
+            </div>
+            <div className="mt-2 text-[1.85rem] leading-none font-semibold tracking-[-0.06em] tabular-nums">
+              {value}
+            </div>
           </div>
-          <div className="min-w-0 text-lg font-semibold tracking-[-0.04em]">
-            {label}
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/9 text-primary ring-1 ring-primary/12">
+            <Icon className="size-4" />
           </div>
         </div>
-
-        <div className="my-4 border-t border-dashed border-border/60" />
-
-        <div className="space-y-1">
-          <div className="text-[2.15rem] leading-none font-semibold tracking-[-0.07em]">
-            {value}
-          </div>
-          <p className="text-sm leading-5 text-muted-foreground">{detail}</p>
-        </div>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">{detail}</p>
       </CardContent>
     </Card>
   );

@@ -25,6 +25,7 @@ type ToastRecord = {
   intent: ToastIntent;
   title: string;
   description: string;
+  exiting?: boolean;
 };
 
 type ToastContextValue = {
@@ -45,11 +46,11 @@ const DEFAULT_TITLES: Record<ToastIntent, string> = {
 
 const TOAST_STYLES: Record<ToastIntent, string> = {
   success:
-    "border-emerald-600/25 bg-emerald-50 text-emerald-950 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-50",
+    "border-success/25 bg-success/10 text-success-foreground",
   error:
-    "border-red-600/25 bg-red-50 text-red-950 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-50",
+    "border-destructive/25 bg-destructive/10 text-destructive",
   info:
-    "border-sky-600/25 bg-sky-50 text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-50",
+    "border-info/25 bg-info/10 text-info-foreground",
 };
 
 const TOAST_ICON_MAP = {
@@ -62,7 +63,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastRecord[]>([]);
 
   const dismissToast = useCallback((toastId: string) => {
-    setToasts((current) => current.filter((toast) => toast.id !== toastId));
+    setToasts((current) =>
+      current.map((toast) =>
+        toast.id === toastId ? { ...toast, exiting: true } : toast
+      )
+    );
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== toastId));
+    }, 160);
   }, []);
 
   const showToast = useCallback(
@@ -81,6 +89,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         intent,
         title: title || DEFAULT_TITLES[intent],
         description,
+        exiting: false,
       };
 
       setToasts((current) => [...current, record]);
@@ -97,15 +106,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         <UrlToastListener />
       </Suspense>
       {children}
-      <div className="pointer-events-none fixed right-4 top-4 z-[100] flex w-full max-w-sm flex-col gap-3">
+      <div
+        className="pointer-events-none fixed top-4 right-4 z-[100] flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2"
+        aria-live="polite"
+        aria-atomic="false"
+      >
         {toasts.map((toast) => {
           const Icon = TOAST_ICON_MAP[toast.intent];
 
           return (
             <div
               key={toast.id}
+              role={toast.intent === "error" ? "alert" : "status"}
+              data-state={toast.exiting ? "closing" : "open"}
               className={cn(
-                "pointer-events-auto rounded-2xl border px-4 py-3 shadow-[0_20px_45px_-25px_rgba(15,23,42,0.6)] backdrop-blur-xl",
+                "toast-motion pointer-events-auto rounded-xl border px-4 py-3 shadow-[0_20px_45px_-25px_rgba(15,23,42,0.6)] backdrop-blur-xl",
                 TOAST_STYLES[toast.intent]
               )}
             >
@@ -120,7 +135,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={() => dismissToast(toast.id)}
-                  className="inline-flex size-7 items-center justify-center rounded-full text-current/75 transition hover:bg-white/10 hover:text-current"
+                  className="inline-flex size-7 items-center justify-center rounded-full text-current/75 transition-[background-color,color,transform] duration-150 ease-[var(--ease-out-ui)] hover:bg-white/10 hover:text-current active:scale-95"
                   aria-label="Dismiss toast"
                 >
                   <X className="size-4" />

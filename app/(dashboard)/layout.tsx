@@ -27,7 +27,7 @@ export default async function DashboardLayout({
       <Suspense fallback={<DashboardSidebarSkeleton />}>
         <AppSidebarShell />
       </Suspense>
-      <SidebarInset className="min-h-svh bg-[radial-gradient(circle_at_top_left,_rgba(67,113,191,0.05),_transparent_24%),linear-gradient(180deg,_rgba(255,255,255,0.2),_transparent)] md:border md:border-border/50 md:shadow-sm dark:bg-[radial-gradient(circle_at_top_left,_rgba(67,113,191,0.08),_transparent_24%),linear-gradient(180deg,_rgba(255,255,255,0.01),_transparent)]">
+      <SidebarInset className="app-surface min-h-svh md:border md:border-border/60 md:shadow-sm">
         <Suspense fallback={<DashboardHeaderSkeleton />}>
           <DashboardHeaderShell />
         </Suspense>

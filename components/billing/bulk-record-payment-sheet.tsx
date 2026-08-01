@@ -15,7 +15,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 import { formatCurrency, toDateInputValue } from "@/lib/format";
 
@@ -51,7 +50,6 @@ export function BulkRecordPaymentSheet({
 }: BulkRecordPaymentSheetProps) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(action, initialState);
-  useActionRedirect(state.redirectTo);
   useActionToast({
     message: state.message,
     title: "Bulk full payment blocked",

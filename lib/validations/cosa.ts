@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ALLOCATION_TYPES } from "@/lib/form-options";
+import { ALLOCATION_TYPES, COSA_CALCULATION_MODES } from "@/lib/form-options";
 
 function isValidDate(value: string) {
   return !Number.isNaN(new Date(value).getTime());
@@ -50,6 +50,9 @@ export const cosaSchema = z
         (value) => isValidMoney(value) && Number(value) > 0,
         "Total amount must be greater than zero."
       ),
+    calculationMode: z.enum(COSA_CALCULATION_MODES),
+    quantity: z.string().trim().optional(),
+    unitRate: z.string().trim().optional(),
     billingDate: z
       .string()
       .trim()
@@ -59,8 +62,25 @@ export const cosaSchema = z
     allocations: z
       .array(cosaAllocationInputSchema)
       .min(1, "Select at least one tenant contract."),
+    successRedirectTo: z.string().trim().optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.calculationMode === "DAILY_RATE") {
+      const quantity = Number(value.quantity);
+      const unitRate = Number(value.unitRate);
+      if (!value.quantity || !Number.isFinite(quantity) || quantity <= 0) {
+        ctx.addIssue({ code: "custom", path: ["quantity"], message: "Days worked must be greater than zero." });
+      }
+      if (!value.unitRate || !Number.isFinite(unitRate) || unitRate <= 0) {
+        ctx.addIssue({ code: "custom", path: ["unitRate"], message: "Daily rate must be greater than zero." });
+      }
+      if (Number.isFinite(quantity) && Number.isFinite(unitRate) && Math.abs(Number(value.totalAmount) - quantity * unitRate) > 0.01) {
+        ctx.addIssue({ code: "custom", path: ["totalAmount"], message: "Daily-rate total must equal days worked multiplied by daily rate." });
+      }
+    }
+    if (value.calculationMode === "METER_READING" && !value.meterReadingId) {
+      ctx.addIssue({ code: "custom", path: ["meterReadingId"], message: "Select a shared-meter reading." });
+    }
     if (value.meterReadingId && !value.meterId) {
       ctx.addIssue({
         code: "custom",

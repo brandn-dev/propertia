@@ -28,13 +28,13 @@ function getSeverityMeta(severity: "INFO" | "WARNING" | "CRITICAL") {
     case "WARNING":
       return {
         label: "Warning",
-        className: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+        className: "border-warning/30 bg-warning/10 text-warning-foreground",
         icon: TriangleAlert,
       };
     default:
       return {
         label: "Info",
-        className: "border-primary/20 bg-primary/10 text-primary",
+        className: "border-info/20 bg-info/10 text-info-foreground",
         icon: Info,
       };
   }

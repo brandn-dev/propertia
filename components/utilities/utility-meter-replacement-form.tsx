@@ -9,7 +9,6 @@ import { UTILITY_TYPE_LABELS } from "@/lib/form-options";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 const initialState: UtilityMeterFormState = {};
 
@@ -63,7 +62,6 @@ export function UtilityMeterReplacementForm({
   meter,
 }: UtilityMeterReplacementFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
-  useActionRedirect(state.redirectTo);
   const latestReading = meter.readings[0] ?? null;
   const defaultOpenedAt = latestReading
     ? toDateInputValue(latestReading.readingDate)
@@ -135,7 +133,7 @@ export function UtilityMeterReplacementForm({
           ) : null}
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
           <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               Replacement flow

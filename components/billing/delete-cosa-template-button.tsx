@@ -4,7 +4,6 @@ import { useActionState } from "react";
 import { LoaderCircle, Trash2 } from "lucide-react";
 import type { CosaTemplateFormState } from "@/app/(dashboard)/billing/actions";
 import { Button } from "@/components/ui/button";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 
 const initialState: CosaTemplateFormState = {};
@@ -22,7 +21,6 @@ export function DeleteCosaTemplateButton({
   templateName,
 }: DeleteCosaTemplateButtonProps) {
   const [state, formAction, pending] = useActionState(action, initialState);
-  useActionRedirect(state.redirectTo);
   useActionToast({
     message: state.message,
     title: "Template not deleted",

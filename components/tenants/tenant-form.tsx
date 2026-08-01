@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 const selectClassName =
   "select-blank";
@@ -94,7 +93,6 @@ export function TenantForm({
   },
 }: TenantFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
-  useActionRedirect(state.redirectTo);
   const [tenantType, setTenantType] = useState<(typeof TENANT_TYPES)[number]>(
     initialValues.type
   );
@@ -532,7 +530,7 @@ export function TenantForm({
           </section>
         </div>
 
-        <aside className="border-blank rounded-xl p-6">
+        <aside className="border-blank rounded-xl p-6 xl:sticky xl:top-20 xl:self-start">
           <h2 className="text-lg font-semibold tracking-[-0.03em]">
             {mode === "create" ? "Before you save" : "What this updates"}
           </h2>

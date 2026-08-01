@@ -51,19 +51,19 @@ import { Badge } from "@/components/ui/badge";
 const KPI_META = {
   openInvoices: {
     icon: ReceiptText,
-    color: "#38bdf8",
+    color: "var(--chart-1)",
   },
   outstandingBalance: {
     icon: CreditCard,
-    color: "#fb7185",
+    color: "var(--chart-5)",
   },
   occupiedSpaces: {
     icon: Building2,
-    color: "#34d399",
+    color: "var(--chart-3)",
   },
   contractsExpiringSoon: {
     icon: CalendarClock,
-    color: "#f59e0b",
+    color: "var(--chart-4)",
   },
 } satisfies Record<
   AdminDashboardData["kpis"][number]["key"],
@@ -71,28 +71,28 @@ const KPI_META = {
 >;
 
 const collectionsChartConfig = {
-  billed: { label: "Billed", color: "#38bdf8" },
-  collected: { label: "Collected", color: "#34d399" },
-  outstanding: { label: "Outstanding", color: "#f59e0b" },
+  billed: { label: "Billed", color: "var(--chart-1)" },
+  collected: { label: "Collected", color: "var(--chart-3)" },
+  outstanding: { label: "Outstanding", color: "var(--chart-4)" },
 } satisfies ChartConfig;
 
 const statusMixChartConfig = {
-  PAID: { label: "Paid", color: "#34d399" },
-  OVERDUE: { label: "Overdue", color: "#fb7185" },
-  PARTIALLY_PAID: { label: "Partial", color: "#f59e0b" },
-  ISSUED: { label: "Issued", color: "#38bdf8" },
+  PAID: { label: "Paid", color: "var(--chart-3)" },
+  OVERDUE: { label: "Overdue", color: "var(--chart-5)" },
+  PARTIALLY_PAID: { label: "Partial", color: "var(--chart-4)" },
+  ISSUED: { label: "Issued", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
 const utilityChartConfig = {
-  charges: { label: "Utility charges", color: "#22d3ee" },
-  readings: { label: "Readings", color: "#a78bfa" },
+  charges: { label: "Utility charges", color: "var(--chart-2)" },
+  readings: { label: "Readings", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
 const paidEarningsChartConfig = {
-  rent: { label: "Rent", color: "#60a5fa" },
-  charges: { label: "Charges", color: "#a78bfa" },
-  cosa: { label: "COSA", color: "#f59e0b" },
-  reading: { label: "Reading", color: "#34d399" },
+  rent: { label: "Rent", color: "var(--chart-1)" },
+  charges: { label: "Charges", color: "var(--chart-2)" },
+  cosa: { label: "COSA", color: "var(--chart-4)" },
+  reading: { label: "Reading", color: "var(--chart-3)" },
 } satisfies ChartConfig;
 
 const DASHBOARD_RANGE_OPTIONS: Array<{
@@ -139,8 +139,8 @@ function getTrendMeta(
 
   if (isFlat) {
     return {
-      color: "#f59e0b",
-      className: "bg-amber-500/12 text-amber-600 dark:text-amber-300",
+      color: "var(--warning)",
+      className: "bg-warning/12 text-warning-foreground",
       label: "No change",
       percentage,
     };
@@ -148,14 +148,14 @@ function getTrendMeta(
 
   return isPositive
     ? {
-        color: "#34d399",
-        className: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300",
+        color: "var(--success)",
+        className: "bg-success/12 text-success-foreground",
         label: "Improving",
         percentage,
       }
     : {
-        color: "#fb7185",
-        className: "bg-rose-500/12 text-rose-600 dark:text-rose-300",
+        color: "var(--destructive)",
+        className: "bg-destructive/12 text-destructive",
         label: "Declining",
         percentage,
       };
@@ -172,20 +172,20 @@ function getKpiValueLabel(key: AdminDashboardData["kpis"][number]["key"], value:
 function getStatusTone(status: AdminDashboardData["queues"]["dueSoon"][number]["status"]) {
   switch (status) {
     case "OVERDUE":
-      return "border-rose-500/30 bg-rose-500/10 text-rose-300";
+      return "border-destructive/30 bg-destructive/10 text-destructive";
     case "PARTIALLY_PAID":
-      return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+      return "border-warning/30 bg-warning/10 text-warning";
     default:
-      return "border-sky-500/30 bg-sky-500/10 text-sky-300";
+      return "border-info/30 bg-info/10 text-info";
   }
 }
 
 function getReminderTone(tone: NonNullable<AdminDashboardData["reminders"]["items"][number]["tone"]>) {
   switch (tone) {
     case "critical":
-      return "border-rose-500/25 bg-rose-500/10";
+      return "border-destructive/25 bg-destructive/10";
     case "warning":
-      return "border-amber-500/25 bg-amber-500/10";
+      return "border-warning/25 bg-warning/10";
     default:
       return "border-border/60 bg-muted/15";
   }
@@ -420,14 +420,14 @@ function getDaysUntil(date: string) {
 
 function getContractHealthTone(daysLeft: number) {
   if (daysLeft <= 14) {
-    return "bg-rose-500";
+    return "bg-destructive";
   }
 
   if (daysLeft <= 30) {
-    return "bg-amber-500";
+    return "bg-warning";
   }
 
-  return "bg-emerald-500";
+  return "bg-success";
 }
 
 function getRoundedRectPath(
@@ -575,8 +575,8 @@ function RemindersCard({ data }: { data: AdminDashboardData["reminders"] }) {
           ))}
         </div>
 
-        <div className="rounded-2xl border border-sky-500/20 bg-sky-500/8 p-3 text-sky-800 dark:text-sky-100">
-          <div className="flex items-center gap-2 text-sky-600 dark:text-sky-300">
+        <div className="rounded-2xl border border-info/20 bg-info/8 p-3 text-info-foreground">
+          <div className="flex items-center gap-2 text-info">
             <BellRing className="size-4" />
             <div className="text-sm font-medium">Upcoming billable businesses</div>
           </div>
@@ -591,13 +591,13 @@ function RemindersCard({ data }: { data: AdminDashboardData["reminders"] }) {
                 <Link
                   key={`${item.contractId}-${item.cycleStart}`}
                   href="/billing/generate"
-                  className="rounded-2xl border border-sky-500/15 bg-background/70 px-3 py-3 transition-colors hover:bg-background"
+                  className="rounded-2xl border border-info/15 bg-background/70 px-3 py-3 transition-colors hover:bg-background"
                 >
                   <div className="font-medium">{item.tenantName}</div>
                   <div className="text-sm text-muted-foreground">
                     {item.propertyName}
                   </div>
-                  <div className="pt-2 text-xs text-sky-600 dark:text-sky-300">
+                  <div className="pt-2 text-xs text-info">
                     Invoice for {formatBillingCycleMonthLabel(item.cycleStart)}
                   </div>
                 </Link>
@@ -706,7 +706,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
                 value={formatCompactCurrency(totalPaidEarnings)}
                 aside={
                   <MiniTrend
-                    color="#34d399"
+                    color="var(--success)"
                     values={paidEarningsSeries.map((item) => item.paidRevenue)}
                     width={84}
                     height={32}
@@ -719,7 +719,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
                 value={formatCompactCurrency(averagePaidEarnings)}
                 aside={
                   <MiniTrend
-                    color="#34d399"
+                    color="var(--success)"
                     values={paidEarningsSeries.map((item) => item.paidRevenue)}
                     width={84}
                     height={32}
@@ -1121,7 +1121,7 @@ export function AdminDashboard({ data }: { data: AdminDashboardData }) {
                             className={cn(
                               "h-3.5 min-w-7 flex-1 rounded-full border border-transparent",
                               isOccupied
-                                ? "bg-emerald-400"
+                                ? "bg-success"
                                 : "border-slate-300/70 bg-slate-500/60 dark:border-slate-700 dark:bg-slate-600"
                             )}
                           />

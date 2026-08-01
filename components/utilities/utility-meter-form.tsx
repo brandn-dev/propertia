@@ -13,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 const selectClassName =
   "select-blank";
@@ -83,7 +82,6 @@ export function UtilityMeterForm({
   },
 }: UtilityMeterFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
-  useActionRedirect(state.redirectTo);
   const [selectedPropertyId, setSelectedPropertyId] = useState(initialValues.propertyId);
   const [isShared, setIsShared] = useState(initialValues.isShared);
   const [selectedTenantId, setSelectedTenantId] = useState(initialValues.tenantId);
@@ -281,7 +279,7 @@ export function UtilityMeterForm({
           ) : null}
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
           <div className="border-blank rounded-xl p-5">
             <p className="text-[0.72rem] uppercase tracking-[0.26em] text-muted-foreground">
               {mode === "create" ? "New record" : "Update record"}

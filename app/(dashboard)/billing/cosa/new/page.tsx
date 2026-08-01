@@ -37,6 +37,9 @@ type NewBillingCosaPageProps = {
   searchParams: Promise<{
     propertyId?: string | string[];
     templateId?: string | string[];
+    meterId?: string | string[];
+    meterReadingId?: string | string[];
+    returnTo?: string | string[];
   }>;
 };
 
@@ -49,6 +52,9 @@ export default async function NewBillingCosaPage({
     typeof rawSearchParams.propertyId === "string" ? rawSearchParams.propertyId : "";
   const selectedTemplateId =
     typeof rawSearchParams.templateId === "string" ? rawSearchParams.templateId : "";
+  const requestedMeterId = typeof rawSearchParams.meterId === "string" ? rawSearchParams.meterId : "";
+  const requestedMeterReadingId = typeof rawSearchParams.meterReadingId === "string" ? rawSearchParams.meterReadingId : "";
+  const requestedReturnTo = typeof rawSearchParams.returnTo === "string" ? rawSearchParams.returnTo : "";
   const selectedTemplate = selectedTemplateId
     ? await getCosaTemplateForEdit(selectedTemplateId)
     : null;
@@ -216,10 +222,13 @@ export default async function NewBillingCosaPage({
         contractOptions={contractOptions}
         initialValues={{
           propertyId: selectedPropertyId,
-          meterId: selectedTemplate?.meterId ?? "",
-          meterReadingId: "",
+          meterId: selectedTemplate?.meterId ?? requestedMeterId,
+          meterReadingId: requestedMeterReadingId,
           description: selectedTemplate?.name ?? "",
           totalAmount: selectedTemplate?.defaultAmount?.toString() ?? "",
+          calculationMode: selectedTemplate?.calculationMode ?? (requestedMeterReadingId ? "METER_READING" : "MANUAL_TOTAL"),
+          quantity: "",
+          unitRate: selectedTemplate?.dailyRate?.toString() ?? "",
           billingDate: toDateInputValue(new Date()),
           allocationType: selectedTemplate?.allocationType ?? "EQUAL_SPLIT",
           allocations: templateAllocations,
@@ -232,6 +241,7 @@ export default async function NewBillingCosaPage({
               }
             : null
         }
+        successRedirectTo={requestedReturnTo}
       />
     </div>
   );

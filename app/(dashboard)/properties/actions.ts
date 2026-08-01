@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect, RedirectType } from "next/navigation";
 import { requireCapability } from "@/lib/auth/user";
 import {
   getPropertyLogoFileError,
@@ -13,7 +14,6 @@ import { propertySchema } from "@/lib/validations/property";
 export type PropertyFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 function revalidatePropertyViews() {
@@ -217,9 +217,7 @@ export async function createPropertyAction(
   }
 
   revalidatePropertyViews();
-  return {
-    redirectTo: "/properties",
-  };
+  redirect("/properties", RedirectType.replace);
 }
 
 export async function updatePropertyAction(
@@ -362,7 +360,5 @@ export async function updatePropertyAction(
   }
 
   revalidatePropertyViews();
-  return {
-    redirectTo: "/properties",
-  };
+  redirect("/properties", RedirectType.replace);
 }

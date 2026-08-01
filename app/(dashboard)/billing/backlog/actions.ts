@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect, RedirectType } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { requireCapability } from "@/lib/auth/user";
 import {
@@ -45,7 +46,6 @@ export type HistoricalBacklogFormState = {
   errors?: Record<string, string[] | undefined>;
   rowKey?: string;
   refreshRequired?: boolean;
-  redirectTo?: string;
 };
 
 export type HistoricalBacklogBulkFormState = {
@@ -140,6 +140,9 @@ type BacklogPaymentSnapshot = {
   referenceNumber?: string | undefined;
   notes?: string | undefined;
 };
+
+const AUTO_FREE_RENT_PREFIX = "Free rent concession · ";
+const AUTO_ADVANCE_RENT_CREDIT_PREFIX = "Advance rent applied · ";
 
 function parseSerializedRows(
   value: FormDataEntryValue | null,
@@ -1034,6 +1037,10 @@ async function createBacklogInvoiceRecord(params: {
     0
   );
   const adjustmentAmount = adjustments.reduce((sum, row) => sum + row.amount, 0);
+  const discountAmount =
+    autoFreeRentConcessionAmount +
+    autoAdvanceRentCreditAmount +
+    adjustments.reduce((sum, row) => sum + Math.max(0, -row.amount), 0);
   const additionalCharges =
     autoAdvanceRentChargeAmount +
     recurringChargeAmount +
@@ -1055,7 +1062,7 @@ async function createBacklogInvoiceRecord(params: {
     billingPeriodEnd: cycleEnd,
     subtotal: toMoney(rentAmount),
     additionalCharges: toMoney(additionalCharges),
-    discount: toMoney(0),
+    discount: toMoney(discountAmount),
     totalAmount: toMoney(totalAmount),
     balanceDue: toMoney(totalAmount),
     origin: "BACKLOG" as const,
@@ -1150,6 +1157,8 @@ async function createBacklogInvoiceRecord(params: {
     id: string;
     items: Array<{
       id: string;
+      itemType: string;
+      description: string;
       amount: { toString(): string };
     }>;
   } | null = null;
@@ -1166,6 +1175,8 @@ async function createBacklogInvoiceRecord(params: {
             orderBy: [{ createdAt: "asc" }],
             select: {
               id: true,
+              itemType: true,
+              description: true,
               amount: true,
             },
           },
@@ -1183,6 +1194,33 @@ async function createBacklogInvoiceRecord(params: {
 
   if (!invoice) {
     throw new Error("Invoice could not be created.");
+  }
+
+  const adjustmentItems = invoice.items.filter(
+    (item) => item.itemType === "ADJUSTMENT"
+  );
+
+  if (adjustmentItems.length > 0) {
+    await tx.invoiceAdjustment.createMany({
+      data: adjustmentItems.map((item) => {
+        const signedAmount = Number(item.amount.toString());
+
+        return {
+          invoiceId: invoice.id,
+          adjustmentInvoiceItemId: item.id,
+          adjustmentType: signedAmount < 0 ? "DEDUCTION" : "ADDITION",
+          valueType: "FIXED",
+          enteredValue: toMoney(Math.abs(signedAmount)),
+          calculatedAmount: toMoney(Math.abs(signedAmount)),
+          label: item.description,
+          source: item.description.startsWith(AUTO_FREE_RENT_PREFIX) ||
+            item.description.startsWith(AUTO_ADVANCE_RENT_CREDIT_PREFIX)
+            ? "SYSTEM"
+            : "BACKLOG",
+          createdById: userId,
+        };
+      }),
+    });
   }
 
   if (requestedPaymentAmount > totalAmount + 0.001) {
@@ -1619,13 +1657,14 @@ export async function createHistoricalBacklogAction(
   }
 
   revalidateBillingViews();
-  return {
-    redirectTo: withToast(`/billing/${result.invoiceId}`, {
+  redirect(
+    withToast(`/billing/${result.invoiceId}`, {
       intent: "success",
       title: "Backlog month saved",
       description: `Saved historical invoice for ${result.cycleLabel}.`,
     }),
-  };
+    RedirectType.replace
+  );
 }
 
 export async function createHistoricalBacklogBulkAction(

@@ -33,7 +33,7 @@ export function DashboardPageHero({
   return (
     <Card
       className={cn(
-        "overflow-hidden rounded-2xl border-border/60 bg-card/95 shadow-sm",
+        "overflow-hidden rounded-2xl border-border/70 bg-card/95 shadow-sm",
         className
       )}
     >
@@ -46,7 +46,7 @@ export function DashboardPageHero({
             )}
           >
             <div className="flex min-w-0 items-start gap-3">
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background/80 text-primary shadow-sm">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/9 text-primary ring-1 ring-primary/12">
                 <Icon className="size-4.5" />
               </div>
 
@@ -58,7 +58,7 @@ export function DashboardPageHero({
                 ) : null}
                 <h1
                   className={cn(
-                    "text-2xl font-semibold tracking-[-0.05em] sm:text-[2rem]",
+                    "text-2xl font-semibold tracking-[-0.045em] sm:text-[1.9rem]",
                     titleClassName
                   )}
                 >
@@ -74,7 +74,7 @@ export function DashboardPageHero({
                     {badges.map((badge) => (
                       <span
                         key={badge}
-                        className="rounded-full border border-border/60 bg-background/70 px-2.5 py-1 text-[0.68rem] font-medium tracking-[0.14em] text-muted-foreground uppercase"
+                        className="rounded-full border border-border/70 bg-muted/35 px-2.5 py-1 text-[0.68rem] font-semibold tracking-[0.08em] text-muted-foreground"
                       >
                         {badge}
                       </span>

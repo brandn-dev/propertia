@@ -266,7 +266,9 @@ export default async function BillingCosaPage() {
                         <p className="text-xs text-muted-foreground">
                           {cosa.meter
                             ? `${cosa.meter.utilityType.replaceAll("_", " ")} · ${cosa.meter.meterCode}`
-                            : "Manual shared charge"}
+                            : cosa.calculationMode === "DAILY_RATE" && cosa.quantity && cosa.unitRate
+                              ? `${toNumber(cosa.quantity)} days × ${formatCurrency(toNumber(cosa.unitRate))}/day`
+                              : "Manual shared charge"}
                         </p>
                       </TableCell>
                       <TableCell>

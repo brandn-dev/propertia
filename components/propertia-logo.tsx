@@ -78,7 +78,7 @@ export function PropertiaLogo({
           logoSrc
             ? "overflow-visible rounded-none bg-transparent shadow-none ring-0"
             : cn(
-                "overflow-hidden bg-[linear-gradient(145deg,#0d698f_0%,#1a8ac0_58%,#38b8c7_100%)] shadow-[0_18px_40px_-24px_rgba(17,96,150,0.8)]",
+                "overflow-hidden bg-[linear-gradient(145deg,var(--brand-gradient-start)_0%,var(--brand-gradient-middle)_58%,var(--brand-gradient-end)_100%)] shadow-lg shadow-primary/15",
                 plainMark ? "bg-transparent shadow-none ring-0" : "",
                 styles.mark
               ),

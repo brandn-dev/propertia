@@ -61,6 +61,11 @@ export const BACKLOG_PAYMENT_STATUSES = ["UNPAID", "PARTIAL", "PAID"] as const;
 export const BACKLOG_ADJUSTMENT_TYPES = ["ADJUSTMENT", "ARREARS"] as const;
 export const INVOICE_ORIGINS = ["GENERATED", "BACKLOG"] as const;
 export const METER_READING_ORIGINS = ["OPERATIONAL", "BACKLOG"] as const;
+export const COSA_CALCULATION_MODES = [
+  "METER_READING",
+  "DAILY_RATE",
+  "MANUAL_TOTAL",
+] as const;
 export const INVOICE_GENERATION_ADJUSTMENT_ACTIONS = [
   "FULL",
   "DISCOUNT",
@@ -186,6 +191,12 @@ export const INVOICE_ORIGIN_LABELS = {
 export const METER_READING_ORIGIN_LABELS = {
   OPERATIONAL: "Operational",
   BACKLOG: "Backlog",
+} as const;
+
+export const COSA_CALCULATION_MODE_LABELS = {
+  METER_READING: "Shared meter reading",
+  DAILY_RATE: "Daily rate",
+  MANUAL_TOTAL: "Manual total",
 } as const;
 
 export const INVOICE_GENERATION_ADJUSTMENT_ACTION_LABELS = {

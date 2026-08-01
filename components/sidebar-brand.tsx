@@ -23,7 +23,7 @@ export function SidebarBrand() {
           render={<Link href="/dashboard" />}
           className={
             isCollapsed
-              ? "relative mx-auto size-10! overflow-hidden rounded-[0.95rem]! bg-[linear-gradient(145deg,#0d698f_0%,#1a8ac0_58%,#38b8c7_100%)] p-0! text-white shadow-[0_18px_40px_-24px_rgba(17,96,150,0.8)] hover:text-white"
+              ? "relative mx-auto size-10! overflow-hidden rounded-[0.95rem]! bg-[linear-gradient(145deg,var(--brand-gradient-start)_0%,var(--brand-gradient-middle)_58%,var(--brand-gradient-end)_100%)] p-0! text-white shadow-lg shadow-primary/15 hover:text-white"
               : "h-12 rounded-xl bg-transparent px-2 text-sidebar-foreground hover:bg-sidebar-accent/70"
           }
         >

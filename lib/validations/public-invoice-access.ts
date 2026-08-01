@@ -3,7 +3,6 @@ import { z } from "zod";
 export type PublicInvoiceAccessFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 export const publicInvoiceAccessSchema = z.object({

@@ -6,11 +6,9 @@ import { loginAction } from "@/app/(auth)/login/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 
 export function LoginForm() {
   const [state, action, pending] = useActionState(loginAction, undefined);
-  useActionRedirect(state?.redirectTo);
 
   return (
     <form action={action} className="space-y-5">

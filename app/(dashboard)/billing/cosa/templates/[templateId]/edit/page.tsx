@@ -119,6 +119,8 @@ export default async function EditBillingCosaTemplatePage({
           name: template.name,
           allocationType: template.allocationType,
           defaultAmount: template.defaultAmount?.toString() ?? "",
+          calculationMode: template.calculationMode,
+          dailyRate: template.dailyRate?.toString() ?? "",
           isActive: template.isActive,
           allocations: template.allocations.map((allocation) => ({
             entryId: allocation.contract?.id ?? `helper:${allocation.id}`,

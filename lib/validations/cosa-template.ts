@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ALLOCATION_TYPES } from "@/lib/form-options";
+import { ALLOCATION_TYPES, COSA_CALCULATION_MODES } from "@/lib/form-options";
 
 function isValidMoney(value: string) {
   return value === "" || (!Number.isNaN(Number(value)) && Number(value) >= 0);
@@ -35,6 +35,8 @@ export const cosaTemplateSchema = z
       .min(1, "Template name is required.")
       .max(120, "Template name must be 120 characters or fewer."),
     allocationType: z.enum(ALLOCATION_TYPES),
+    calculationMode: z.enum(COSA_CALCULATION_MODES),
+    dailyRate: z.string().trim().optional(),
     defaultAmount: z
       .string()
       .trim()
@@ -46,6 +48,17 @@ export const cosaTemplateSchema = z
       .min(1, "Select at least one tenant contract."),
   })
   .superRefine((value, ctx) => {
+    if (value.calculationMode === "METER_READING" && !value.meterId) {
+      ctx.addIssue({ code: "custom", path: ["meterId"], message: "Meter-reading templates require a shared meter." });
+    }
+    if (value.calculationMode === "DAILY_RATE") {
+      if (value.meterId) {
+        ctx.addIssue({ code: "custom", path: ["meterId"], message: "Daily-rate templates cannot be linked to a meter." });
+      }
+      if (!value.dailyRate || !isValidMoney(value.dailyRate) || Number(value.dailyRate) <= 0) {
+        ctx.addIssue({ code: "custom", path: ["dailyRate"], message: "Enter a daily rate greater than zero." });
+      }
+    }
     const uniqueEntryIds = new Set(value.allocations.map((allocation) => allocation.entryId));
     const contractAllocations = value.allocations.filter(
       (allocation) => Boolean(allocation.contractId)

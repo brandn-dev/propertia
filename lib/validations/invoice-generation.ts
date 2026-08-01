@@ -3,6 +3,10 @@ import {
   INVOICE_GENERATION_ADJUSTMENT_ACTIONS,
   INVOICE_GENERATION_ADJUSTMENT_VALUE_TYPES,
 } from "@/lib/form-options";
+import {
+  INVOICE_ADJUSTMENT_TYPES,
+  INVOICE_ADJUSTMENT_VALUE_TYPES,
+} from "@/lib/billing/invoice-adjustments";
 
 function isValidDate(value: string) {
   return !Number.isNaN(new Date(value).getTime());
@@ -19,6 +23,20 @@ const invoiceGenerationLineAdjustmentSchema = z.object({
 const invoiceGenerationCarryForwardSelectionSchema = z.object({
   cycleSelectionKey: z.string().trim().min(1),
   carryForwardKey: z.string().trim().min(1),
+});
+
+const invoiceAdjustmentSchema = z.object({
+  id: z.string().trim().min(1),
+  cycleSelectionKey: z.string().trim().min(1),
+  adjustmentType: z.enum(INVOICE_ADJUSTMENT_TYPES),
+  valueType: z.enum(INVOICE_ADJUSTMENT_VALUE_TYPES),
+  value: z.number().finite().positive("Adjustment value must be greater than zero."),
+  targetLineId: z.string().trim().min(1, "Select an adjustment target."),
+  label: z
+    .string()
+    .trim()
+    .min(1, "Adjustment reason is required.")
+    .max(160, "Adjustment reason must be 160 characters or fewer."),
 });
 
 export const invoiceGenerationSchema = z
@@ -39,6 +57,7 @@ export const invoiceGenerationSchema = z
       .min(1, "Due date is required.")
       .refine(isValidDate, "Enter a valid due date."),
     lineAdjustments: z.array(invoiceGenerationLineAdjustmentSchema),
+    invoiceAdjustments: z.array(invoiceAdjustmentSchema),
     carryForwardSelections: z.array(invoiceGenerationCarryForwardSelectionSchema),
   })
   .superRefine((value, ctx) => {
@@ -74,6 +93,17 @@ export const invoiceGenerationSchema = z
           code: "custom",
           path: ["lineAdjustments"],
           message: "Percentage deductions must stay below 100%.",
+        });
+      }
+    }
+
+
+    for (const adjustment of value.invoiceAdjustments) {
+      if (adjustment.valueType === "PERCENTAGE" && adjustment.value > 100) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["invoiceAdjustments"],
+          message: "Percentage adjustments cannot exceed 100%.",
         });
       }
     }

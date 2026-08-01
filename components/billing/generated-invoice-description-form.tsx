@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useActionRedirect } from "@/components/ui/use-action-redirect";
 import { useActionToast } from "@/components/ui/toast-provider";
 
 const initialState: GeneratedInvoiceDescriptionFormState = {};
@@ -51,7 +50,6 @@ export function GeneratedInvoiceDescriptionForm({
   initialValues,
 }: GeneratedInvoiceDescriptionFormProps) {
   const [state, action, pending] = useActionState(formAction, initialState);
-  useActionRedirect(state.redirectTo);
   useActionToast({
     message: state.message,
     title: "Description changes not saved",

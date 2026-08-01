@@ -1,6 +1,7 @@
 "use server";
 
 import type { Prisma } from "@prisma/client";
+import { redirect, RedirectType } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth/user";
 import {
@@ -26,9 +27,7 @@ export async function unlockPublicInvoiceAction(
   const user = await getCurrentUser();
 
   if (user) {
-    return {
-      redirectTo: getPublicInvoicePath(invoiceId),
-    };
+    redirect(getPublicInvoicePath(invoiceId), RedirectType.replace);
   }
 
   const validatedFields = publicInvoiceAccessSchema.safeParse({
@@ -65,7 +64,5 @@ export async function unlockPublicInvoiceAction(
   }
 
   await grantInvoiceAccess(invoice.id);
-  return {
-    redirectTo: getPublicInvoicePath(invoice.id),
-  };
+  redirect(getPublicInvoicePath(invoice.id), RedirectType.replace);
 }

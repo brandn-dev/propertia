@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect, RedirectType } from "next/navigation";
 import { requireCapability } from "@/lib/auth/user";
 import {
   formatBillingCycleLabel,
@@ -19,13 +20,11 @@ import { withToast } from "@/lib/toast";
 export type BacklogInvoiceEditFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 export type GeneratedInvoiceDescriptionFormState = {
   message?: string;
   errors?: Record<string, string[] | undefined>;
-  redirectTo?: string;
 };
 
 type ParsedDescriptionOverrideItem = {
@@ -760,14 +759,15 @@ export async function updateGeneratedInvoiceDescriptionsAction(
   }
 
   revalidateBillingViews(invoiceId);
-  return {
-    redirectTo: withToast(`/billing/${invoiceId}`, {
+  redirect(
+    withToast(`/billing/${invoiceId}`, {
       intent: "success",
       title: "Invoice descriptions updated",
       description:
         "Saved invoice line visibility and custom description changes.",
     }),
-  };
+    RedirectType.replace
+  );
 }
 
 export async function updateBacklogInvoiceAction(
@@ -1412,6 +1412,13 @@ export async function updateBacklogInvoiceAction(
         .map((item) => item.id);
 
       if (autoManagedItemIds.length > 0) {
+        await tx.invoiceAdjustment.deleteMany({
+          where: {
+            adjustmentInvoiceItemId: {
+              in: autoManagedItemIds,
+            },
+          },
+        });
         await tx.invoiceItem.deleteMany({
           where: {
             id: {
@@ -1450,7 +1457,7 @@ export async function updateBacklogInvoiceAction(
       });
 
       if (autoFreeRentConcessionAmount > 0) {
-        await tx.invoiceItem.create({
+        const item = await tx.invoiceItem.create({
           data: {
             invoiceId,
             itemType: "ADJUSTMENT",
@@ -1460,10 +1467,23 @@ export async function updateBacklogInvoiceAction(
             amount: toMoney(-autoFreeRentConcessionAmount),
           },
         });
+        await tx.invoiceAdjustment.create({
+          data: {
+            invoiceId,
+            adjustmentInvoiceItemId: item.id,
+            adjustmentType: "DEDUCTION",
+            valueType: "FIXED",
+            enteredValue: toMoney(autoFreeRentConcessionAmount),
+            calculatedAmount: toMoney(autoFreeRentConcessionAmount),
+            label: item.description,
+            source: "SYSTEM",
+            createdById: user.id,
+          },
+        });
       }
 
       if (autoAdvanceRentEffects.creditAmount > 0) {
-        await tx.invoiceItem.create({
+        const item = await tx.invoiceItem.create({
           data: {
             invoiceId,
             itemType: "ADJUSTMENT",
@@ -1471,6 +1491,19 @@ export async function updateBacklogInvoiceAction(
             quantity: toMoney(1),
             unitPrice: toMoney(-autoAdvanceRentEffects.creditAmount),
             amount: toMoney(-autoAdvanceRentEffects.creditAmount),
+          },
+        });
+        await tx.invoiceAdjustment.create({
+          data: {
+            invoiceId,
+            adjustmentInvoiceItemId: item.id,
+            adjustmentType: "DEDUCTION",
+            valueType: "FIXED",
+            enteredValue: toMoney(autoAdvanceRentEffects.creditAmount),
+            calculatedAmount: toMoney(autoAdvanceRentEffects.creditAmount),
+            label: item.description,
+            source: "SYSTEM",
+            createdById: user.id,
           },
         });
       }
@@ -1492,6 +1525,12 @@ export async function updateBacklogInvoiceAction(
         .filter((item) => item.itemType !== "RENT")
         .reduce((sum, item) => sum + Number(item.amount.toString()), 0);
       const totalAmount = subtotal + additionalCharges;
+      const discount = refreshedItems
+        .filter((item) => item.itemType === "ADJUSTMENT")
+        .reduce(
+          (sum, item) => sum + Math.max(0, -Number(item.amount.toString())),
+          0
+        );
 
       await tx.invoice.update({
         where: { id: invoiceId },
@@ -1505,6 +1544,7 @@ export async function updateBacklogInvoiceAction(
           }),
           subtotal: toMoney(subtotal),
           additionalCharges: toMoney(additionalCharges),
+          discount: toMoney(discount),
           totalAmount: toMoney(totalAmount),
           balanceDue: toMoney(Math.max(0, totalAmount)),
           status: getInvoiceStatusFromBalance(Math.max(0, totalAmount), false),
@@ -1525,11 +1565,12 @@ export async function updateBacklogInvoiceAction(
   }
 
   revalidateBillingViews(invoiceId);
-  return {
-    redirectTo: withToast(`/billing/${invoiceId}`, {
+  redirect(
+    withToast(`/billing/${invoiceId}`, {
       intent: "success",
       title: "Backlog invoice updated",
       description: "Saved invoice changes and recalculated automatic lines.",
     }),
-  };
+    RedirectType.replace
+  );
 }

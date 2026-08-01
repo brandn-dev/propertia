@@ -174,6 +174,8 @@ export default async function NewBillingCosaTemplatePage({
           name: selectedPreset?.name ?? "",
           allocationType: selectedPreset?.allocationType ?? "PERCENTAGE",
           defaultAmount: "",
+          calculationMode: selectedPreset?.calculationMode ?? "MANUAL_TOTAL",
+          dailyRate: "",
           isActive: true,
           allocations: [],
         }}
