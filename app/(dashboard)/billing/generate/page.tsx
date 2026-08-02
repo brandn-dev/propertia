@@ -21,8 +21,20 @@ function addDays(date: Date, days: number) {
   return next;
 }
 
-export default async function GenerateBillingPage() {
+type GenerateBillingPageProps = {
+  searchParams: Promise<{
+    contractId?: string | string[];
+  }>;
+};
+
+export default async function GenerateBillingPage({
+  searchParams,
+}: GenerateBillingPageProps) {
   await requireCapability("MANAGE_BILLING");
+  const { contractId: rawContractId } = await searchParams;
+  const requestedContractId = Array.isArray(rawContractId)
+    ? rawContractId[0]
+    : rawContractId;
   const rawContractOptions = await getInvoiceGenerationContractOptions();
   const today = new Date();
   const issueDate = addDays(today, 0);
@@ -108,6 +120,9 @@ export default async function GenerateBillingPage() {
     (contract) => contract.recurringChargeCount > 0
   ).length;
   const earliestAnchor = contractOptions[0]?.paymentAnchorLabel ?? "Not set";
+  const initialTenantId =
+    contractOptions.find((contract) => contract.id === requestedContractId)
+      ?.tenantId ?? "";
 
   return (
     <div className="space-y-6">
@@ -139,7 +154,7 @@ export default async function GenerateBillingPage() {
         formAction={generateInvoicesAction}
         contractOptions={contractOptions}
         initialValues={{
-          tenantId: "",
+          tenantId: initialTenantId,
           issueDate: toDateInputValue(today),
           dueDate: toDateInputValue(addDays(today, 7)),
         }}

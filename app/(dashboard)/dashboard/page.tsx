@@ -1,6 +1,14 @@
 import { requireUser } from "@/lib/auth/user";
 import { getDashboardDataForUser } from "@/lib/data/dashboard";
-import { formatCompactNumber, formatCurrency, formatDate, toNumber } from "@/lib/format";
+import {
+  APP_TIME_ZONE,
+  dateInputToAppStartOfDay,
+  formatCompactNumber,
+  formatCurrency,
+  formatDate,
+  toNumber,
+  toDateInputValue,
+} from "@/lib/format";
 import { formatUtilityQuantity } from "@/lib/utility-units";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { PropertiaLogo } from "@/components/propertia-logo";
@@ -21,7 +29,32 @@ export default async function DashboardPage() {
   const data = await getDashboardDataForUser(user);
 
   if (data.kind === "admin") {
-    return <AdminDashboard data={data.admin} />;
+    const now = new Date();
+    const todayLabel = new Intl.DateTimeFormat("en-PH", {
+      timeZone: APP_TIME_ZONE,
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    }).format(now);
+    const hour = Number(
+      new Intl.DateTimeFormat("en-PH", {
+        timeZone: APP_TIME_ZONE,
+        hour: "numeric",
+        hourCycle: "h23",
+      }).format(now)
+    );
+    const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    const todayStart = dateInputToAppStartOfDay(toDateInputValue(now));
+
+    return (
+      <AdminDashboard
+        data={data.admin}
+        greeting={greeting}
+        userName={user.displayName}
+        todayIso={todayStart.toISOString()}
+        todayLabel={todayLabel}
+      />
+    );
   }
 
   const cards = [

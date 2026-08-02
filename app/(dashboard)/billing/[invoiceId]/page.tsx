@@ -90,9 +90,6 @@ export default async function InvoiceDetailPage({
   return (
     <div className="space-y-6">
       <DashboardPageHero
-        className="rounded-2xl border-border/60 bg-card/70 shadow-sm backdrop-blur"
-        contentClassName="p-4 md:p-4.5"
-        headerClassName="flex-nowrap items-center"
         actionContainerClassName="max-w-none basis-auto shrink-0"
         titleClassName="text-xl sm:text-2xl"
         eyebrow="Operations / Billing"

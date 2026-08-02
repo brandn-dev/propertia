@@ -17,9 +17,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
-import type { AppRole } from "@/lib/auth/roles";
+import { ROLE_LABELS, type AppRole } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 import {
+  Check,
   LogOutIcon,
   MoonStar,
   Palette,
@@ -47,6 +48,10 @@ function getInitials(name: string) {
     .join("");
 }
 
+function getFirstName(name: string) {
+  return name.trim().split(/\s+/)[0] || name;
+}
+
 export function NavUser({ user }: NavUserProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const { state } = useSidebar();
@@ -61,27 +66,34 @@ export function NavUser({ user }: NavUserProps) {
             <DropdownMenuTrigger
               aria-label="Open account menu"
               className={cn(
-                "flex w-full items-center gap-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                "flex w-full items-center gap-3 text-left outline-none transition-[background-color,border-color,transform] duration-150 ease-[var(--ease-out-ui)] focus-visible:ring-2 focus-visible:ring-sidebar-ring active:scale-[0.98]",
                 isCollapsed
                   ? "mx-auto size-10 justify-center rounded-xl bg-transparent p-0 hover:bg-transparent"
-                  : "rounded-xl px-2 py-2 hover:bg-sidebar-accent/55"
+                  : "rounded-xl border border-sidebar-border/80 bg-sidebar-accent/45 px-2.5 py-2.5 shadow-xs hover:border-sidebar-primary/30 hover:bg-sidebar-accent/70"
               )}
             >
-              <Avatar size={isCollapsed ? "default" : "lg"} className="shrink-0">
-                {user.avatarUrl ? (
-                  <AvatarImage src={user.avatarUrl} alt={`${user.name} avatar`} />
-                ) : null}
-                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
-                  {getInitials(user.name)}
-                </AvatarFallback>
-              </Avatar>
+              <span className="relative shrink-0">
+                <Avatar size={isCollapsed ? "default" : "lg"}>
+                  {user.avatarUrl ? (
+                    <AvatarImage src={user.avatarUrl} alt={`${user.name} avatar`} />
+                  ) : null}
+                  <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+                    {getInitials(user.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <span
+                  aria-hidden="true"
+                  className="absolute right-0 bottom-0 size-2.5 rounded-full border-2 border-sidebar bg-success"
+                />
+              </span>
 
               <div className="min-w-0 flex-1 overflow-hidden opacity-100 transition-[max-width,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] delay-150 group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0 group-data-[collapsible=icon]:delay-0">
-                <p className="line-clamp-2 text-[1.02rem] leading-5 font-medium text-sidebar-foreground">
-                  {user.name}
+                <p className="whitespace-nowrap text-sm leading-5 font-semibold tracking-[-0.01em] text-sidebar-foreground">
+                  {getFirstName(user.name)}
                 </p>
-                <p className="pt-1 text-sm text-sidebar-foreground/58">
-                  @{user.username}
+                <p className="mt-0.5 flex items-center gap-1 text-xs text-sidebar-foreground/58">
+                  <ShieldCheck className="size-3" aria-hidden="true" />
+                  {ROLE_LABELS[user.role]}
                 </p>
               </div>
             </DropdownMenuTrigger>
@@ -92,6 +104,16 @@ export function NavUser({ user }: NavUserProps) {
               sideOffset={10}
               className="w-56 min-w-56 rounded-xl border border-border/60 bg-popover p-1.5 shadow-lg"
             >
+              <div className="flex items-center gap-2 px-2 py-2">
+                <Check className="size-3.5 shrink-0 text-success" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-foreground">Signed in</p>
+                  <p className="truncate text-[0.7rem] text-muted-foreground">
+                    @{user.username}
+                  </p>
+                </div>
+              </div>
+              <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   className="rounded-lg"
@@ -149,7 +171,7 @@ export function NavUser({ user }: NavUserProps) {
                 <Button
                   type="submit"
                   variant="ghost"
-                  className="h-auto w-full justify-start rounded-lg px-1.5 py-1 text-sm font-normal"
+                  className="h-auto w-full justify-start rounded-lg px-1.5 py-1 text-sm font-normal text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
                   <LogOutIcon className="size-4" />
                   Sign out
