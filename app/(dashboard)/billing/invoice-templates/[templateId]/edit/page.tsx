@@ -5,7 +5,7 @@ import { InvoiceBrandingTemplateForm } from "@/components/billing/invoice-brandi
 import { DashboardMetricCard } from "@/components/dashboard/metric-card";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { requireCapability } from "@/lib/auth/user";
-import { getPropertyParentOptions } from "@/lib/data/admin";
+import { getInvoiceTemplatePropertyOptions } from "@/lib/data/admin";
 import { getInvoiceBrandingTemplateForEdit } from "@/lib/data/billing";
 
 type EditInvoiceBrandingTemplatePageProps = {
@@ -21,7 +21,7 @@ export default async function EditInvoiceBrandingTemplatePage({
   const { templateId } = await params;
   const [template, propertyOptions] = await Promise.all([
     getInvoiceBrandingTemplateForEdit(templateId),
-    getPropertyParentOptions(),
+    getInvoiceTemplatePropertyOptions(),
   ]);
 
   if (!template) {
@@ -78,6 +78,9 @@ export default async function EditInvoiceBrandingTemplatePage({
           name: template.name,
           brandName: template.brandName,
           brandSubtitle: template.brandSubtitle,
+          fontFamily: template.fontFamily,
+          showBrandName: template.showBrandName,
+          showBrandSubtitle: template.showBrandSubtitle,
           invoiceTitlePrefix: template.invoiceTitlePrefix,
           usePropertyLogo: template.usePropertyLogo,
           titleScale: template.titleScale,

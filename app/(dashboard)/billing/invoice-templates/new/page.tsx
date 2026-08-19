@@ -3,11 +3,11 @@ import { createInvoiceBrandingTemplateAction } from "@/app/(dashboard)/billing/a
 import { InvoiceBrandingTemplateForm } from "@/components/billing/invoice-branding-template-form";
 import { DashboardPageHero } from "@/components/dashboard/page-hero";
 import { requireCapability } from "@/lib/auth/user";
-import { getPropertyParentOptions } from "@/lib/data/admin";
+import { getInvoiceTemplatePropertyOptions } from "@/lib/data/admin";
 
 export default async function NewInvoiceBrandingTemplatePage() {
   await requireCapability("MANAGE_INVOICE_TEMPLATES");
-  const propertyOptions = await getPropertyParentOptions();
+  const propertyOptions = await getInvoiceTemplatePropertyOptions();
 
   return (
     <div className="space-y-6">

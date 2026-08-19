@@ -116,6 +116,44 @@ export async function getPropertyParentOptions(excludeId?: string) {
   );
 }
 
+export async function getInvoiceTemplatePropertyOptions() {
+  const properties = await prisma.property.findMany({
+    orderBy: [{ name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      propertyCode: true,
+      contracts: {
+        where: { status: "ACTIVE" },
+        orderBy: [{ startDate: "desc" }],
+        select: {
+          tenant: {
+            select: {
+              id: true,
+              businessName: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return properties.map((property) => ({
+    id: property.id,
+    name: property.name,
+    propertyCode: property.propertyCode,
+    activeTenants: property.contracts.map(({ tenant }) => ({
+      id: tenant.id,
+      name:
+        tenant.businessName ||
+        [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") ||
+        "Tenant",
+    })),
+  }));
+}
+
 export async function getInvoiceBrandingTemplateOptions() {
   return withPrismaRetry(() =>
     prisma.invoiceBrandingTemplate.findMany({

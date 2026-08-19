@@ -1,4 +1,7 @@
+"use client";
+
 import type { CSSProperties } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Building2Icon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +48,10 @@ type PropertiaLogoProps = {
   titleStyle?: CSSProperties;
   subtitleStyle?: CSSProperties;
   plainMark?: boolean;
+  autoFitTitle?: boolean;
+  autoFitKey?: string;
+  showTitle?: boolean;
+  showSubtitle?: boolean;
 };
 
 export function PropertiaLogo({
@@ -63,12 +70,90 @@ export function PropertiaLogo({
   titleStyle,
   subtitleStyle,
   plainMark = false,
+  autoFitTitle = false,
+  autoFitKey,
+  showTitle = true,
+  showSubtitle = true,
 }: PropertiaLogoProps) {
   const styles = SIZE_STYLES[size];
+  const wordmarkRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLDivElement>(null);
+  const [titleFit, setTitleFit] = useState({ scale: 1, wraps: false });
   const markStyle = {
     width: `${(styles.markSize * logoScale) / 100}px`,
     height: `${(styles.markSize * logoScale) / 100}px`,
   } satisfies CSSProperties;
+
+  useLayoutEffect(() => {
+    if (!autoFitTitle) {
+      return;
+    }
+
+    const wordmark = wordmarkRef.current;
+    const titleElement = titleRef.current;
+
+    if (!wordmark || !titleElement) {
+      return;
+    }
+
+    let cancelled = false;
+    let frame = 0;
+
+    const fitTitle = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (cancelled) {
+          return;
+        }
+
+        const previousWhiteSpace = titleElement.style.whiteSpace;
+        titleElement.style.whiteSpace = "nowrap";
+
+        const naturalWidth =
+          titleElement.scrollWidth / Math.max(titleFit.scale, 0.6);
+        const availableWidth = wordmark.clientWidth;
+        const ratio =
+          naturalWidth > 0 && availableWidth > 0
+            ? availableWidth / naturalWidth
+            : 1;
+        const scale = Math.min(1, Math.max(0.6, ratio));
+        const wraps = ratio < 0.6;
+
+        titleElement.style.whiteSpace = previousWhiteSpace;
+
+        setTitleFit((current) =>
+          current.scale === scale && current.wraps === wraps
+            ? current
+            : { scale, wraps }
+        );
+      });
+    };
+
+    const observer = new ResizeObserver(fitTitle);
+    observer.observe(wordmark);
+    fitTitle();
+    void document.fonts?.ready.then(fitTitle);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [
+    autoFitKey,
+    autoFitTitle,
+    showTitle,
+    title,
+    titleFit.scale,
+    titleStyle?.fontSize,
+  ]);
+
+  const fittedTitleStyle = autoFitTitle
+    ? {
+        ...titleStyle,
+        fontSize: `calc(${typeof titleStyle?.fontSize === "number" ? `${titleStyle.fontSize}px` : titleStyle?.fontSize ?? "1em"} * ${titleFit.scale})`,
+      }
+    : titleStyle;
 
   return (
     <div className={cn("flex min-w-0 items-center", styles.wrapper, className)}>
@@ -105,18 +190,22 @@ export function PropertiaLogo({
       </div>
 
       {showWordmark ? (
-        <div data-wordmark className={cn("min-w-0", wordmarkClassName)}>
-          <div
+        <div ref={wordmarkRef} data-wordmark className={cn("min-w-0", wordmarkClassName)}>
+          {showTitle ? <div
+            ref={titleRef}
             className={cn(
-              "truncate font-semibold tracking-[-0.045em] text-foreground",
+              autoFitTitle && titleFit.wraps
+                ? "overflow-visible whitespace-normal break-words"
+                : "truncate",
+              "font-semibold tracking-[-0.045em] text-foreground",
               styles.title,
               titleClassName
             )}
-            style={titleStyle}
+            style={fittedTitleStyle}
           >
             {title}
-          </div>
-          <div
+          </div> : null}
+          {showSubtitle ? <div
             className={cn(
               "truncate uppercase tracking-[0.24em] text-muted-foreground",
               styles.subtitle,
@@ -125,7 +214,7 @@ export function PropertiaLogo({
             style={subtitleStyle}
           >
             {subtitle}
-          </div>
+          </div> : null}
         </div>
       ) : null}
     </div>

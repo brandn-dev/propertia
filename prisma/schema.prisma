@@ -284,6 +284,9 @@ model InvoiceBrandingTemplate {
   name                     String
   brandName                String
   brandSubtitle            String
+  fontFamily               String            @default("Inter")
+  showBrandName            Boolean           @default(true)
+  showBrandSubtitle        Boolean           @default(true)
   invoiceTitlePrefix       String            @default("Invoice for")
   logoUrl                  String?
   logoStorageKey           String?

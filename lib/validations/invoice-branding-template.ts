@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { INVOICE_FONT_FAMILIES } from "@/lib/billing/invoice-fonts";
 
 const HEX_COLOR_REGEX = /^#(?:[0-9a-fA-F]{6})$/;
 
@@ -27,6 +28,9 @@ export const invoiceBrandingTemplateSchema = z.object({
     .trim()
     .min(1, "Brand subtitle is required.")
     .max(160, "Brand subtitle must be 160 characters or fewer."),
+  fontFamily: z.enum(INVOICE_FONT_FAMILIES),
+  showBrandName: z.boolean(),
+  showBrandSubtitle: z.boolean(),
   invoiceTitlePrefix: z
     .string()
     .trim()

@@ -123,6 +123,9 @@ type InternalInvoiceShape = {
         name: string;
         brandName: string;
         brandSubtitle: string;
+        fontFamily: string;
+        showBrandName: boolean;
+        showBrandSubtitle: boolean;
         invoiceTitlePrefix: string;
         logoUrl: string | null;
         usePropertyLogo: boolean;
@@ -181,6 +184,9 @@ type PublicInvoiceShape = {
         name: string;
         brandName: string;
         brandSubtitle: string;
+        fontFamily: string;
+        showBrandName: boolean;
+        showBrandSubtitle: boolean;
         invoiceTitlePrefix: string;
         logoUrl: string | null;
         usePropertyLogo: boolean;
@@ -224,6 +230,9 @@ export type InvoicePresentationModel = {
   branding: {
     brandName: string;
     brandSubtitle: string;
+    fontFamily: string;
+    showBrandName: boolean;
+    showBrandSubtitle: boolean;
     invoiceTitlePrefix: string;
     logoUrl: string | null;
     titleScale: "COMPACT" | "STANDARD" | "PROMINENT";
@@ -654,6 +663,9 @@ export function buildInvoicePresentationModel(
     branding: {
       brandName: brandingTemplate?.brandName || "Propertia",
       brandSubtitle: brandingTemplate?.brandSubtitle || "Operations invoice",
+      fontFamily: brandingTemplate?.fontFamily || "Inter",
+      showBrandName: brandingTemplate?.showBrandName ?? true,
+      showBrandSubtitle: brandingTemplate?.showBrandSubtitle ?? true,
       invoiceTitlePrefix,
       logoUrl: resolvedLogoUrl,
       titleScale: brandingTemplate?.titleScale || "STANDARD",
@@ -708,6 +720,9 @@ export function buildInvoicePreviewModel(): InvoicePresentationModel {
     branding: {
       brandName: "Propertia",
       brandSubtitle: "Operations invoice",
+      fontFamily: "Inter",
+      showBrandName: true,
+      showBrandSubtitle: true,
       invoiceTitlePrefix: "Invoice for",
       logoUrl: null,
       titleScale: "STANDARD",

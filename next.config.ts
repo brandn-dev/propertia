@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     instantNavigationDevToolsToggle: true,
+    serverActions: {
+      allowedOrigins: ["propertia.brandn.dev"],
+    },
   },
 };
 

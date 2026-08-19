@@ -1,4 +1,4 @@
-export const DEFAULT_INVOICE_PAPER_SIZE = "letter";
+export const DEFAULT_INVOICE_PAPER_SIZE = "a4";
 
 export const INVOICE_PAPER_SIZE_OPTIONS = [
   {
@@ -48,7 +48,9 @@ export function getInvoicePaperSizePreset(
 ) {
   return (
     INVOICE_PAPER_SIZE_OPTIONS.find((option) => option.value === paperSize) ??
-    INVOICE_PAPER_SIZE_OPTIONS[0]
+    INVOICE_PAPER_SIZE_OPTIONS.find(
+      (option) => option.value === DEFAULT_INVOICE_PAPER_SIZE
+    )!
   );
 }
 

@@ -14,6 +14,7 @@ type InvoiceDocumentProps = {
   renderMode: "public" | "internal" | "editor-preview" | "print";
   paperSize?: InvoicePaperSize;
   layoutMode?: "responsive" | "paper";
+  showLayoutGuides?: boolean;
   accessBlock?: {
     qrDataUrl: string;
     publicAccessCode: string;
@@ -38,6 +39,7 @@ export function InvoiceDocument({
   renderMode,
   paperSize = DEFAULT_INVOICE_PAPER_SIZE,
   layoutMode = "responsive",
+  showLayoutGuides = false,
   accessBlock,
   frameless = false,
   afterDocument,
@@ -59,6 +61,7 @@ export function InvoiceDocument({
   } satisfies CSSProperties;
   const articleStyle = {
     minHeight: paperLayout ? paperPreset.previewMinHeight : undefined,
+    fontFamily: `'${model.branding.fontFamily}', sans-serif`,
     "--invoice-preview-min-height": paperPreset.previewMinHeight,
     "--invoice-paper-background": paperLayout ? "#ffffff" : "var(--card)",
     "--invoice-paper-foreground": paperLayout ? "#0f172a" : "var(--card-foreground)",
@@ -89,11 +92,15 @@ export function InvoiceDocument({
   const headerBrandStackClass = paperLayout ? "space-y-2.5" : "space-y-1 md:space-y-1.25";
   const headerTitleStackClass = "space-y-1";
   const headerDividerClass = paperLayout ? "border-t pt-2" : "border-t pt-1.5 md:pt-2";
+  const layoutGuideClass = showLayoutGuides
+    ? "relative outline outline-1 outline-dashed outline-cyan-500/55 outline-offset-2 print:outline-none"
+    : "";
   const brandNameBaseSize = 1.15;
   const brandSubtitleBaseSize = 0.72;
   const tenantNameBaseSize = compactPaper ? 1.82 : 2.08;
   const articleClassName = cn(
     PAPER_CLASS,
+    "relative",
     paperLayout ? `invoice-paper--${paperPreset.value}` : "",
     frameless
       ? "rounded-none border-0 bg-[color:var(--invoice-paper-background)] shadow-none"
@@ -138,7 +145,7 @@ export function InvoiceDocument({
                   : "grid gap-5 md:grid-cols-[minmax(0,1fr)_20rem] md:items-end md:gap-8"
               )}
             >
-                <div className={cn("min-w-0", headerBrandStackClass)}>
+                <div className={cn("min-w-0", headerBrandStackClass, layoutGuideClass)}>
                 <PropertiaLogo
                   size="md"
                   showWordmark
@@ -147,6 +154,10 @@ export function InvoiceDocument({
                   logoSrc={model.branding.logoUrl ?? undefined}
                   logoAlt={`${model.propertyName} logo`}
                   logoScale={model.branding.logoScalePercent}
+                  autoFitTitle
+                  autoFitKey={model.branding.fontFamily}
+                  showTitle={model.branding.showBrandName}
+                  showSubtitle={model.branding.showBrandSubtitle}
                   subtitle={model.branding.brandSubtitle}
                   subtitleClassName="tracking-[0.26em] text-[color:var(--invoice-label-color)]"
                   titleClassName="text-[color:var(--invoice-value-color)]"
@@ -165,7 +176,7 @@ export function InvoiceDocument({
                   }}
                 />
 
-                <div className={cn("min-w-0", headerTitleStackClass)}>
+                <div className={cn("min-w-0", headerTitleStackClass, layoutGuideClass)}>
                   <p className={cn("text-[0.72rem] font-medium tracking-[0.08em]", MUTED_CLASS)}>
                     {model.title}
                   </p>
@@ -193,6 +204,7 @@ export function InvoiceDocument({
               <div
                 className={cn(
                   "min-w-0 gap-3",
+                  layoutGuideClass,
                   paperLayout
                     ? cn(
                         "flex flex-col items-end",
@@ -236,7 +248,7 @@ export function InvoiceDocument({
           <section className={cn("space-y-4", contentInsetClass, mobileReceiptLayout ? "pt-1" : "")}>
             <div className={cn(headerDividerClass, DIVIDER_CLASS)}>
               {paperLayout ? (
-                <div className="overflow-x-auto">
+                <div className={cn("overflow-x-auto", layoutGuideClass)}>
                   <table className="w-full table-fixed border-collapse">
                     <colgroup>
                       <col style={{ width: compactPaper ? "18%" : "16%" }} />

@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, LoaderCircle, Save } from "lucide-react";
+import { ArrowLeft, ArrowRight, LoaderCircle, Search, Save, X } from "lucide-react";
 import type { InvoiceBrandingTemplateFormState } from "@/app/(dashboard)/billing/actions";
 import { InvoiceDocument } from "@/components/billing/invoice-document";
 import { InvoiceBrandingLogoField } from "@/components/billing/invoice-branding-logo-field";
@@ -11,6 +11,10 @@ import { ColorPickerField } from "@/components/ui/color-picker-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buildInvoicePreviewModel } from "@/lib/billing/invoice-presenter";
+import {
+  DEFAULT_INVOICE_FONT_FAMILY,
+  INVOICE_FONT_OPTIONS,
+} from "@/lib/billing/invoice-fonts";
 import {
   INVOICE_FONT_WEIGHTS,
   INVOICE_TITLE_SCALES,
@@ -42,11 +46,18 @@ type InvoiceBrandingTemplateFormProps = {
     id: string;
     name: string;
     propertyCode: string;
+    activeTenants: {
+      id: string;
+      name: string;
+    }[];
   }[];
   initialValues?: {
     name: string;
     brandName: string;
     brandSubtitle: string;
+    fontFamily: string;
+    showBrandName: boolean;
+    showBrandSubtitle: boolean;
     invoiceTitlePrefix: string;
     usePropertyLogo: boolean;
     titleScale: (typeof INVOICE_TITLE_SCALES)[number];
@@ -77,6 +88,70 @@ function FieldError({ message }: { message?: string }) {
   return <p className="text-sm text-destructive">{message}</p>;
 }
 
+type PropertyPickerProperty = {
+  id: string;
+  name: string;
+  propertyCode: string;
+  activeTenants: { id: string; name: string }[];
+};
+
+function PropertyPickerColumn({
+  title,
+  emptyMessage,
+  properties,
+  actionLabel,
+  onPropertyClick,
+  remove = false,
+}: {
+  title: string;
+  emptyMessage: string;
+  properties: PropertyPickerProperty[];
+  actionLabel: string;
+  onPropertyClick: (propertyId: string) => void;
+  remove?: boolean;
+}) {
+  return (
+    <div className="space-y-2 rounded-xl border border-border/70 bg-background/45 p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        {title}
+      </p>
+      <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+        {properties.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border/70 px-3 py-6 text-center text-sm text-muted-foreground">
+            {emptyMessage}
+          </p>
+        ) : (
+          properties.map((property) => (
+            <button
+              key={property.id}
+              type="button"
+              onClick={() => onPropertyClick(property.id)}
+              className="group flex w-full items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-muted/60"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium text-foreground">
+                  {property.name}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {property.activeTenants.length > 0
+                    ? property.activeTenants.map((tenant) => tenant.name).join(" · ")
+                    : "No active tenant"}
+                </span>
+              </span>
+              {remove ? (
+                <X className="size-4 shrink-0 text-muted-foreground group-hover:text-destructive" />
+              ) : (
+                <ArrowRight className="size-4 shrink-0 text-muted-foreground group-hover:text-primary" />
+              )}
+              <span className="sr-only">{actionLabel} {property.name}</span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function InvoiceBrandingTemplateForm({
   mode,
   formAction,
@@ -85,6 +160,9 @@ export function InvoiceBrandingTemplateForm({
     name: "",
     brandName: "Propertia",
     brandSubtitle: "Operations invoice",
+    fontFamily: DEFAULT_INVOICE_FONT_FAMILY,
+    showBrandName: true,
+    showBrandSubtitle: true,
     invoiceTitlePrefix: "Invoice for",
     usePropertyLogo: true,
     titleScale: "STANDARD",
@@ -109,6 +187,17 @@ export function InvoiceBrandingTemplateForm({
   const [state, action, pending] = useActionState(formAction, initialState);
   const [brandName, setBrandName] = useState(initialValues.brandName);
   const [brandSubtitle, setBrandSubtitle] = useState(initialValues.brandSubtitle);
+  const [fontFamily, setFontFamily] = useState(initialValues.fontFamily);
+  const [showBrandName, setShowBrandName] = useState(initialValues.showBrandName);
+  const [showBrandSubtitle, setShowBrandSubtitle] = useState(
+    initialValues.showBrandSubtitle
+  );
+  const [fontPickerOpen, setFontPickerOpen] = useState(false);
+  const [showLayoutGuides, setShowLayoutGuides] = useState(true);
+  const [propertySearch, setPropertySearch] = useState("");
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState(
+    initialValues.propertyIds
+  );
   const [invoiceTitlePrefix, setInvoiceTitlePrefix] = useState(
     initialValues.invoiceTitlePrefix
   );
@@ -143,6 +232,39 @@ export function InvoiceBrandingTemplateForm({
     initialValues.panelBackground
   );
   const [logoPreviewUrl, setLogoPreviewUrl] = useState(initialValues.logoUrl);
+  useEffect(() => {
+    void document.fonts?.load(`400 16px "${fontFamily}"`);
+  }, [fontFamily]);
+
+  const selectedPropertySet = new Set(selectedPropertyIds);
+  const normalizedPropertySearch = propertySearch.trim().toLowerCase();
+  const matchesProperty = (property: (typeof propertyOptions)[number]) => {
+    if (!normalizedPropertySearch) {
+      return true;
+    }
+
+    return [
+      property.name,
+      property.propertyCode,
+      ...property.activeTenants.map((tenant) => tenant.name),
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedPropertySearch);
+  };
+  const availableProperties = propertyOptions.filter(
+    (property) => !selectedPropertySet.has(property.id) && matchesProperty(property)
+  );
+  const selectedProperties = selectedPropertyIds
+    .map((id) => propertyOptions.find((property) => property.id === id))
+    .filter((property): property is (typeof propertyOptions)[number] => Boolean(property))
+    .filter(matchesProperty);
+  const addProperty = (propertyId: string) =>
+    setSelectedPropertyIds((current) =>
+      current.includes(propertyId) ? current : [...current, propertyId]
+    );
+  const removeProperty = (propertyId: string) =>
+    setSelectedPropertyIds((current) => current.filter((id) => id !== propertyId));
   const previewModel = {
     ...buildInvoicePreviewModel(),
     title: `${invoiceTitlePrefix || "Invoice for"} May 2026`,
@@ -150,6 +272,9 @@ export function InvoiceBrandingTemplateForm({
     branding: {
       brandName: brandName || "Propertia",
       brandSubtitle: brandSubtitle || "Operations invoice",
+      fontFamily,
+      showBrandName,
+      showBrandSubtitle,
       invoiceTitlePrefix: invoiceTitlePrefix || "Invoice for",
       logoUrl: logoPreviewUrl || null,
       titleScale,
@@ -221,6 +346,42 @@ export function InvoiceBrandingTemplateForm({
                   className="field-blank h-11"
                 />
                 <FieldError message={state.errors?.invoiceTitlePrefix?.[0]} />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fontFamily">Invoice font</Label>
+                <input type="hidden" name="fontFamily" value={fontFamily} />
+                <div className="relative">
+                  <button
+                    type="button"
+                    aria-expanded={fontPickerOpen}
+                    onClick={() => setFontPickerOpen((open) => !open)}
+                    className={`${selectClassName} flex w-full items-center justify-between text-left`}
+                    style={{ fontFamily: `'${fontFamily}', sans-serif` }}
+                  >
+                    <span>{fontFamily}</span>
+                    <span aria-hidden="true">⌄</span>
+                  </button>
+                  {fontPickerOpen ? (
+                    <div className="absolute inset-x-0 top-[calc(100%+0.35rem)] z-30 max-h-64 overflow-y-auto rounded-xl border border-border bg-popover p-1 shadow-xl">
+                      {INVOICE_FONT_OPTIONS.map((font) => (
+                        <button
+                          key={font.value}
+                          type="button"
+                          onClick={() => {
+                            setFontFamily(font.value);
+                            setFontPickerOpen(false);
+                          }}
+                          className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
+                          style={{ fontFamily: `'${font.value}', sans-serif` }}
+                        >
+                          {font.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <FieldError message={state.errors?.fontFamily?.[0]} />
               </div>
 
               <div className="space-y-2">
@@ -463,24 +624,43 @@ export function InvoiceBrandingTemplateForm({
                 errorMessage={state.errors?.panelBackground?.[0]}
               />
 
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="propertyIds">Properties using this template</Label>
-                <select
-                  id="propertyIds"
-                  name="propertyIds"
-                  multiple
-                  defaultValue={initialValues.propertyIds}
-                  className="field-blank min-h-44 rounded-xl border px-4 py-3 text-sm"
-                >
-                  {propertyOptions.map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.name} ({property.propertyCode})
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs leading-5 text-muted-foreground">
-                  Hold command/control to select multiple properties.
-                </p>
+              <div className="space-y-3 md:col-span-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="propertySearch">Properties using this template</Label>
+                  <span className="text-xs text-muted-foreground">
+                    {selectedPropertyIds.length} picked
+                  </span>
+                </div>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="propertySearch"
+                    value={propertySearch}
+                    onChange={(event) => setPropertySearch(event.target.value)}
+                    placeholder="Search property or active tenant"
+                    className="field-blank h-11 pl-9"
+                  />
+                </div>
+                {selectedPropertyIds.map((propertyId) => (
+                  <input key={propertyId} type="hidden" name="propertyIds" value={propertyId} />
+                ))}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <PropertyPickerColumn
+                    title="Available"
+                    emptyMessage="No matching properties."
+                    properties={availableProperties}
+                    actionLabel="Pick"
+                    onPropertyClick={addProperty}
+                  />
+                  <PropertyPickerColumn
+                    title="Picked"
+                    emptyMessage="No properties picked."
+                    properties={selectedProperties}
+                    actionLabel="Remove"
+                    onPropertyClick={removeProperty}
+                    remove
+                  />
+                </div>
                 <FieldError message={state.errors?.propertyIds?.[0]} />
               </div>
 
@@ -534,6 +714,10 @@ export function InvoiceBrandingTemplateForm({
             initialLogoUrl={initialValues.logoUrl || undefined}
             errorMessage={state.errors?.logoFile?.[0]}
             onPreviewUrlChange={setLogoPreviewUrl}
+            showBrandName={showBrandName}
+            showBrandSubtitle={showBrandSubtitle}
+            onShowBrandNameChange={setShowBrandName}
+            onShowBrandSubtitleChange={setShowBrandSubtitle}
           />
         </div>
 
@@ -593,11 +777,21 @@ export function InvoiceBrandingTemplateForm({
               Preview
             </p>
             <div className="mt-4 overflow-hidden rounded-[1.35rem] bg-white">
+              <label className="flex items-center gap-2 border-b border-border/60 bg-background px-4 py-3 text-xs font-medium text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={showLayoutGuides}
+                  onChange={(event) => setShowLayoutGuides(event.target.checked)}
+                  className="size-4 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                Show layout guides
+              </label>
               <InvoiceDocument
                 model={previewModel}
                 renderMode="print"
-                paperSize="letter"
+                paperSize="a4"
                 layoutMode="paper"
+                showLayoutGuides={showLayoutGuides}
                 frameless
               />
             </div>

@@ -10,12 +10,20 @@ type InvoiceBrandingLogoFieldProps = {
   initialLogoUrl?: string;
   errorMessage?: string;
   onPreviewUrlChange?: (nextUrl: string) => void;
+  showBrandName: boolean;
+  showBrandSubtitle: boolean;
+  onShowBrandNameChange: (nextValue: boolean) => void;
+  onShowBrandSubtitleChange: (nextValue: boolean) => void;
 };
 
 export function InvoiceBrandingLogoField({
   initialLogoUrl,
   errorMessage,
   onPreviewUrlChange,
+  showBrandName,
+  showBrandSubtitle,
+  onShowBrandNameChange,
+  onShowBrandSubtitleChange,
 }: InvoiceBrandingLogoFieldProps) {
   const [previewUrl, setPreviewUrl] = useState(initialLogoUrl ?? "");
   const [removeLogo, setRemoveLogo] = useState(false);
@@ -131,6 +139,42 @@ export function InvoiceBrandingLogoField({
               Remove logo
             </button>
           ) : null}
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        <Label>Logo text</Label>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="field-blank flex items-start gap-3 rounded-xl border px-4 py-3">
+            <input
+              type="checkbox"
+              name="showBrandName"
+              checked={showBrandName}
+              onChange={(event) => onShowBrandNameChange(event.target.checked)}
+              className="mt-1 size-4 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <span className="space-y-1">
+              <span className="block text-sm font-medium">Show brand name</span>
+              <span className="block text-xs leading-5 text-muted-foreground">
+                Turn off when uploaded logo already contains name.
+              </span>
+            </span>
+          </label>
+          <label className="field-blank flex items-start gap-3 rounded-xl border px-4 py-3">
+            <input
+              type="checkbox"
+              name="showBrandSubtitle"
+              checked={showBrandSubtitle}
+              onChange={(event) => onShowBrandSubtitleChange(event.target.checked)}
+              className="mt-1 size-4 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <span className="space-y-1">
+              <span className="block text-sm font-medium">Show brand subtitle</span>
+              <span className="block text-xs leading-5 text-muted-foreground">
+                Turn off when uploaded logo already contains subtitle.
+              </span>
+            </span>
+          </label>
         </div>
       </div>
     </section>

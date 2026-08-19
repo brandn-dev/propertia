@@ -13,7 +13,10 @@ import {
   View,
 } from "@react-pdf/renderer";
 import type { InvoicePresentationModel } from "@/lib/billing/invoice-presenter";
-import type { InvoicePaperSize } from "@/lib/billing/invoice-pdf-options";
+import {
+  DEFAULT_INVOICE_PAPER_SIZE,
+  type InvoicePaperSize,
+} from "@/lib/billing/invoice-pdf-options";
 
 const PDF_REGULAR_FONT_PATH = "/System/Library/Fonts/SFNS.ttf";
 const PDF_MONO_FONT_PATH = "/System/Library/Fonts/SFNSMono.ttf";
@@ -412,7 +415,7 @@ const styles = StyleSheet.create({
 export function InvoicePdfDocument({
   model,
   variant,
-  paperSize = "letter",
+  paperSize = DEFAULT_INVOICE_PAPER_SIZE,
   accessBlock,
 }: {
   model: InvoicePresentationModel;
@@ -539,12 +542,16 @@ function InvoicePrimaryPage({
                 logoUrl={model.branding.logoUrl}
               />
               <View style={styles.brandTextWrap}>
-                <Text style={[styles.brandTitle, brandNameStyle]}>
-                  {model.branding.brandName}
-                </Text>
-                <Text style={[styles.brandSubtitle, brandSubtitleStyle]}>
-                  {brandSubtitle}
-                </Text>
+                {model.branding.showBrandName ? (
+                  <Text style={[styles.brandTitle, brandNameStyle]}>
+                    {model.branding.brandName}
+                  </Text>
+                ) : null}
+                {model.branding.showBrandSubtitle ? (
+                  <Text style={[styles.brandSubtitle, brandSubtitleStyle]}>
+                    {brandSubtitle}
+                  </Text>
+                ) : null}
               </View>
             </View>
 

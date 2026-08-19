@@ -10,8 +10,12 @@ export function DashboardSidebarSkeleton() {
           <div className="border-b border-sidebar-border/70 px-4 py-5">
             <PropertiaLogo
               size="sm"
-              subtitle="Loading workspace"
-              subtitleClassName="tracking-[0.22em]"
+              title="Panglao Lands"
+              subtitle="by Propertia"
+              logoSrc="/PANGLAO%20LANDS%20LOGO%20ICON.svg"
+              logoAlt="Panglao Lands"
+              titleClassName="tracking-[-0.025em]"
+              subtitleClassName="normal-case tracking-[0.12em]"
             />
           </div>
 
@@ -34,7 +38,7 @@ export function DashboardSidebarSkeleton() {
                           <Skeleton className="h-2 w-2/5 rounded-full bg-sidebar-accent/75" />
                         </div>
                       </div>
-                    )
+                    ),
                   )}
                 </div>
               </div>
