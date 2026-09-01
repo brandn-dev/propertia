@@ -476,7 +476,7 @@ export async function getUtilityMeterReadingOptions() {
   const todayEnd = new Date(todayStart);
   todayEnd.setHours(23, 59, 59, 999);
 
-  const meters = await prisma.utilityMeter.findMany({
+  const meters = await withPrismaRetry(() => prisma.utilityMeter.findMany({
     where: {
       openedAt: {
         lte: todayEnd,
@@ -526,7 +526,7 @@ export async function getUtilityMeterReadingOptions() {
         },
       },
     },
-  });
+  }));
 
   return meters.map((meter) => ({
     ...meter,
@@ -544,7 +544,7 @@ export async function getUtilityMeterReadingOptions() {
 }
 
 export async function getMeterReadingForEdit(readingId: string) {
-  const reading = await prisma.meterReading.findUnique({
+  const reading = await withPrismaRetry(() => prisma.meterReading.findUnique({
     where: { id: readingId },
     select: {
       id: true,
@@ -607,7 +607,7 @@ export async function getMeterReadingForEdit(readingId: string) {
         },
       },
     },
-  });
+  }));
 
   if (!reading) {
     return null;

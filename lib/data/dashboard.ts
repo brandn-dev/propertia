@@ -9,7 +9,7 @@ import {
 } from "@/lib/billing/cycles";
 import { getHistoricalBacklogCutoffDate } from "@/lib/billing/backlog";
 import type { AuthUser } from "@/lib/auth/user";
-import { prisma } from "@/lib/prisma";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { usesAdminWorkspace, type AppRole } from "@/lib/auth/roles";
 import { APP_TIME_ZONE, getDatePartsInAppTimeZone, toNumber } from "@/lib/format";
 import type {
@@ -1206,7 +1206,7 @@ export async function getUtilityMetersOverview() {
 }
 
 export async function getMeterReadingsOverview() {
-  const readings = await prisma.meterReading.findMany({
+  const readings = await withPrismaRetry(() => prisma.meterReading.findMany({
     orderBy: [{ readingDate: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
@@ -1259,7 +1259,7 @@ export async function getMeterReadingsOverview() {
         },
       },
     },
-  });
+  }));
 
   const metersWithLaterBilledReadings = new Set<string>();
   const rows: Array<(typeof readings)[number] & { canEdit: boolean }> = [];

@@ -50,12 +50,24 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export function isRetryablePrismaError(error: unknown) {
-  return (
-    error instanceof Error &&
-    /Connection terminated unexpectedly|Can't reach database server|Timed out fetching a new connection/i.test(
-      error.message
-    )
-  );
+  let current: unknown = error;
+
+  while (current instanceof Error) {
+    const code = "code" in current ? String(current.code) : "";
+
+    if (
+      /P1001|P1017|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE/i.test(code) ||
+      /Connection terminated unexpectedly|Can't reach database server|Timed out fetching a new connection|Connection closed|server closed the connection unexpectedly|connection reset by peer|socket hang up/i.test(
+        current.message
+      )
+    ) {
+      return true;
+    }
+
+    current = current.cause;
+  }
+
+  return false;
 }
 
 function wait(ms: number) {

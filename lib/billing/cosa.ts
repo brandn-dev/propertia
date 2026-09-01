@@ -95,6 +95,16 @@ function distributeCentsByWeights(totalInCents: number, weights: number[]) {
     .map((weightedAmount) => weightedAmount.cents);
 }
 
+export function normalizePercentageWeights(weights: number[]) {
+  if (weights.length === 0) {
+    return [];
+  }
+
+  const basisPoints = distributeCentsByWeights(10000, weights);
+
+  return basisPoints.map((value) => (value / 100).toFixed(2));
+}
+
 export function calculateCosaAllocations(params: {
   allocationType: AllocationType;
   totalAmount: number;

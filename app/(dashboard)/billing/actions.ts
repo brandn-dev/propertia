@@ -25,6 +25,7 @@ import {
 import {
   filterCyclesWithoutInvoicedMonths,
   cycleOverlapsRange,
+  findCosaTargetBillingCycle,
   findNextCompletedBillingCycles,
   formatBillingCycleLabel,
   getBillingCycleAtIndex,
@@ -1541,9 +1542,19 @@ export async function generateInvoicesAction(
         );
       }
       const cycleCosaAllocations = contractCosaAllocations.filter(
-        (allocation) =>
-          allocation.cosa.billingDate >= cycle.start &&
-          allocation.cosa.billingDate <= cycle.end
+        (allocation) => {
+          const targetCycle = findCosaTargetBillingCycle({
+            billingDate: allocation.cosa.billingDate,
+            issueDate,
+            pendingCycles: missingCycles,
+          });
+
+          return (
+            targetCycle != null &&
+            getBillingCycleKey(targetCycle.start, targetCycle.end) ===
+              getBillingCycleKey(cycle.start, cycle.end)
+          );
+        }
       );
 
       const rentAmount = calculateAdjustedMonthlyRent({

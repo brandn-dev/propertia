@@ -748,8 +748,8 @@ export function CosaForm({
                 <li>Choose property, then optionally link shared meter.</li>
                 <li>If shared meter is linked, latest unread reading is auto-applied and still editable.</li>
                 <li>If no shared meter is linked, enter monthly COSA amount manually.</li>
-                <li>Review tenant split, save COSA, then run invoice generation for matching billing cycle.</li>
-                <li>Saved uninvoiced COSA allocations are included automatically when billing date falls inside selected invoice cycle.</li>
+                <li>Review tenant split, save COSA, then run invoice generation.</li>
+                <li>Saved uninvoiced COSA allocations join their pending billing cycle or carry into the next available cycle when that month is already invoiced.</li>
               </ol>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
                 Meter reading is only needed for meter-backed COSA. Manual salary-style COSA like security guard or maintenance can stay fully manual.

@@ -19,6 +19,7 @@ import {
 import {
   cycleOverlapsRange,
   filterCyclesWithoutInvoicedMonths,
+  findCosaTargetBillingCycle,
   findNextCompletedBillingCycles,
   formatBillingCycleLabel,
   getBillingCycleKey,
@@ -405,10 +406,16 @@ export function InvoiceGenerationForm({
           const cosaOptions = contract.cosaAllocations
             .filter((allocation) => {
               const billingDate = new Date(allocation.cosa.billingDate);
+              const targetCycle = findCosaTargetBillingCycle({
+                billingDate,
+                issueDate: issueDateValue,
+                pendingCycles: visiblePendingCycles,
+              });
+
               return (
-                billingDate <= issueDateValue &&
-                billingDate >= cycle.start &&
-                billingDate <= cycle.end
+                targetCycle != null &&
+                getBillingCycleKey(targetCycle.start, targetCycle.end) ===
+                  getBillingCycleKey(cycle.start, cycle.end)
               );
             })
             .map((allocation) => ({
@@ -974,7 +981,7 @@ export function InvoiceGenerationForm({
               <li>Base rent is added automatically from the contract cycle.</li>
               <li>Recurring charges appear when effective in that cycle.</li>
               <li>Dedicated-meter utility readings stay selectable per cycle.</li>
-              <li>COSA allocations inside the cycle auto-attach once saved.</li>
+              <li>Due and carried-forward COSA allocations auto-attach once saved.</li>
               <li>Deferred balances can be carried into the next selected invoice.</li>
             </ol>
           </div>
@@ -1133,7 +1140,7 @@ export function InvoiceGenerationForm({
                                       COSA allocations
                                     </p>
                                     <p className="text-xs leading-5 text-muted-foreground">
-                                      Saved uninvoiced COSA lines inside this cycle auto-attach.
+                                      Due COSA lines and older uninvoiced COSA carried into this cycle auto-attach.
                                     </p>
                                   </div>
 

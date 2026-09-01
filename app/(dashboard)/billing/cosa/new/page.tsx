@@ -23,6 +23,7 @@ import {
   getCosaTemplateForEdit,
 } from "@/lib/data/billing";
 import { COSA_TEMPLATE_PRESETS } from "@/lib/billing/cosa-presets";
+import { normalizePercentageWeights } from "@/lib/billing/cosa";
 import { formatDate, toDateInputValue } from "@/lib/format";
 
 const PRESET_ICONS = {
@@ -85,24 +86,34 @@ export default async function NewBillingCosaPage({
         candidate.parentPropertyId === property.id && candidate.status !== "ARCHIVED",
     )
   ).length;
-  const templateAllocations = selectedTemplate
-    ? selectedTemplate.allocations
-        .filter(
-          (allocation) => {
-            const contractId = allocation.contract?.id;
+  const retainedTemplateAllocations = selectedTemplate
+    ? selectedTemplate.allocations.filter((allocation) => {
+        const contractId = allocation.contract?.id;
 
-            return (
-              !contractId ||
-              contractOptions.some((contract) => contract.id === contractId)
-            );
-          }
+        return (
+          !contractId ||
+          contractOptions.some((contract) => contract.id === contractId)
+        );
+      })
+    : [];
+  const normalizedTemplatePercentages =
+    selectedTemplate?.allocationType === "PERCENTAGE"
+      ? normalizePercentageWeights(
+          retainedTemplateAllocations.map((allocation) =>
+            Number(allocation.percentage?.toString() ?? 0)
+          )
         )
-        .map((allocation) => ({
+      : [];
+  const templateAllocations = selectedTemplate
+    ? retainedTemplateAllocations.map((allocation, index) => ({
           entryId: allocation.contract?.id ?? `helper:${allocation.id}`,
           contractId: allocation.contract?.id ?? "",
           helperLabel: allocation.helperLabel ?? "",
           isHelper: !allocation.contract,
-          percentage: allocation.percentage?.toString() ?? "",
+          percentage:
+            normalizedTemplatePercentages[index] ??
+            allocation.percentage?.toString() ??
+            "",
           unitCount: allocation.unitCount?.toString() ?? "",
           amount: allocation.amount?.toString() ?? "",
         }))

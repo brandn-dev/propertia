@@ -17,6 +17,22 @@ export type UtilityBillingWindow = {
   captureEndInclusive: Date;
 };
 
+export function findCosaTargetBillingCycle(params: {
+  billingDate: Date;
+  issueDate: Date;
+  pendingCycles: BillingCycle[];
+}) {
+  if (params.billingDate > params.issueDate) {
+    return null;
+  }
+
+  return (
+    [...params.pendingCycles]
+      .sort((left, right) => left.start.getTime() - right.start.getTime())
+      .find((cycle) => params.billingDate <= cycle.end) ?? null
+  );
+}
+
 function startOfDay(date: Date) {
   return dateInputToAppStartOfDay(toDateInputValue(date));
 }

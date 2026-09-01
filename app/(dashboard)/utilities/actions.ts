@@ -5,7 +5,7 @@ import { redirect, RedirectType } from "next/navigation";
 import { requireAnyCapability, requireCapability } from "@/lib/auth/user";
 import { calculateCosaAllocations } from "@/lib/billing/cosa";
 import { toDateInputValue } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
+import { prisma, withPrismaRetry } from "@/lib/prisma";
 import { withToast } from "@/lib/toast";
 import { meterReadingSchema } from "@/lib/validations/meter-reading";
 import {
@@ -578,24 +578,34 @@ export async function createMeterReadingAction(
     };
   }
 
-  const meter = await prisma.utilityMeter.findUnique({
-    where: { id: validatedFields.data.meterId },
-    select: {
-      id: true,
-      tenantId: true,
-      openedAt: true,
-      retiredAt: true,
-      openingReading: true,
-      readings: {
-        take: 1,
-        orderBy: [{ readingDate: "desc" }, { createdAt: "desc" }],
+  let meter;
+
+  try {
+    meter = await withPrismaRetry(() =>
+      prisma.utilityMeter.findUnique({
+        where: { id: validatedFields.data.meterId },
         select: {
-          readingDate: true,
-          currentReading: true,
+          id: true,
+          tenantId: true,
+          openedAt: true,
+          retiredAt: true,
+          openingReading: true,
+          readings: {
+            take: 1,
+            orderBy: [{ readingDate: "desc" }, { createdAt: "desc" }],
+            select: {
+              readingDate: true,
+              currentReading: true,
+            },
+          },
         },
-      },
-    },
-  });
+      })
+    );
+  } catch {
+    return {
+      message: "Meter data could not be loaded. Wait a moment and try again.",
+    };
+  }
 
   if (!meter) {
     return {
@@ -775,54 +785,74 @@ export async function createBulkMeterReadingsAction(
     return { errors: { readings: ["Each meter can only appear once in a reading batch."] }, message: "Duplicate meters selected." };
   }
 
-  const meters = await prisma.utilityMeter.findMany({
-    where: { id: { in: meterIds } },
-    select: {
-      id: true,
-      tenantId: true,
-      propertyId: true,
-      utilityType: true,
-      isShared: true,
-      openedAt: true,
-      retiredAt: true,
-      openingReading: true,
-      readings: {
-        take: 1,
-        orderBy: [{ readingDate: "desc" }, { createdAt: "desc" }],
-        select: { readingDate: true, currentReading: true },
-      },
-    },
-  });
-  const meterMap = new Map(meters.map((meter) => [meter.id, meter]));
-  const templates = selectedTemplateIds.length
-    ? await prisma.cosaTemplate.findMany({
-        where: { id: { in: selectedTemplateIds } },
+  let meters;
+
+  try {
+    meters = await withPrismaRetry(() =>
+      prisma.utilityMeter.findMany({
+        where: { id: { in: meterIds } },
         select: {
           id: true,
+          tenantId: true,
           propertyId: true,
-          meterId: true,
-          name: true,
-          allocationType: true,
-          calculationMode: true,
-          isActive: true,
-          allocations: {
-            orderBy: [{ createdAt: "asc" }],
-            select: {
-              contractId: true,
-              helperLabel: true,
-              percentage: true,
-              unitCount: true,
-              amount: true,
-              contract: {
-                select: {
-                  property: { select: { size: true } },
-                },
-              },
-            },
+          utilityType: true,
+          isShared: true,
+          openedAt: true,
+          retiredAt: true,
+          openingReading: true,
+          readings: {
+            take: 1,
+            orderBy: [{ readingDate: "desc" }, { createdAt: "desc" }],
+            select: { readingDate: true, currentReading: true },
           },
         },
       })
-    : [];
+    );
+  } catch {
+    return {
+      message: "Meter data could not be loaded. Wait a moment and try again.",
+    };
+  }
+  const meterMap = new Map(meters.map((meter) => [meter.id, meter]));
+  let templates;
+
+  try {
+    templates = selectedTemplateIds.length
+      ? await withPrismaRetry(() =>
+          prisma.cosaTemplate.findMany({
+            where: { id: { in: selectedTemplateIds } },
+            select: {
+              id: true,
+              propertyId: true,
+              meterId: true,
+              name: true,
+              allocationType: true,
+              calculationMode: true,
+              isActive: true,
+              allocations: {
+                orderBy: [{ createdAt: "asc" }],
+                select: {
+                  contractId: true,
+                  helperLabel: true,
+                  percentage: true,
+                  unitCount: true,
+                  amount: true,
+                  contract: {
+                    select: {
+                      property: { select: { size: true } },
+                    },
+                  },
+                },
+              },
+            },
+          })
+        )
+      : [];
+  } catch {
+    return {
+      message: "COSA template data could not be loaded. Wait a moment and try again.",
+    };
+  }
   const templateMap = new Map(templates.map((template) => [template.id, template]));
   const prepared: Array<{
     rowIndex: number;
@@ -1026,26 +1056,36 @@ export async function updateMeterReadingAction(
     };
   }
 
-  const existingReading = await prisma.meterReading.findUnique({
-    where: { id: readingId },
-    select: {
-      id: true,
-      meterId: true,
-      invoiceItem: {
+  let existingReading;
+
+  try {
+    existingReading = await withPrismaRetry(() =>
+      prisma.meterReading.findUnique({
+        where: { id: readingId },
         select: {
           id: true,
+          meterId: true,
+          invoiceItem: {
+            select: {
+              id: true,
+            },
+          },
+          meter: {
+            select: {
+              tenantId: true,
+              openedAt: true,
+              retiredAt: true,
+              openingReading: true,
+            },
+          },
         },
-      },
-      meter: {
-        select: {
-          tenantId: true,
-          openedAt: true,
-          retiredAt: true,
-          openingReading: true,
-        },
-      },
-    },
-  });
+      })
+    );
+  } catch {
+    return {
+      message: "Reading data could not be loaded. Wait a moment and try again.",
+    };
+  }
 
   if (!existingReading) {
     return {
@@ -1097,26 +1137,36 @@ export async function updateMeterReadingAction(
     };
   }
 
-  const siblingReadings = await prisma.meterReading.findMany({
-    where: {
-      meterId: existingReading.meterId,
-      id: {
-        not: readingId,
-      },
-    },
-    orderBy: [{ readingDate: "asc" }, { createdAt: "asc" }],
-    select: {
-      id: true,
-      readingDate: true,
-      currentReading: true,
-      ratePerUnit: true,
-      invoiceItem: {
+  let siblingReadings;
+
+  try {
+    siblingReadings = await withPrismaRetry(() =>
+      prisma.meterReading.findMany({
+        where: {
+          meterId: existingReading.meterId,
+          id: {
+            not: readingId,
+          },
+        },
+        orderBy: [{ readingDate: "asc" }, { createdAt: "asc" }],
         select: {
           id: true,
+          readingDate: true,
+          currentReading: true,
+          ratePerUnit: true,
+          invoiceItem: {
+            select: {
+              id: true,
+            },
+          },
         },
-      },
-    },
-  });
+      })
+    );
+  } catch {
+    return {
+      message: "Reading history could not be loaded. Wait a moment and try again.",
+    };
+  }
 
   const conflictingReading = siblingReadings.find(
     (reading) => compareAppDates(reading.readingDate, readingDate) === 0
@@ -1238,7 +1288,14 @@ export async function updateMeterReadingAction(
   }
 
   revalidateUtilityViews();
-  redirect("/utilities/readings", RedirectType.replace);
+  redirect(
+    withToast("/utilities/readings", {
+      intent: "success",
+      title: "Reading updated",
+      description: "Meter chronology and charge were recalculated.",
+    }),
+    RedirectType.replace
+  );
 }
 
 export async function deleteMeterReadingAction(readingId: string) {
